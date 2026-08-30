@@ -142,6 +142,8 @@ class ThrotlWindow(Adw.ApplicationWindow):
         try:
             cfg = self.gui.client.call("get_config")
             self.unit = cfg.get("unit", "kbps")
+            self.process_panel.set_unit(self.unit)
+            self.rule_editor.unit = self.unit
             state = self.gui.client.call("list_processes")
             self._apply_state(state)
             self.rule_editor.refresh(cfg.get("processes", []))
@@ -158,8 +160,6 @@ class ThrotlWindow(Adw.ApplicationWindow):
         total_d = sum(p.get("download", 0.0) for p in state.get("processes", []))
         total_u = sum(p.get("upload", 0.0) for p in state.get("processes", []))
         self.graph.push(total_d, total_u)
-        if hasattr(self, "unit"):
-            pass  # Einheit live wechseln ohne Neubau
 
     def _on_toggle(self, switch, state):
         try:
@@ -173,6 +173,9 @@ class ThrotlWindow(Adw.ApplicationWindow):
     def _on_unit(self, dropdown, *args):
         idx = dropdown.get_selected()
         unit = ("kbps", "kBs")[idx] if idx >= 0 else "kbps"
+        self.unit = unit
+        self.process_panel.set_unit(unit)
+        self.rule_editor.unit = unit
         try:
             self.gui.client.call("set_unit", {"unit": unit})
         except Exception as error:

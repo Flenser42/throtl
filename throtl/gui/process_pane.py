@@ -58,14 +58,19 @@ class ProcessPanel(Gtk.Box):
 
     # --- Live-Liste ------------------------------------------------------
 
+    def set_unit(self, unit: str) -> None:
+        """Anzeige-Einheit wechseln (kbps|kBs); wirkt beim naechsten refresh."""
+        if unit in ("kbps", "kBs"):
+            self.unit = unit
+
     def refresh(self, state: dict) -> None:
         """State vom Daemon in die Live-Anzeige umsetzen (ohne Regel-Editor)."""
         processes = state.get("processes", [])
         total_d = sum(p.get("download", 0.0) for p in processes)
         total_u = sum(p.get("upload", 0.0) for p in processes)
         self._live_total.set_text(
-            f"Gesamt: runter {format_rate(total_d, 'kbps')} · rauf "
-            f"{format_rate(total_u, 'kbps')}"
+            f"Gesamt: runter {format_rate(total_d, self.unit)} · rauf "
+            f"{format_rate(total_u, self.unit)}"
         )
 
         # childs unter der Live-Liste neu aufbauen (kein virtuelles Modell noetig)

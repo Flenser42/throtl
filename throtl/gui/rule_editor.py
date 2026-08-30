@@ -9,11 +9,10 @@ import gi  # noqa: F401
 
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Gtk, GObject, Gio
+from gi.repository import Gtk
 
-from ..config import PRIORITY_NAMES
 from ..units import parse_rate
-from .widgets import RateEntry, PriorityDropdown, PRIORITY_LABELS
+from .widgets import RateEntry, PriorityDropdown
 
 
 def _parse_or_none(text: str):
@@ -158,14 +157,76 @@ class RuleEditor(Gtk.Box):
             self.inner.remove(child)
 
     def add_blank(self) -> None:
-        # Einfache Neue-Regel-Dialog: Name + exe-Pfad erfragen
-        name = "Neue Regel"
-        # Minimale Interaktion: fuege eine leere (cmdline)Regel fuer einen
-        # nächsten Einrichtungs-Schritt hinzu — praktisch offen lassen.
-        rule = {"name": name, "match_type": "cmdline", "match_value": ".*",
-                "download_limit": None, "upload_limit": None,
-                "priority": "normal", "recursive": False,
-                "key": "cmdline:.*"}
+        """Neue-Regel-Dialog: Name, Match-Typ und Match-Ziel erfragen.
+
+        Erzeugt bewusst KEINE automatisch-aktive Regel (eine cmdline:.*-Regel
+        wuerde alle Prozesse matchen). Stattdessen ein Eingabedialog.
+        """
+        dialog = Gtk.AlertDialog()
+        dialog.set_title("Neue Regel")
+        dialog.set_message("Lege ein Bandbreiten-Limit / Prioritaet für einen "
+                           "Prozess fest.")
+
+        name_entry = Gtk.Entry(placeholder_text="Name (z.B. Firefox)")
+        exe_entry = Gtk.Entry(placeholder_text="exe-Pfad (z.B. /usr/bin/firefox)")
+        dl_entry = RateEntry()
+        dl_entry.set_placeholder_text("Download-Limit (leer = unbegrenzt)")
+        ul_entry = RateEntry()
+        ul_entry.set_placeholder_text("Upload-Limit (leer = unbegrenzt)")
+        prio = PriorityDropdown()
+        prio.set_priority_name("normal")
+
+        form = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        form.append(Gtk.Label(label="Name:", xalign=0))
+        form.append(name_entry)
+        form.append(Gtk.Label(label="Prozess (exe-Pfad):", xalign=0))
+        form.append(exe_entry)
+        form.append(Gtk.Label(label="Download-Limit:", xalign=0))
+        form.append(dl_entry)
+        form.append(Gtk.Label(label="Upload-Limit:", xalign=0))
+        form.append(ul_entry)
+        form.append(Gtk.Label(label="Prioritaet:", xalign=0))
+        form.append(prio)
+
+        extra = Gtk.Box()
+        extra.append(form)
+        dialog.set_extra_child(extra)
+
+        def _on_response(dialog_, response):
+            if response != Gtk.ResponseType.ACCEPT:
+                return
+            name = name_entry.get_text().strip() or "Regel"
+            exe = exe_entry.get_text().strip()
+            self._submit_new_rule(name, exe, dl_entry.get_text(),
+                                  ul_entry.get_text(), prio.get_priority_name())
+
+        dialog.connect("response", _on_response)
+        dialog.show(parent=self.gui.window)
+
+    def _submit_new_rule(self, name, exe, dl_text, ul_text, priority):
+        # Ein konkreter exe-Pfad wird benoetigt; ohne ihn verweigern wir, um
+        # kein versehentliches Alles-Matchen (cmdline:.*) zuzulassen.
+        from ..units import parse_rate
+
+        if not exe:
+            self.gui.show_error("Bitte einen exe-Pfad angeben (z.B. /usr/bin/firefox).")
+            return
+
+        def rate(text):
+            text = (text or "").strip()
+            if not text:
+                return None
+            return parse_rate(text)
+
+        rule = {
+            "name": name,
+            "match_type": "exe",
+            "match_value": exe,   # wird im Daemon re.escape-t -> Literal-Match
+            "download_limit": rate(dl_text),
+            "upload_limit": rate(ul_text),
+            "priority": priority,
+            "recursive": False,
+        }
         try:
             self.gui.client.call("set_process", rule)
             self.gui.reload()
