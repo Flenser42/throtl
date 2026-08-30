@@ -223,3 +223,39 @@ class TrafficTollEngine:
             "device": self.device,
             "generation": self._generation,
         }
+
+
+class SimEngine:
+    """Simulations-Engine (kein Root/noch kein tt installiert).
+
+    Werden von Tests/CLI-Demo verwendet, um Limits konzeptionell anzuwenden,
+    ohne wirklich tc-Auflagen zu setzen. Interface ist eine Teilmenge von
+    TrafficTollEngine, damit der Daemon beides bedienen kann.
+    """
+
+    def __init__(self, device="auto-interface"):
+        self.device = device
+        self.simulated = True
+        self._enabled = False
+        self._rules = []
+        self._generation = 0
+
+    def apply(self, config: dict) -> None:
+        self._generation += 1
+        self._enabled = bool(config["global"].get("enabled", True))
+        self._rules = list(config.get("processes", []))
+
+    def is_running(self) -> bool:
+        # SimEngine "laeuft" nur, wenn Shaping aktiv ist
+        return self._enabled
+
+    def stop(self) -> None:
+        self._enabled = False
+
+    def status(self) -> dict:
+        return {
+            "running": self.is_running(),
+            "device": self.device,
+            "generation": self._generation,
+            "simulated": True,
+        }
