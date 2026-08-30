@@ -66,6 +66,11 @@ echo "   Daemon-Service: netlimiter-clone  (Status: systemctl status netlimiter-
 echo "=== [6/6] Desktop-Datei + Icon + Autostart ==="
 sudo install -Dm 0755 -d /usr/share/applications
 sudo install -m 0644 "$SELF_DIR"/throtl.desktop /usr/share/applications/throtl.desktop
+# Desktop-Datenbank aktualisieren, damit der Launcher die neue Exec-Zeile sofort
+# sieht (Qt/GNOME/wofi/rofi-caches aktualisieren hier sonst nicht).
+if command -v update-desktop-database >/dev/null 2>&1; then
+  sudo update-desktop-database /usr/share/applications 2>/dev/null || true
+fi
 
 sudo install -Dm 0644 "$PROJECT_DIR"/data/hicolor/scalable/apps/throtl.svg \
   /usr/share/icons/hicolor/scalable/apps/throtl.svg

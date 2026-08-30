@@ -29,6 +29,6 @@ Type=Application
 Name=Throtl
 X-GNOME-Autostart-enabled=true
 Comment=Startet die Throtl-GUI beim Login
-Exec=/opt/netlimiter-clone/bin/throtl-gui --autostart
+Exec=/usr/bin/python3 /opt/netlimiter-clone/bin/throtl-gui --autostart
 Terminal=false
 Icon=throtl
