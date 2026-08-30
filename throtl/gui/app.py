@@ -29,9 +29,21 @@ from .widgets import PRIORITY_LABELS
 APP_ID = "io.github.throtl"
 CSS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "style.css")
 
+DEBUG = os.environ.get("THROTL_DEBUG", "") == "1"
+
+
+def _debug(msg: str) -> None:
+    """Start-Debug-Log auf stderr (nur mit THROTL_DEBUG=1)."""
+    if DEBUG:
+        import sys
+
+        sys.stderr.write(f"[throtl-gui] {msg}\n")
+        sys.stderr.flush()
+
 
 class ThrotlWindow(Adw.ApplicationWindow):
     def __init__(self, app, gui, autostart: bool = False):
+        _debug("ThrotlWindow.__init__: starte")
         super().__init__(application=app)
         self.gui = gui
         self.app = app
@@ -41,7 +53,9 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self.content = Adw.ToolbarView()
         self.set_content(self.content)
 
+        _debug("ThrotlWindow.__init__: baue Headerbar")
         self._build_headerbar()
+        _debug("ThrotlWindow.__init__: baue Body")
         self._build_body()
 
         # Status-Nachrichten-Leiste
@@ -76,9 +90,16 @@ class ThrotlWindow(Adw.ApplicationWindow):
         toggle_box.append(self.toggle_switch)
         header.pack_start(toggle_box)
 
-        # Einheit-Auswahl (kbps / kBs)
+        # Einheit-Auswahl (kbps / kBs) — explizite Factory (robust wie PriorityDropdown)
         self.unit_dd = Gtk.DropDown(
             model=Gio.ListStore.new(Gtk.StringObject), factory=None)
+        _unit_factory = Gtk.SignalListItemFactory()
+        _unit_factory.connect("setup", lambda fac, item: item.set_child(Gtk.Label(xalign=0)))
+        _unit_factory.connect(
+            "bind",
+            lambda fac, item: item.get_child().set_text(item.get_item().get_string()),
+        )
+        self.unit_dd.set_factory(_unit_factory)
         for u in ("kbps", "kBs"):
             self.unit_dd.get_model().append(Gtk.StringObject.new(
                 {"kbps": "kbit/s", "kBs": "KB/s"}[u]))
@@ -223,16 +244,32 @@ class ThrotlApplication(Adw.Application):
         self.autostart = False
 
     def do_startup(self):
+        _debug("do_startup: beginne")
         Adw.Application.do_startup(self)
         _load_css(self)
+        _debug("do_startup: fertig")
 
     def do_activate(self):
+        _debug("do_activate: aufgerufen (window None=" + str(self.window is None) + ")")
         if self.window is None:
             self.gui = GuiClient(
                 on_state=self._broadcast_state,
                 on_error=self._show_fatal_error)
-            self.window = ThrotlWindow(self, self.gui, autostart=self.autostart)
+            try:
+                _debug("do_activate: baue ThrotlWindow")
+                self.window = ThrotlWindow(self, self.gui, autostart=self.autostart)
+                _debug("do_activate: ThrotlWindow erstellt + present()")
+            except Exception as error:
+                import traceback
+
+                _debug(f"do_activate: FEHLER beim Fensteraufbau: {error!r}")
+                traceback.print_exc()
+                # Fenster kann sich nicht oeffnen; trotzdem present() des (teil-)Fensters
+                # verhindern, App wird beendet, damit kein stiller Haenger entsteht.
+                self.quit()
+                return
             GLib.idle_add(self._connect_daemon, priority=GLib.PRIORITY_LOW)
+            _debug("do_activate: _connect_daemon geplant")
         else:
             self.window.present()
 
