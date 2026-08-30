@@ -19,17 +19,29 @@ RuntimeDirectory=netlimiter-clone
 # Limits/Prioritaeten hier (root-writierbar). Die GUI liest die Config über die
 # Unix-Socket-API get_config — nie direkt aus der Datei.
 Environment=THROTL_CONFIG_DIR=/etc/netlimiter-clone
+# Trusted CAP-NF-Administration/CAP_SYS_MODULE fuer tc + modprobe ifb explizit geben,
+# falls die Boot-Capability-Limits eingeschraenkt sind. root-Prozess erbt vollen Satz,
+# aber das macht es explizit.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_MODULE CAP_NET_RAW CAP_DAC_OVERRIDE
+AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_MODULE
+ExecStartPre=-/sbin/modprobe ifb numifbs=1
 ExecStart=/opt/netlimiter-clone/venv/bin/python -m throtl.daemon --foreground \
     --socket /run/netlimiter-clone/daemon.sock \
     --tt-command /opt/netlimiter-clone/venv/bin/tt
 ExecStop=/bin/kill -TERM $MAINPID
 Restart=on-failure
 RestartSec=2
-# Kein NoNewPrivileges noetig (kein setuid-Binary); der Daemon nutzt root.
-# Runtime-/Config-Verzeichnisse beschreibbar halten:
+# Root: noettg i. a. NoNewPrivileges=false (default). tc/cgroups brauchen volle root.
+NoNewPrivileges=false
+# ProtectSystem=strict macht /usr,/boot,/etc readonly; ReadWritePaths kehrt /etc/netlimiter-clone um.
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=/run/netlimiter-clone /etc/netlimiter-clone
+# NICHT diese Restriktionen setzen — sie blockierten tc/modprobe:
+# ProtectKernelTunables / ProtectKernelModules / PrivateDevices / ProtectCPUFreq
+ProtectKernelTunables=false
+ProtectKernelModules=false
+PrivateDevices=false
 
 [Install]
 WantedBy=multi-user.target

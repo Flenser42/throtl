@@ -128,3 +128,51 @@ class GuiWidgetTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProcessTableInPlaceTest(unittest.TestCase):
+    """set_state() darf Zeilen NICHT neu aufbauen (Fokus-/Teleing-Ueberleben)."""
+
+    def test_rows_are_reused_between_poll_updates(self):
+        from throtl.gui.process_pane import ProcessTable
+
+        # lightweight gui stub mit state
+        class _Gui:
+            state = {"processes": [], "rules": []}
+            client = None
+            def show_error(self, m): pass
+            def show_info(self, m): pass
+
+        table = ProcessTable(_Gui(), unit="mBs")
+        state1 = {
+            "processes": [
+                {"pid": "10", "name": "/usr/bin/foo", "download": 1000.0, "upload": 50.0},
+                {"pid": "20", "name": "/usr/bin/bar", "download": 200.0, "upload": 30.0},
+            ],
+            "rules": [],
+        }
+        state2 = {
+            "processes": [
+                {"pid": "10", "name": "/usr/bin/foo", "download": 1200.0, "upload": 60.0},
+                {"pid": "20", "name": "/usr/bin/bar", "download": 210.0, "upload": 31.0},
+            ],
+            "rules": [],
+        }
+        table.set_state(state1)
+        first_rows = set(table._rows.keys())
+        table.set_state(state2)
+        self.assertEqual(set(table._rows.keys()), first_rows)  # gleiche pid-menge, nichts neu
+        self.assertEqual(table.row_count(), 2)
+
+    def test_row_drops_when_process_gone(self):
+        from throtl.gui.process_pane import ProcessTable
+        class _Gui:
+            state = {"processes": [], "rules": []}
+            client = None
+            def show_error(self, m): pass
+            def show_info(self, m): pass
+        table = ProcessTable(_Gui(), unit="mBs")
+        table.set_state({"processes": [{"pid": "1", "name": "/x", "download": 1.0, "upload": 1.0}], "rules": []})
+        self.assertEqual(table.row_count(), 1)
+        table.set_state({"processes": [], "rules": []})
+        self.assertEqual(table.row_count(), 0)

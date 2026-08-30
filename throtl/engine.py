@@ -19,6 +19,7 @@ Da eine Prioritaet in TrafficToll pro Anwendung getrennt Download/UPLOAD haben
 kann, wir aber einen einzelnen GUI-Wert haben, werden beide gleich gesetzt.
 """
 
+import collections
 import errno
 import os
 import signal
@@ -136,7 +137,8 @@ class TrafficTollEngine:
     ``tt_argv_builder``: injizierbar (Tests) fuer die argliste.
     """
 
-    def __init__(self, device: str, command="tt", delay=1.0, on_restart=None):
+    def __init__(self, device: str, command="tt", delay=1.0, on_restart=None,
+                 log_path: str = None):
         self.device = device
         self.command = command
         self.delay = delay
@@ -145,6 +147,11 @@ class TrafficTollEngine:
         self._lock = threading.Lock()
         self._active_config = None
         self._generation = 0
+        self._exit_code = None
+        self._stderr_tail = collections.deque(maxlen=50)
+        self._stderr_path = log_path
+        self._reader_thread = None
+        self._watchdog = None
 
     def apply(self, config: dict) -> None:
         """Neue Config schreiben und tt neu starten."""
@@ -175,24 +182,75 @@ class TrafficTollEngine:
             self._proc = subprocess.Popen(
                 argv,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
             )
         except FileNotFoundError:
             raise RuntimeError(
                 f"TrafficToll ({self.command}) wurde nicht gefunden. "
                 "Bitte install.sh ausfuehren."
             ) from None
+        self._exit_code = None
+        self._stderr_tail.clear()
+        self._reader_thread = threading.Thread(
+            target=self._drain_stderr, daemon=True, name="throtl-tt-stderr"
+        )
+        self._reader_thread.start()
+        self._watchdog = threading.Thread(
+            target=self._watch, daemon=True, name="throtl-tt-watch"
+        )
+        self._watchdog.start()
+
+    def _drain_stderr(self) -> None:
+        """tt-stderr zeilenweise sammeln (fuer Diagnose, z.B. tc-Fehler)."""
+        proc = self._proc
+        if proc is None or proc.stderr is None:
+            return
+        for raw in iter(proc.stderr.readline, b""):
+            line = raw.decode("utf-8", "replace").rstrip("\n")
+            if not line:
+                continue
+            with self._lock:
+                self._stderr_tail.append(line)
+                if self._stderr_path:
+                    try:
+                        with open(self._stderr_path, "a", encoding="utf-8") as handle:
+                            handle.write(line + "\n")
+                    except OSError:
+                        pass
+
+    def _watch(self) -> None:
+        """Exit-Code des tt-Prozesses festhalten (frueher Absturz sichtbar)."""
+        proc = self._proc
+        if proc is None:
+            return
+        code = proc.wait()
+        with self._lock:
+            self._exit_code = code
 
     def _stop_locked(self) -> None:
-        if self._proc is not None and self._proc.poll() is None:
+        proc = self._proc
+        if proc is not None and proc.poll() is None:
             try:
-                self._proc.terminate()
-                self._proc.wait(timeout=3.0)
+                proc.terminate()
+                proc.wait(timeout=3.0)
             except (subprocess.TimeoutExpired, OSError):
                 try:
-                    self._proc.kill()
+                    proc.kill()
                 except OSError:
                     pass
+        # stderr-Reader-/Watchdog-Threads beenden (fds schliessen damit Reader endet)
+        if proc is not None:
+            if proc.stderr is not None:
+                try:
+                    proc.stderr.close()
+                except OSError:
+                    pass
+            if self._reader_thread is not None:
+                self._reader_thread.join(timeout=2.0)
+            if self._watchdog is not None:
+                self._watchdog.join(timeout=2.0)
+            self._reader_thread = None
+            self._watchdog = None
         self._proc = None
 
     def _build_argv(self, cfg_path: str) -> list:
@@ -218,11 +276,15 @@ class TrafficTollEngine:
             self._stop_locked()
 
     def status(self) -> dict:
-        return {
-            "running": self.is_running(),
-            "device": self.device,
-            "generation": self._generation,
-        }
+        with self._lock:
+            return {
+                "running": self.is_running(),
+                "device": self.device,
+                "generation": self._generation,
+                "exit_code": self._exit_code,
+                "stderr_tail": list(self._stderr_tail)[-5:],
+                "stderr_path": self._stderr_path,
+            }
 
 
 class SimEngine:

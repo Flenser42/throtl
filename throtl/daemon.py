@@ -29,7 +29,7 @@ import socket
 import threading
 import time
 
-from . import SOCKET_PATH, __version__
+from . import RUN_DIR, SOCKET_PATH, __version__
 from .config import (
     config_dir_default,
     config_path_for,
@@ -143,6 +143,32 @@ def _resolve_interface(value) -> str:
     return value
 
 
+def preflight(tt_command: str, interface: str) -> list:
+    """Root-/Tool-Vorauspruefung: gibt Liste von Warnungen/Fehlern zurueck."""
+    import shutil
+
+    issues = []
+    if os.geteuid() != 0:
+        issues.append("Daemon laeuft nicht als root (tc/cgroups/noethogs brauchen root)")
+    if not os.path.exists(tt_command):
+        issues.append(f"tt nicht gefunden: {tt_command}")
+    for tool in ("tc", "ip", "iptables"):
+        if shutil.which(tool) is None:
+            issues.append(f"Kommando fehlt: {tool}")
+    # ifb-Modul pruefen (fuer TrafficTolls Download-Shaping noetig)
+    try:
+        if not os.path.exists("/sys/module/ifb"):
+            with open("/proc/modules", "r", encoding="utf-8") as handle:
+                if "ifb" not in handle.read():
+                    issues.append("Kernelmodul 'ifb' nicht geladen (sh -c 'modprobe ifb')")
+    except OSError:
+        pass
+    if interface in (None, "", "auto", "lo"):
+        issues.append(f"Nicht-lokales Interface fehlt (aktuell: {interface!r}). "
+                      "Shaping braucht ein echtes Routing-Interface (z.B. enp34s0).")
+    return issues
+
+
 class Daemon:
     def __init__(self, socket_path: str = SOCKET_PATH, config_dir: str = None,
                  engine=None, monitor_factory=None, interval: float = 1.0,
@@ -158,8 +184,12 @@ class Daemon:
 
         # Engine waehlen: explizit (Tests) oder TrafficTollEngine (tt via venv)
         self.engine = engine
+        self._tt_command = tt_command
         if self.engine is None:
-            self.engine = TrafficTollEngine(self.interface, command=tt_command)
+            self.engine = TrafficTollEngine(
+                self.interface, command=tt_command,
+                log_path=os.path.join(RUN_DIR, "tt.log"),
+            )
 
         self.monitor = None
         self._monitor_factory = monitor_factory or (lambda dev, i: NethogsMonitor(dev, interval=i))
@@ -334,6 +364,7 @@ class Daemon:
         except Exception:
             engine_status = None
         cfg = self.store.get()
+        tt_cmd = getattr(self, "_tt_command", "tt")
         return {
             "daemon": __version__,
             "pid": os.getpid(),
@@ -342,6 +373,7 @@ class Daemon:
             "monitoring": self.monitor is not None,
             "engine": engine_status,
             "simulated": getattr(self.engine, "simulated", False),
+            "preflight": preflight(tt_cmd, self.interface),
         }
 
     def _h_get_config(self, params):

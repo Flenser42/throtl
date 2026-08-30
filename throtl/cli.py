@@ -48,9 +48,24 @@ def cmd_status(client, args):
     status = client.call("status")
     print(f"Throtl-Daemon {status.get('daemon')} (PID {status.get('pid')})")
     print(f"  Interface:   {status.get('interface')}")
-    print(f"  Shaping:     {'AN' if status.get('enabled') else 'AUS'}")
-    print(f"  Monitoring:  {'ja' if status.get('monitoring') else 'nein'}")
-    print(f"  Engine:      {status.get('engine')}")
+    print(f"  Shaping:     {'ON' if status.get('enabled') else 'OFF'}")
+    print(f"  Monitoring:  {'yes' if status.get('monitoring') else 'no'}")
+    engine = status.get("engine") or {}
+    print(f"  Engine:      running={engine.get('running')} "
+          f"generation={engine.get('generation')}")
+    if engine.get("exit_code") is not None:
+        print(f"  Engine exit: {engine.get('exit_code')} "
+              f"(latest tt crash; siehe stderr/unten)")
+    stderr = engine.get("stderr_tail") or []
+    if stderr:
+        print("  Engine stderr (letzte Zeilen):")
+        for line in stderr[-3:]:
+            print(f"    | {line}")
+    issues = status.get("preflight") or []
+    if issues:
+        print("  Preflight-Warnungen:")
+        for issue in issues:
+            print(f"    ! {issue}")
     if status.get("simulated"):
         print("  (Simulationsmodus: keine echten tc-Auflagen)")
     return 0
