@@ -57,7 +57,10 @@ fi
 echo "=== [5/6] systemd-Service installieren ==="
 sudo install -m 0644 "$SELF_DIR"/netlimiter-clone.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now netlimiter-clone
+# Restart-Zaehler leeren (falls die Unit zuvor in einer Start-Loop steckte)
+sudo systemctl reset-failed netlimiter-clone 2>/dev/null || true
+sudo systemctl enable netlimiter-clone
+sudo systemctl restart netlimiter-clone
 echo "   Daemon-Service: netlimiter-clone  (Status: systemctl status netlimiter-clone)"
 
 echo "=== [6/6] Desktop-Datei + Icon + Autostart ==="
