@@ -47,6 +47,10 @@ sudo mkdir -p "$OPT/bin"
 sudo cp "$PROJECT_DIR"/bin/throtl-gui "$PROJECT_DIR"/bin/throtl-cli \
   "$PROJECT_DIR"/bin/throtl-daemon "$OPT/bin/"
 sudo chmod +x "$OPT/bin"/throtl-*
+echo "   Launcher als /usr/local/bin/throtl-* (PATH) verlinken"
+sudo ln -sf "$OPT/bin/throtl-cli"    /usr/local/bin/throtl-cli
+sudo ln -sf "$OPT/bin/throtl-gui"    /usr/local/bin/throtl-gui
+sudo ln -sf "$OPT/bin/throtl-daemon" /usr/local/bin/throtl-daemon
 
 echo "=== [4/6] Konfiguration + Runtime-Verzeichnisse ==="
 sudo mkdir -p "$ETC" "$RUN"
