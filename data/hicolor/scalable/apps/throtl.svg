@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Throtl-Icon: Stilisierter Tacho/Halbkreis mit Pfeil, dunkel mit Akzentfarbe -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#24292e"/>
+      <stop offset="1" stop-color="#101418"/>
+    </linearGradient>
+    <linearGradient id="arrow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7ee787"/>
+      <stop offset="1" stop-color="#2ea043"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="url(#bg)"/>
+  <!-- Bogen (Halbkreis) als offener Pfad -->
+  <path d="M 30 88 A 34 34 0 0 1 98 88"
+        fill="none" stroke="#3a4046" stroke-width="10" stroke-linecap="round"/>
+  <!-- Skala -->
+  <path d="M 40 82 A 26 26 0 0 1 88 82"
+        fill="none" stroke="#2ea043" stroke-width="10" stroke-linecap="round"
+        stroke-dasharray="70 99999"/>
+  <!-- Pfeil Richtung Runter -->
+  <path d="M 78 62 L 96 44 M 96 44 L 82 43 M 96 44 L 95 59"
+        fill="none" stroke="url(#arrow)" stroke-width="8" stroke-linecap="round"
+        stroke-linejoin="round"/>
+  <!-- Verkehrs-Linien (up/down) -->
+  <path d="M 34 36 h 16 M 56 36 h 16 M 34 44 h 24"
+        fill="none" stroke="#5c646d" stroke-width="5" stroke-linecap="round"/>
+  <path d="M 78 108 h 12 M 94 108 h 10 M 70 108 h 4"
+        fill="none" stroke="#5c646d" stroke-width="5" stroke-linecap="round"/>
+</svg>

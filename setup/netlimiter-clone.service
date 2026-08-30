@@ -1,0 +1,27 @@
+[Unit]
+Description=Throtl - NetLimiter-artige Bandbreiten-Limits und QoS (TrafficToll-Backend)
+Documentation=file:/opt/netlimiter-clone/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Root ist erforderlich: tc/cgroups/nethogs brauchen privilegierte Rechte.
+User=root
+# THROTL_CONFIG_DIR=/etc/netlimiter-clone: Daemon persistiert die gesetzten
+# Limits/Prioritaeten hier (root-writierbar). Die GUI liest die Config über die
+# Unix-Socket-API get_config — nie direkt aus der Datei.
+Environment=THROTL_CONFIG_DIR=/etc/netlimiter-clone
+ExecStart=/opt/netlimiter-clone/venv/bin/python -m throtl.daemon --foreground \
+    --socket /run/netlimiter-clone/daemon.sock \
+    --tt-command /opt/netlimiter-clone/venv/bin/tt
+ExecStop=/bin/kill -TERM $MAINPID
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/run/netlimiter-clone /etc/netlimiter-clone
+
+[Install]
+WantedBy=multi-user.target

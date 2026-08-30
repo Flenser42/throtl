@@ -1,0 +1,33 @@
+# Autostart-Optionen fuer Throtl-GUI unter Omarchy/Hyprland
+# =========================================================
+#
+# Throtl-GUI unterstuetzt zwei Autostart-Wege. Der Daemon startet unabhängig
+# davon immer via systemd (netlimiter-clone.service).
+
+# --- Variante A (empfohlen): XDG-Autostart ---
+# Legt eine Desktop-Datei unter ~/.config/autostart/ an. Hyprland und Wayland-
+# Sessions respektieren XDG-Autostart. Kopiere diese Datei dorthin:
+#
+#   mkdir -p ~/.config/autostart
+#   cp setup/sway/autostart-throtl.desktop ~/.config/autostart/throtl.desktop
+#
+# Die GUI startet dann minimiert (--autostart). Ueber das Tray-Icon (falls
+# vorhanden) bzw. den wofi/rofi-Eintrag laesst sich das Fenster oeffnen.
+
+# --- Variante B: Hyprland autostart.lua ---
+# Falls du den Autostart ueber ~/.config/hypr/autostart.lua wuenschtest, fuege
+# in der Funktion `hyprland.start` hinzu:
+#
+#   hl.exec_cmd(o.launch("/opt/netlimiter-clone/bin/throtl-gui --autostart"))
+#
+# (Die GUI laeuft als User-Prozess und spricht mit dem root-Daemon ueber den
+# Unix-Socket /run/netlimiter-clone/daemon.sock.)
+
+[Desktop Entry]
+Type=Application
+Name=Throtl
+X-GNOME-Autostart-enabled=true
+Comment=Startet den Throtl-Tray/Monitor minimiert
+Exec=/opt/netlimiter-clone/bin/throtl-gui --autostart
+Terminal=false
+Icon=throtl
