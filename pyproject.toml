@@ -1,0 +1,20 @@
+[project]
+name = "throtl"
+version = "0.1.0"
+description = "NetLimiter-artige Bandbreiten-Limits und Traffic-Priorisierung fuer Linux (GTK4/libadwaita Frontend, TrafficToll-Backend)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "Flenser" }]
+# Keine externen Python-Dependencies: das Backend nutzt nur die Standardbibliothek.
+# PyGObject (Gtk4/Adw) und TrafficToll werden systemseitig installiert (siehe setup/install.sh).
+dependencies = []
+
+[project.optional-dependencies]
+gui = []
+
+# Einstiegspunkte (Referenz — Installation erfolgt ueber setup/install.sh bzw. bin/-Skripte)
+[project.scripts]
+throtl-cli = "throtl.cli:main"
+throtl-daemon = "throtl.daemon:main"
+throtl-gui = "throtl.gui.app:main"
