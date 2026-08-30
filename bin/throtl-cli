@@ -3,7 +3,11 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# realpath loest Symlinks auf (z.B. /usr/local/bin/throtl-cli -> /opt/netlimiter-clone/bin),
+# damit das Projektverzeichnis korrekt in sys.path landet, egal wie aufgerufen.
+_PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+if _PROJECT_DIR not in sys.path:
+    sys.path.insert(0, _PROJECT_DIR)
 
 from throtl.cli import main  # noqa: E402
 
