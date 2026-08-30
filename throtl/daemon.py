@@ -181,6 +181,14 @@ class Daemon:
         self._server.bind(self.socket_path)
         self._server.listen(8)
         self._server.settimeout(0.25)
+        # Als root erzeugt der Socket-Pfad rw-------. Ohne Schreibrecht auf der
+        # Socket-Datei schlaegt der Unix-Connect des User-Prozesses (GUI/CLI)
+        # mit "Permission denied" fehl. Wir setzen 0666; Zugriff bleibt trotzdem
+        # rein lokal (kein Netzwerk-Port).
+        try:
+            os.chmod(self.socket_path, 0o666)
+        except OSError as error:
+            print(f"Warnung: Socket-Rechte nicht setzbar: {error}")
         # Monitoring-Ticker starten
         self._monitor_thread = threading.Thread(
             target=self._monitor_loop, daemon=True, name="throtl-monitor-ticker"
