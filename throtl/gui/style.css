@@ -1,0 +1,52 @@
+/* Throtl-GUI: dunkles, minimalistisches Design (Omarchy/Hyprland-affin).
+   Dieser CSS-Block ergaenzt das Adwaita-Dunkeltheme minimal. */
+
+window.throtl-window {
+    background-color: #14171b;
+    color: #e8eaed;
+}
+
+.throtl-graph {
+    border-radius: 10px;
+    border: 1px solid #2a2f36;
+}
+
+.throtl-icon-circle {
+    background-color: #2ea043;
+    color: #0b0f12;
+    font-weight: 700;
+    border-radius: 9px;
+    min-width: 26px;
+    min-height: 26px;
+    padding: 2px 6px;
+}
+
+.cell {
+    border-radius: 8px;
+    padding: 6px 8px;
+    background-color: #1c2026;
+    border: 1px solid #2a2f36;
+}
+
+.toolbar {
+    background-color: #1a1e24;
+    border-radius: 8px;
+    padding: 6px 10px;
+}
+
+.status-bar {
+    padding: 4px 10px;
+    min-height: 2px;
+}
+
+.throtl-rate-entry {
+    min-width: 90px;
+}
+
+.bold {
+    font-weight: 700;
+}
+
+.dim-label {
+    opacity: 0.7;
+}

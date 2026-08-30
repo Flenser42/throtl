@@ -1,0 +1,128 @@
+"""GUI-Tests: testbare Logik (Formatierung, Interaktion) ohne Display.
+
+Widget-Instanziierung wird uebersprungen, wenn kein GTK-Display verfuegbar ist
+(Headless-Sandbox/CI). Die Logik-Teile (Einheiten, Prioritaets-Mapping,
+Limit-Parsing) werden immer getestet.
+"""
+
+import os
+import tempfile
+import threading
+import time
+import unittest
+from unittest import mock
+
+from throtl.units import format_rate, parse_rate
+from throtl.config import PRIORITY_NAMES, priority_to_int
+from throtl import daemon, protocol
+from throtl.engine import SimEngine
+
+
+def _display_available():
+    try:
+        import gi
+
+        gi.require_version("Gdk", "4.0")
+        from gi.repository import Gdk
+
+        return Gdk.Display.get_default() is not None
+    except Exception:
+        return False
+
+
+class RateFormatTest(unittest.TestCase):
+    def test_auto(self):
+        self.assertEqual(format_rate(500, "auto"), "500.0 kbit/s")
+        self.assertEqual(format_rate(5000, "auto"), "5.0 Mbit/s")
+
+    def test_units(self):
+        self.assertEqual(format_rate(1500, "kbps"), "1500.0 kbit/s")
+        self.assertEqual(format_rate(1500, "kBs"), "187.5 KB/s")
+
+    def test_parse(self):
+        self.assertEqual(parse_rate("2mbps"), 2000)
+        self.assertEqual(parse_rate("512kbps"), 512)
+        self.assertIsNone(parse_rate(None))
+
+
+class PriorityMappingTest(unittest.TestCase):
+    def test_names(self):
+        self.assertEqual(priority_to_int("kritisch"), 0)
+        self.assertEqual(priority_to_int("niedrig"), 3)
+        self.assertEqual(list(PRIORITY_NAMES),
+                         ["kritisch", "hoch", "normal", "niedrig"])
+
+
+class GuiClientStateTest(unittest.TestCase):
+    """Testet den GuiClient gegen einen echten Daemon (ohne GTK-Display).
+
+    Der GuiClient braucht zwar GLib (fuer idle_add), wir testen aber nur die
+    RPC-Schicht — das Polling selbst wird hier bewusst nicht gebraucht.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.socket_path = os.path.join(self._tmp.name, "daemon.sock")
+        self.config_dir = os.path.join(self._tmp.name, "cfg")
+        os.environ["THROTL_CONFIG_DIR"] = self.config_dir
+        self.daemon = daemon.Daemon(
+            socket_path=self.socket_path,
+            config_dir=self.config_dir,
+            engine=SimEngine("test0"),
+            interval=0.3,
+            monitor_factory=None,  # kein Monitor im Test -> snapshot leer
+        )
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+        self._wait_socket()
+
+    def _run(self):
+        self.daemon.start()
+        self.daemon.serve_forever()
+
+    def _wait_socket(self, timeout=3.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if os.path.exists(self.socket_path):
+                return
+            time.sleep(0.01)
+        raise TimeoutError("Socket fehlt")
+
+    def tearDown(self):
+        self.daemon.shutdown()
+        os.environ.pop("THROTL_CONFIG_DIR", None)
+        self._tmp.cleanup()
+
+    def test_status_and_config_rpc(self):
+        from throtl.gui.client import GuiClient
+
+        gui = GuiClient(socket_path=self.socket_path)
+        gui.connect()
+        try:
+            status = gui.call("status")
+            self.assertTrue(status["simulated"])
+            cfg = gui.call("get_config")
+            self.assertEqual(cfg["global"]["enabled"], True)
+        finally:
+            gui.shutdown()
+
+
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class GuiWidgetTest(unittest.TestCase):
+    def test_priority_dropdown_mapping(self):
+        from throtl.gui.widgets import PriorityDropdown
+
+        dd = PriorityDropdown()
+        dd.set_priority_name("hoch")
+        self.assertEqual(dd.get_priority_name(), "hoch")
+
+    def test_rate_entry_empty_means_unlimited(self):
+        from throtl.gui.rule_editor import _parse_or_none
+
+        self.assertIsNone(_parse_or_none(""))
+        self.assertIsNone(_parse_or_none("unbegrenzt"))
+        self.assertEqual(_parse_or_none("2mbps"), 2000)
+
+
+if __name__ == "__main__":
+    unittest.main()
