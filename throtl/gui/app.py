@@ -55,12 +55,11 @@ class ThrotlWindow(Adw.ApplicationWindow):
 
         self.connect("destroy", self._on_destroy)
 
-        if autostart:
-            # Beim Autostart minimiert/versteckt starten (im Tray weiterlaufen)
-            self.present()
-            self.close()  # verstecken statt beenden (nur wenn Tray vorhanden ist)
-        else:
-            self.present()
+        # Immer sichtbar starten. --autostart (Session-Login) wird akzeptiert,
+        # versteckt das Fenster aber NICHT: `self.close()` ohne Tray beendet
+        # die App sofort, was im Launcher wie "nix passiert" wirkt. Ein
+        # unsichtbarer Tray-Modus waere eine bewusste Erweiterung.
+        self.present()
 
     # --- Layout ----------------------------------------------------------
 
@@ -199,11 +198,16 @@ class ThrotlWindow(Adw.ApplicationWindow):
 
 
 def _load_css(application):
+    display = Gdk.Display.get_default()
+    if display is None:
+        # Kein Display (Headless/Fehlkonfiguration) — CSS nicht anwenden,
+        # aber nicht crashen (die App startet ggf. spaeter mit Display).
+        return
     provider = Gtk.CssProvider()
     if os.path.exists(CSS_PATH):
         provider.load_from_path(CSS_PATH)
     Gtk.StyleContext.add_provider_for_display(
-        Gdk.Display.get_default(),
+        display,
         provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
     )
 
@@ -233,7 +237,13 @@ class ThrotlApplication(Adw.Application):
             self.window.present()
 
     def _connect_daemon(self):
-        """Daemon im Hintergrund-Thread verbinden (Socket + Poll-Start)."""
+        """Daemon im Hintergrund-Thread verbinden (Socket + Poll-Start).
+
+        Die eigentliche Fehlermeldung bei nicht erreichbarem Daemon stammt aus
+        `GuiClient.connect` (ueber on_error). Dieser Thread sorgt nur dafuer,
+        dass die Verbindung nicht den GUI-Mainloop blockiert; das Fenster
+        bleibt auf jeden Fall sichtbar.
+        """
         try:
             import threading
 
@@ -243,7 +253,7 @@ class ThrotlApplication(Adw.Application):
                     self.gui.start_polling(1.0)
                     GLib.idle_add(self.window.reload)
                 except Exception:
-                    pass
+                    pass  # Meldung lief bereits ueber on_error; Fenster bleibt
 
             threading.Thread(target=_connect, daemon=True).start()
         except Exception as error:

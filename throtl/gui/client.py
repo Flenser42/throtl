@@ -44,7 +44,11 @@ class GuiClient:
             self._client.connect()
         except ConnectionError as error:
             self.connected = False
-            self._notify_error(f"Daemon nicht erreichbar: {error}")
+            self._notify_error(
+                "Daemon nicht erreichbar. Starte ihn mit:\n"
+                "  sudo systemctl start netlimiter-clone\n"
+                f"({error})"
+            )
             raise
         self.connected = True
 

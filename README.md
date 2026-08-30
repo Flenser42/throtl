@@ -113,7 +113,7 @@ Accentfarben.
 ```bash
 # Manuell, falls nicht ueber den Launcher
 /opt/netlimiter-clone/bin/throtl-gui
-# Minimiert starten (Tray/Autostart)
+# Autostart (Login): identisch, startet sichtbar; kein unsichtbarer Tray-Modus
 /opt/netlimiter-clone/bin/throtl-gui --autostart
 ```
 

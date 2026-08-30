@@ -9,10 +9,11 @@
 # Sessions respektieren XDG-Autostart. Kopiere diese Datei dorthin:
 #
 #   mkdir -p ~/.config/autostart
-#   cp setup/sway/autostart-throtl.desktop ~/.config/autostart/throtl.desktop
+#   cp setup/autostart/throtl.desktop ~/.config/autostart/throtl.desktop
 #
-# Die GUI startet dann minimiert (--autostart). Ueber das Tray-Icon (falls
-# vorhanden) bzw. den wofi/rofi-Eintrag laesst sich das Fenster oeffnen.
+# Die GUI startet dann beim Login sichtbar (--autostart). Hinweis: Ein
+# unsichtbarer Tray-Modus existiert noch nicht; die GUI zeigt ihr Fenster
+# immer offen. Schliesse es ggf. ueber den Fenster-Button.
 
 # --- Variante B: Hyprland autostart.lua ---
 # Falls du den Autostart ueber ~/.config/hypr/autostart.lua wuenschtest, fuege
@@ -27,7 +28,7 @@
 Type=Application
 Name=Throtl
 X-GNOME-Autostart-enabled=true
-Comment=Startet den Throtl-Tray/Monitor minimiert
+Comment=Startet die Throtl-GUI beim Login
 Exec=/opt/netlimiter-clone/bin/throtl-gui --autostart
 Terminal=false
 Icon=throtl

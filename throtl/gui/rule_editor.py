@@ -201,7 +201,8 @@ class RuleEditor(Gtk.Box):
                                   ul_entry.get_text(), prio.get_priority_name())
 
         dialog.connect("response", _on_response)
-        dialog.show(parent=self.gui.window)
+        # self.gui ist das ThrotlWindow (kein .window-Attribut), daher parent direkt
+        dialog.show(parent=self.gui)
 
     def _submit_new_rule(self, name, exe, dl_text, ul_text, priority):
         # Ein konkreter exe-Pfad wird benoetigt; ohne ihn verweigern wir, um
