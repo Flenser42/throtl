@@ -23,7 +23,8 @@ class BandwidthGraph(Gtk.DrawingArea):
         self.max_rate_kbps = max_rate_kbps  # None -> Auto-Skalierung
         self._samples = deque(maxlen=window_seconds)  # (t, down_kbps, up_kbps)
         self._auto_baseline = 1000  # kbit/s Startwert fuer Auto-Skalierung
-        self.set_height_request(120)
+        # GTK4: gibt es kein set_height_request; Hoehe ueber set_size_request.
+        self.set_size_request(-1, 120)
         self.set_draw_func(self._draw, None)
         self.add_css_class("throtl-graph")
 
