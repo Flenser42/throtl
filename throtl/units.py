@@ -1,25 +1,35 @@
 """Bandbreiten-Einheiten.
 
 Interne Speicherung und TrafficToll-Konfiguration arbeiten in **kbit/s** (kbps).
-Die GUI kann die Anzeige zwischen kbps (Mbit/s) und kBs (KB/s) umschalten.
+Die GUI kann die Anzeige zwischen kbps (kbit/s), mbps (Mbit/s), kBs (KB/s) und
+mBs (MB/s) umschalten.
 """
 
 # 1 kbit/s = 0.125 KB/s
 KB_PER_KBIT = 0.125
 
-# Anzeige-Einheiten, die die GUI anbietet (Wert in "unit"-Config-Feld)
-DISPLAY_UNITS = ("kbps", "kBs")
+# Anzeige-Einheiten, die die GUI anbietet (Wert im "unit"-Config-Feld)
+DISPLAY_UNITS = ("kbps", "mbps", "kBs", "mBs")
 
 _PARSERS = {
+    # bit/s-Formen (Faktor in kbit/s)
     "kbps": 1.0,
-    "kbit": 1.0,
     "kbit/s": 1.0,
+    "kbit": 1.0,
     "mbps": 1000.0,
-    "mbit": 1000.0,
     "mbit/s": 1000.0,
+    "mbit": 1000.0,
     "gbps": 1_000_000.0,
-    "gbit": 1_000_000.0,
     "gbit/s": 1_000_000.0,
+    "gbit": 1_000_000.0,
+    # byte/s-Formen (kB/s, MB/s, GB/s) -> in kbit/s umrechnen
+    "mb/s": 8000.0,
+    "mb": 8000.0,
+    "kb/s": 8.0,
+    "kb": 8.0,
+    "gb/s": 8_000_000.0,
+    "gb": 8_000_000.0,
+    # mbps/kbps kurz ohne slash (fuer parse_rate_lenient)
 }
 
 
@@ -72,20 +82,37 @@ def parse_rate(value) -> int:
 def format_rate(kbit_per_s, unit: str = "auto", precision: int = 1) -> str:
     """Rate (kbit/s) fuer die Anzeige formatieren.
 
-    unit: "kbps" | "kBs" | "mbps" | "mBs" | "auto"
+    unit: "kbps" | "mbps" | "kBs" | "mBs" | "auto"
     """
     if kbit_per_s is None:
         return "∞"
     value = float(kbit_per_s)
+    if unit == "mBs":
+        mb = value * KB_PER_KBIT / 1000
+        return f"{mb:.{precision}f} MB/s"
     if unit == "kBs":
         return f"{value * KB_PER_KBIT:.{precision}f} KB/s"
-    if unit == "mBs":
-        return f"{value * KB_PER_KBIT / 1000:.{precision}f} MB/s"
-    if unit == "kbps":
-        return f"{value:.{precision}f} kbit/s"
     if unit == "mbps":
         return f"{value / 1000:.{precision}f} Mbit/s"
+    if unit == "kbps":
+        return f"{value:.{precision}f} kbit/s"
     # auto: kompaktere Einheit waehlen
     if value >= 1000:
         return f"{value / 1000:.{precision}f} Mbit/s"
     return f"{value:.{precision}f} kbit/s"
+
+
+def parse_rate_lenient(value) -> int:
+    """Wert wie '1,5' / '1.5' / '2 MB/s' / '512 kbps' / '100' in kbit/s parsen.
+
+    Akzeptiert Komma als Dezimaltrenner und Einheissuffixe (MB/s, KB/s, Mbit/s,
+    kbit/s, mbps, kbps). Fuer GUI-Eingabefelder gedacht; None/leer -> None.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return parse_rate(value)
+    text = value.strip().replace(",", ".")
+    if not text:
+        return None
+    return parse_rate(text)
