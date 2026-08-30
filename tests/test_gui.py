@@ -117,11 +117,13 @@ class GuiWidgetTest(unittest.TestCase):
         self.assertEqual(dd.get_priority_name(), "hoch")
 
     def test_rate_entry_empty_means_unlimited(self):
-        from throtl.gui.rule_editor import _parse_or_none
+        from throtl.units import parse_rate_lenient
 
-        self.assertIsNone(_parse_or_none(""))
-        self.assertIsNone(_parse_or_none("unbegrenzt"))
-        self.assertEqual(_parse_or_none("2mbps"), 2000)
+        self.assertIsNone(parse_rate_lenient(""))
+        self.assertIsNone(parse_rate_lenient("unlimited"))
+        self.assertIsNone(parse_rate_lenient("unbegrenzt"))
+        self.assertEqual(parse_rate_lenient("2mbps"), 2000)
+        self.assertEqual(parse_rate_lenient("512 kbps"), 512)
 
 
 if __name__ == "__main__":

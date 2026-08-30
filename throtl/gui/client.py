@@ -1,60 +1,62 @@
 """GTK-GUI-IPC-Client: verbindet sich mit dem Daemon und pollt Live-Daten.
 
-Da Events im Daemon nicht gepusht werden (siehe throtl.daemon), pollt die GUI
-periodisch `list_processes` + `status` über einen GLib-Timer. Ergebnisse werden
-synchron gehalten; aufgerufene Callbacks sitzen im GLib-Mainloop.
+Der Client verbindet sich synchron beim Aufruf von ``connect()`` (im
+GUI-Mainloop-Thread, mit kurzem Timeout). Danach pollt er ueber einen
+GLib-Timer die Live-Daten (list_processes). Die Ergebnis-/Fehler-Callbacks
+werden via GLib.idle_add in den Mainloop geroutet, damit sie GTK-sicher sind.
 """
-
-import json
-import socket
-import threading
 
 from gi.repository import GLib
 
-from .. import SOCKET_PATH, __version__
-from ..protocol import Client, RpcError, send_message, read_message
+from .. import SOCKET_PATH
+from ..protocol import Client
 
 
 class GuiClient:
     """Kapselt eine Verbindung zum Daemon mit Poll-Loop.
 
-    - ``connect()``: oeffnet den Unix-Socket.
-    - ``start_polling(interval, no_data_cb)``: startet periodisches Abfragen.
-    - Attribute halten den letzten Stand: ``config``, ``state``, ``status``.
-    - ``busy`` True, solange ein Call laeuft (fuer UI-Feedback).
+    - ``connect(timeout)``: oeffnet den Unix-Socket (synchron).
+    - ``start_polling(interval)``: startet periodisches Abfragen.
+    - ``call(method, params)``: synchroner RPC; wirft eine klare Exception,
+      wenn nicht mit dem Daemon verbunden.
+    - Attribute: ``connected``, ``state``, ``last_error``.
     """
 
-    def __init__(self, on_state=None, on_status=None, on_error=None,
-                 socket_path: str = SOCKET_PATH):
+    def __init__(self, on_state=None, on_error=None, socket_path: str = SOCKET_PATH):
         self.socket_path = socket_path
         self.on_state = on_state
-        self.on_status = on_status
         self.on_error = on_error
         self._client = None
         self._timer_id = None
         self._busy = False
-        self.config = {}
-        self.state = {"processes": [], "enabled": True, "rules": []}
-        self.status = {}
         self.connected = False
+        self.state = {"processes": [], "enabled": True, "rules": []}
+        self.last_error = None
 
-    def connect(self) -> None:
-        self._client = Client(self.socket_path)
+    # --- Verbindung ------------------------------------------------------
+
+    def connect(self, timeout: float = 2.0) -> None:
+        cl = Client(self.socket_path, connect_timeout=timeout)
         try:
-            self._client.connect()
+            cl.connect()
         except ConnectionError as error:
             self.connected = False
+            self.last_error = str(error)
             self._notify_error(
-                "Daemon nicht erreichbar. Starte ihn mit:\n"
+                "Throtl daemon is not reachable.\nStart it with:\n"
                 "  sudo systemctl start netlimiter-clone\n"
                 f"({error})"
             )
             raise
+        self._client = cl
         self.connected = True
+        self.last_error = None
 
     def _notify_error(self, message: str) -> None:
         if self.on_error is not None:
             GLib.idle_add(self.on_error, message)
+
+    # --- Polling ---------------------------------------------------------
 
     def start_polling(self, interval: float = 1.0) -> None:
         if self._timer_id is None and self.connected:
@@ -63,16 +65,14 @@ class GuiClient:
             )
 
     def _poll_once(self) -> bool:
-        if self._busy or not self.connected:
-            return True  # weiter pollend
+        if self._busy or not self.connected or self._client is None:
+            return True  # weiter laufen (nicht stoppen)
         self._busy = True
         try:
-            if self._client is None:
-                return True
             state = self._client.call("list_processes", timeout=3.0)
         except Exception as error:
-            self._notify_error(f"Live-Daten: {error}")
             self.connected = False
+            self._notify_error(f"Live data failed: {error}")
             return False
         finally:
             self._busy = False
@@ -81,14 +81,18 @@ class GuiClient:
             GLib.idle_add(self.on_state, state)
         return True
 
-    def call(self, method: str, params=None, timeout: float = 5.0):
-        """Synchronen RPC-Aufruf tarnen (fuehrt den Call im aufrufenden Thread aus).
+    # --- RPC -------------------------------------------------------------
 
-        Blockiert kurz; fuer GUI-Aktionen (setzen/loeschen) akzeptabel.
-        """
-        if self._client is None:
-            raise ConnectionError("GUI-Client nicht verbunden")
+    def call(self, method: str, params=None, timeout: float = 5.0):
+        """Synchroner RPC. Klare Exception, wenn nicht verbunden."""
+        if not self.connected or self._client is None:
+            raise ConnectionError(
+                "Not connected to the Throtl daemon. Start it with "
+                "`sudo systemctl start netlimiter-clone` and open Throtl again."
+            )
         return self._client.call(method, params or {}, timeout=timeout)
+
+    # --- Lifecycle -------------------------------------------------------
 
     def shutdown(self) -> None:
         if self._timer_id is not None:
@@ -99,3 +103,4 @@ class GuiClient:
                 self._client.close()
             except Exception:
                 pass
+        self.connected = False

@@ -106,7 +106,7 @@ def parse_rate_lenient(value) -> int:
     """Wert wie '1,5' / '1.5' / '2 MB/s' / '512 kbps' / '100' in kbit/s parsen.
 
     Akzeptiert Komma als Dezimaltrenner und Einheissuffixe (MB/s, KB/s, Mbit/s,
-    kbit/s, mbps, kbps). Fuer GUI-Eingabefelder gedacht; None/leer -> None.
+    kbit/s, mbps, kbps). Fuer GUI-Eingabefelder gedacht; None/leer/unlimited -> None.
     """
     if value is None:
         return None
@@ -114,5 +114,8 @@ def parse_rate_lenient(value) -> int:
         return parse_rate(value)
     text = value.strip().replace(",", ".")
     if not text:
+        return None
+    low = text.lower().replace(" ", "")
+    if low in ("unlimited", "unbegrenzt", "none", "unendlich", "∞", "-"):
         return None
     return parse_rate(text)

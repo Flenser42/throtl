@@ -1,10 +1,16 @@
-"""Throtl-GUI: natives GTK4 + libadwaita-Frontend.
+"""Throtl GUI — a NetLimiter-style bandwidth manager for Linux (GTK4 + libadwaita).
 
-Startet das Hauptfenster, verbindet sich mit dem Throtl-Daemon ueber den
-Unix-Socket und zeigt Live-Bandbreiten + verwaltete Regeln.
+Layout overview (inspired by NetLimiter):
+    HeaderBar:  [Throttling on/off]  [global DL/UL limits + link]  [Unit]  [Refresh]
+    ───────────────────────────────────────────────────────────────────────────────
+    Live bandwidth graph (Download / Upload over time)
+    Network connections table:
+        PID | Process | ▼ Download | ▲ Upload | DL limit | UL limit | Priority
+        (each row is editable: type a rate in the limit fields, pick a priority)
+    Global status / error bar at the bottom.
 
-Design: dunkel, minimalistisch — passend zu Omarchy/Hyprland. Verwendet
-Adwaita-Widgets und eine kleine CSS-Datei fuer Akzente.
+All user-facing text is English. The display unit can be switched between
+Mbit/s, MB/s, kbit/s and KB/s.
 """
 
 import os
@@ -18,13 +24,10 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib, Gio, Gdk
 
 from .. import SOCKET_PATH, __version__
-from ..config import PRIORITY_NAMES, priority_to_name
-from ..units import format_rate
+from ..units import format_rate, parse_rate_lenient
 from .client import GuiClient
 from .graph import BandwidthGraph
-from .process_pane import ProcessPanel
-from .rule_editor import RuleEditor
-from .widgets import PRIORITY_LABELS
+from .process_pane import ProcessTable
 
 APP_ID = "io.github.throtl"
 CSS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "style.css")
@@ -33,83 +36,81 @@ DEBUG = os.environ.get("THROTL_DEBUG", "") == "1"
 
 
 def _debug(msg: str) -> None:
-    """Start-Debug-Log auf stderr (nur mit THROTL_DEBUG=1)."""
     if DEBUG:
-        import sys
-
         sys.stderr.write(f"[throtl-gui] {msg}\n")
         sys.stderr.flush()
 
 
+# Unit id (value stored in daemon config) -> short display label
+UNIT_CHOICES = (
+    ("mBs", "MB/s"),
+    ("mbps", "Mbit/s"),
+    ("kBs", "KB/s"),
+    ("kbps", "kbit/s"),
+)
+
+
 class ThrotlWindow(Adw.ApplicationWindow):
     def __init__(self, app, gui, autostart: bool = False):
-        _debug("ThrotlWindow.__init__: starte")
+        _debug("ThrotlWindow.__init__: start")
         super().__init__(application=app)
         self.gui = gui
         self.app = app
-        self.set_title("Throtl")
-        self.set_default_size(760, 560)
+        self.set_title("Throtl — Network Bandwidth Manager")
+        self.set_default_size(980, 620)
+
+        self.unit = "mBs"
 
         self.content = Adw.ToolbarView()
         self.set_content(self.content)
 
-        _debug("ThrotlWindow.__init__: baue Headerbar")
         self._build_headerbar()
-        _debug("ThrotlWindow.__init__: baue Body")
         self._build_body()
 
-        # Status-Nachrichten-Leiste
-        self.status_label = Gtk.Label(label="")
+        # Status / error bar
+        self.status_label = Gtk.Label(label="", xalign=0.0)
         self.status_label.add_css_class("dim-label")
-        self.status_label.set_xalign(0.0)
-        self._status_revealer = Gtk.Revealer()
-        self._status_revealer.add_css_class("status-bar")
-        self._status_revealer.set_child(self.status_label)
-        self.content.add_bottom_bar(self._status_revealer)
+        revealer = Gtk.Revealer()
+        revealer.add_css_class("status-bar")
+        revealer.set_child(self.status_label)
+        self.content.add_bottom_bar(revealer)
+        self.status_label_revealer = revealer
 
         self.connect("destroy", self._on_destroy)
-
-        # Immer sichtbar starten. --autostart (Session-Login) wird akzeptiert,
-        # versteckt das Fenster aber NICHT: `self.close()` ohne Tray beendet
-        # die App sofort, was im Launcher wie "nix passiert" wirkt. Ein
-        # unsichtbarer Tray-Modus waere eine bewusste Erweiterung.
         self.present()
+        _debug("ThrotlWindow.__init__: done")
 
     # --- Layout ----------------------------------------------------------
 
     def _build_headerbar(self):
         header = Adw.HeaderBar()
+        header.set_title_widget(Gtk.Label(label="Throtl"))
         self.content.add_top_bar(header)
 
-        # Ein/Aus-Schalter fuer globales Shaping
+        # Throttling master switch
+        switch_box = Gtk.Box(spacing=6)
+        switch_box.append(Gtk.Label(label="Throttling"))
         self.toggle_switch = Gtk.Switch()
         self.toggle_switch.set_active(True)
         self.toggle_switch.connect("state-set", self._on_toggle)
-        toggle_box = Gtk.Box()
-        toggle_box.append(Gtk.Label(label="Shaping"))
-        toggle_box.append(self.toggle_switch)
-        header.pack_start(toggle_box)
+        switch_box.append(self.toggle_switch)
+        header.pack_start(switch_box)
 
-        # Einheit-Auswahl (kbps / kBs) — explizite Factory (robust wie PriorityDropdown)
-        self.unit_dd = Gtk.DropDown(
-            model=Gio.ListStore.new(Gtk.StringObject), factory=None)
-        _unit_factory = Gtk.SignalListItemFactory()
-        _unit_factory.connect("setup", lambda fac, item: item.set_child(Gtk.Label(xalign=0)))
-        _unit_factory.connect(
-            "bind",
-            lambda fac, item: item.get_child().set_text(item.get_item().get_string()),
-        )
-        self.unit_dd.set_factory(_unit_factory)
-        for u in ("kbps", "kBs"):
-            self.unit_dd.get_model().append(Gtk.StringObject.new(
-                {"kbps": "kbit/s", "kBs": "KB/s"}[u]))
+        # Unit chooser
+        self.unit_dd = Gtk.DropDown(model=Gio.ListStore.new(Gtk.StringObject))
+        self.unit_dd.get_model().append(Gtk.StringObject.new("MB/s"))
+        self.unit_dd.get_model().append(Gtk.StringObject.new("Mbit/s"))
+        self.unit_dd.get_model().append(Gtk.StringObject.new("KB/s"))
+        self.unit_dd.get_model().append(Gtk.StringObject.new("kbit/s"))
         self.unit_dd.set_selected(0)
+        self.unit_dd.add_css_class("throtl-unit")
         self.unit_dd.connect("notify::selected", self._on_unit)
         header.pack_end(self.unit_dd)
 
-        refresh = Gtk.Button(icon_name="view-refresh-symbolic")
-        refresh.connect("clicked", lambda *_: self.reload())
-        header.pack_end(refresh)
+        refresh_btn = Gtk.Button(icon_name="view-refresh-symbolic")
+        refresh_btn.set_tooltip_text("Reload")
+        refresh_btn.connect("clicked", lambda *_w: self.reload())
+        header.pack_end(refresh_btn)
 
     def _build_body(self):
         view = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -119,183 +120,265 @@ class ThrotlWindow(Adw.ApplicationWindow):
         view.set_margin_end(12)
         self.content.set_content(view)
 
-        # Globale Limits-Leiste
-        self.global_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        self.global_bar.add_css_class("toolbar")
-        # (kurz: Anzeige der globalen Limits; vollständig ueber CLI/Prefs)
-        self.global_label = Gtk.Label(label="Global: unbegrenzt")
-        self.global_label.set_xalign(0.0)
-        self.global_label.set_hexpand(True)
-        self.global_bar.append(self.global_label)
-        view.append(self.global_bar)
+        # Global limits row
+        self.global_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        self.global_box.add_css_class("toolbar")
+        gdown = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        gdown.append(Gtk.Label(label="Global download", xalign=0))
+        self.global_dl_entry = self._limit_entry()
+        gdown.append(self.global_dl_entry)
+        self.global_box.append(gdown)
 
-        # Live-Graph
+        gup = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        gup.append(Gtk.Label(label="Global upload", xalign=0))
+        self.global_ul_entry = self._limit_entry()
+        gup.append(self.global_ul_entry)
+        self.global_box.append(gup)
+
+        prio_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        prio_box.append(Gtk.Label(label="Global priority", xalign=0))
+        self.global_prio = self._priority_dropdown()
+        prio_box.append(self.global_prio)
+        self.global_box.append(prio_box)
+
+        hint = Gtk.Label(
+            label="Leave a limit empty for unlimited. Blanks keep the current "
+                  "traffic unthrottled so QoS needs a defined interface cap.",
+            xalign=0, wrap=True)
+        hint.add_css_class("dim-label")
+        hint.set_hexpand(True)
+        self.global_box.append(hint)
+        view.append(self.global_box)
+
+        self.global_dl_entry.connect("changed", self._on_global_dl)
+        self.global_ul_entry.connect("changed", self._on_global_ul)
+        self.global_prio.connect("notify::selected", self._on_global_prio)
+
+        # Live graph
         self.graph = BandwidthGraph(window_seconds=60)
         view.append(self.graph)
 
-        # Prozesspane (Live + Regeln)
-        self.process_panel = ProcessPanel(self, {}, "kbps")
-        view.append(self.process_panel)
+        # Connections table
+        self.table = ProcessTable(self, unit=self.unit)
+        view.append(self.table)
 
-        # Regel-Editor
-        self.rule_editor = RuleEditor(self, "kbps")
-        view.append(self.rule_editor)
+    def _label_with(self, text, css=""):
+        label = Gtk.Label(label=text, xalign=0)
+        if css:
+            label.add_css_class(css)
+        return label
 
-    # --- Public API fuer Sub-Widgets --------------------------------------
+    def _limit_entry(self) -> Gtk.Entry:
+        entry = Gtk.Entry(width_chars=10)
+        entry.set_placeholder_text("unlimited")
+        return entry
 
-    def render_rules(self, rules):
-        """Vom ProcessPanel aufgerufen: Regeln im Editor rendern."""
-        self.rule_editor.refresh(rules)
+    def _priority_dropdown(self):
+        from .widgets import PriorityDropdown
 
-    def add_rule(self):
-        self.rule_editor.add_blank()
+        dd = PriorityDropdown()
+        dd.set_priority_name("normal")
+        return dd
 
-    def show_error(self, message):
+    # --- Public API for sub-widgets --------------------------------------
+
+    def show_error(self, message: str) -> None:
         self.status_label.set_text(f"⚠ {message}")
-        self._status_revealer.set_reveal_child(True)
+        self.status_label_revealer.set_reveal_child(True)
 
-    def show_info(self, message):
+    def show_info(self, message: str) -> None:
         self.status_label.set_text(message)
-        self._status_revealer.set_reveal_child(True)
+        self.status_label_revealer.set_reveal_child(True)
 
-    def reload(self):
+    def reload(self) -> None:
         try:
-            cfg = self.gui.client.call("get_config")
-            self.unit = cfg.get("unit", "kbps")
-            self.process_panel.set_unit(self.unit)
-            self.rule_editor.unit = self.unit
-            state = self.gui.client.call("list_processes")
+            cfg = self.gui.call("get_config")
+            self.unit = cfg.get("unit", "mBs") or "mBs"
+            if self.unit not in (u for u, _l in UNIT_CHOICES):
+                self.unit = "mBs"
+            self._sync_unit_widgets()
+            state = self.gui.call("list_processes")
             self._apply_state(state)
-            self.rule_editor.refresh(cfg.get("processes", []))
             self.toggle_switch.set_active(bool(cfg["global"].get("enabled", True)))
-            self._update_global_label(cfg)
-            self.show_info("Neu geladen")
+            self._sync_global_fields(cfg)
+            self.show_info("Reloaded")
         except Exception as error:
             self.show_error(str(error))
 
-    # --- Event-Handler ---------------------------------------------------
+    # --- State application -----------------------------------------------
 
-    def _apply_state(self, state):
-        self.process_panel.refresh(state)
+    def _apply_state(self, state: dict) -> None:
+        self.table.refresh(state)
         total_d = sum(p.get("download", 0.0) for p in state.get("processes", []))
         total_u = sum(p.get("upload", 0.0) for p in state.get("processes", []))
         self.graph.push(total_d, total_u)
 
+    def on_state(self, state: dict) -> None:
+        self._apply_state(state)
+        self.toggle_switch.set_active(bool(state.get("enabled", True)))
+
+    def _sync_unit_widgets(self) -> None:
+        self.table.set_unit(self.unit)
+        labels = dict(UNIT_CHOICES)
+        for i, (unit, label) in enumerate(UNIT_CHOICES):
+            if unit == self.unit:
+                self.unit_dd.set_selected(i)
+                break
+        hint = labels.get(self.unit, "MB/s")
+        for entry in (self.global_dl_entry, self.global_ul_entry):
+            entry.set_placeholder_text(f"limit in {hint}")
+
+    def _sync_global_fields(self, cfg: dict) -> None:
+        g = cfg["global"]
+        self.global_dl_entry.set_text(_entry_text(g.get("download_limit"), self.unit))
+        self.global_ul_entry.set_text(_entry_text(g.get("upload_limit"), self.unit))
+        from .widgets import PRIORITY_NAMES
+
+        prio = g.get("download_priority", "normal")
+        if prio in PRIORITY_NAMES:
+            self.global_prio.set_priority_name(prio)
+
+    # --- Handlers --------------------------------------------------------
+
     def _on_toggle(self, switch, state):
         try:
-            self.gui.client.call("toggle_enabled", {"enabled": state})
-            self.show_info("Shaping " + ("AUS" if not state else "AN"))
+            self.gui.call("toggle_enabled", {"enabled": state})
+            self.show_info("Throttling " + ("disabled" if not state else "enabled"))
         except Exception as error:
             self.show_error(str(error))
             switch.set_state(not state)
         return True
 
-    def _on_unit(self, dropdown, *args):
-        idx = dropdown.get_selected()
-        unit = ("kbps", "kBs")[idx] if idx >= 0 else "kbps"
-        self.unit = unit
-        self.process_panel.set_unit(unit)
-        self.rule_editor.unit = unit
+    def _on_unit(self, dd, *args):
+        idx = dd.get_selected()
+        if 0 <= idx < len(UNIT_CHOICES):
+            self.unit = UNIT_CHOICES[idx][0]
+        self._sync_unit_widgets()
         try:
-            self.gui.client.call("set_unit", {"unit": unit})
+            self.gui.call("set_unit", {"unit": self.unit})
         except Exception as error:
             self.show_error(str(error))
 
-    def _update_global_label(self, cfg):
-        g = cfg.get("global", {})
-        dl = format_rate(g.get("download_limit"))
-        ul = format_rate(g.get("upload_limit"))
-        self.global_label.set_text(f"Global: runter {dl} · rauf {ul}")
+    def _on_global_dl(self, entry, *_args):
+        self._debounce_global("download_limit", entry)
+
+    def _on_global_ul(self, entry, *_args):
+        self._debounce_global("upload_limit", entry)
+
+    def _debounce_global(self, key, entry):
+        # Debounce: fire at most once per 500ms after edits stop.
+        timer_attr = "_timer_" + key.replace("_", "")
+
+        def _send():
+            text = entry.get_text()
+            try:
+                value = None if not (text or "").strip() else parse_rate_lenient(text)
+            except ValueError as error:
+                self.show_error(f"Invalid limit: {error}")
+                setattr(self, timer_attr, None)
+                return False
+            try:
+                self.gui.call("set_global", {key: value})
+                self.show_info("Global limit set")
+            except Exception as error:
+                self.show_error(str(error))
+            setattr(self, timer_attr, None)
+            return False
+
+        old = getattr(self, timer_attr, None)
+        if old is not None:
+            GLib.source_remove(old)
+        setattr(self, timer_attr, GLib.timeout_add(500, _send))
+
+    def _on_global_prio(self, dd, *_args):
+        from .widgets import PRIORITY_NAMES
+
+        name = dd.get_priority_name()
+        try:
+            self.gui.call("set_global", {"download_priority": name,
+                                         "upload_priority": name})
+        except Exception as error:
+            self.show_error(str(error))
 
     def _on_destroy(self, *args):
         if hasattr(self, "gui"):
             self.gui.shutdown()
 
-    # --- Poll-Callback ---------------------------------------------------
+    # compatibility alias (used by ProcessTable via self.gui.client in old code?)
+    @property
+    def client(self):
+        return self.gui
 
-    def on_state(self, state):
-        self._apply_state(state)
-        self.toggle_switch.set_active(bool(state.get("enabled", True)))
+
+def _entry_text(kbit, unit: str) -> str:
+    if kbit is None:
+        return ""
+    # For Mbit/s / MB/s units show a compact rate number the user can edit.
+    if unit in ("mBs", "mbps"):
+        val = kbit / 1000.0 if unit == "mbps" else kbit * 0.125 / 1000.0
+        return f"{val:.2f}"
+    if unit == "kBs":
+        return f"{kbit * 0.125:.1f}"
+    return str(int(kbit))
 
 
-def _load_css(application):
+def _load_css(application) -> None:
     display = Gdk.Display.get_default()
     if display is None:
-        # Kein Display (Headless/Fehlkonfiguration) — CSS nicht anwenden,
-        # aber nicht crashen (die App startet ggf. spaeter mit Display).
         return
     provider = Gtk.CssProvider()
     if os.path.exists(CSS_PATH):
         provider.load_from_path(CSS_PATH)
     Gtk.StyleContext.add_provider_for_display(
-        display,
-        provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
     )
 
 
 class ThrotlApplication(Adw.Application):
     def __init__(self):
-        super().__init__(
-            application_id=APP_ID,
-            flags=Gio.ApplicationFlags.FLAGS_NONE,
-        )
+        super().__init__(application_id=APP_ID,
+                         flags=Gio.ApplicationFlags.FLAGS_NONE)
         self.window = None
         self.gui = None
         self.autostart = False
 
     def do_startup(self):
-        _debug("do_startup: beginne")
+        _debug("do_startup: begin")
         Adw.Application.do_startup(self)
         _load_css(self)
-        _debug("do_startup: fertig")
+        _debug("do_startup: done")
 
     def do_activate(self):
-        _debug("do_activate: aufgerufen (window None=" + str(self.window is None) + ")")
+        _debug("do_activate")
         if self.window is None:
-            self.gui = GuiClient(
-                on_state=self._broadcast_state,
-                on_error=self._show_fatal_error)
+            self.gui = GuiClient(on_state=self._broadcast_state,
+                                 on_error=self._show_fatal_error)
             try:
-                _debug("do_activate: baue ThrotlWindow")
-                self.window = ThrotlWindow(self, self.gui, autostart=self.autostart)
-                _debug("do_activate: ThrotlWindow erstellt + present()")
-            except Exception as error:
+                self.window = ThrotlWindow(self, self.gui,
+                                           autostart=self.autostart)
+                _debug("window built + presented")
+            except Exception:
                 import traceback
 
-                _debug(f"do_activate: FEHLER beim Fensteraufbau: {error!r}")
                 traceback.print_exc()
-                # Fenster kann sich nicht oeffnen; trotzdem present() des (teil-)Fensters
-                # verhindern, App wird beendet, damit kein stiller Haenger entsteht.
                 self.quit()
                 return
-            GLib.idle_add(self._connect_daemon, priority=GLib.PRIORITY_LOW)
-            _debug("do_activate: _connect_daemon geplant")
+            self._connect_daemon()
         else:
             self.window.present()
 
     def _connect_daemon(self):
-        """Daemon im Hintergrund-Thread verbinden (Socket + Poll-Start).
-
-        Die eigentliche Fehlermeldung bei nicht erreichbarem Daemon stammt aus
-        `GuiClient.connect` (ueber on_error). Dieser Thread sorgt nur dafuer,
-        dass die Verbindung nicht den GUI-Mainloop blockiert; das Fenster
-        bleibt auf jeden Fall sichtbar.
-        """
+        """Connect to the daemon synchronously (short timeout) and start polling.
+        On failure the window stays visible with an explanatory message."""
         try:
-            import threading
-
-            def _connect(self=self):
-                try:
-                    self.gui.connect()
-                    self.gui.start_polling(1.0)
-                    GLib.idle_add(self.window.reload)
-                except Exception:
-                    pass  # Meldung lief bereits ueber on_error; Fenster bleibt
-
-            threading.Thread(target=_connect, daemon=True).start()
+            self.gui.connect(timeout=2.0)
+            self.gui.start_polling(1.0)
+            self.window.reload()
+        except ConnectionError:
+            # Message came via on_error; window stays up.
+            pass
         except Exception as error:
-            self._show_fatal_error(str(error))
-        return False
+            self.window.show_error(str(error))
 
     def _broadcast_state(self, state):
         if self.window is not None:
