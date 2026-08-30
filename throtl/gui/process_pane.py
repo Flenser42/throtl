@@ -1,40 +1,12 @@
-"""Live-Prozess-Pane + Regel-Liste im Hauptfenster."""
+"""Live-Prozess-Pane im Hauptfenster."""
 
 import gi  # noqa: F401
 
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Gtk, GLib, Gio, GObject
+from gi.repository import Gtk
 
-from ..config import PRIORITY_NAMES
-from ..units import format_rate, parse_rate
-from .widgets import RateEntry, PriorityDropdown, PRIORITY_LABELS
-
-
-class ProcessModel(GObject.Object):
-    """Eine Live-Prozesszeile (fuer die Read-only-Liste)."""
-
-    __gtype_name__ = "ThrotlProcessModel"
-
-    pid = GObject.Property(type=str, default="")
-    display_name = GObject.Property(type=str, default="")
-    download = GObject.Property(type=str, default="0")
-    upload = GObject.Property(type=str, default="0")
-    has_rule = GObject.Property(type=bool, default=False)
-
-    def __init__(self, pid="", display_name="", download="0", upload="0",
-                 has_rule=False):
-        super().__init__()
-        self.pid = pid
-        self.display_name = display_name
-        self.download = download
-        self.upload = upload
-        self.has_rule = has_rule
-
-
-def _display(proc: dict, unit: str) -> str:
-    value = proc.get("download") or 0.0
-    return format_rate(value, unit)
+from ..units import format_rate
 
 
 class ProcessPanel(Gtk.Box):
