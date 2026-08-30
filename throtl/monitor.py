@@ -40,7 +40,11 @@ def parse_trace(line: str):
         return None
     pid_str = parts[-2]
     uid_str = parts[-1]
+    if pid_str in ("0", "?"):
+        return None
     name = "/".join(parts[:-2]) or "?"
+    if name.lower().startswith("unknown"):
+        return None
     try:
         sent_kBs = float(sent)
         recv_kBs = float(recv)
@@ -135,8 +139,12 @@ class NethogsMonitor:
         self._latest = {}
 
     def _build_argv(self) -> list:
-        # -t Trace-Modus; -d Interval in Sekunden; -v 1 (kB/s-Anzeige)
-        return [self.cmd, "-t", "-d", str(self.interval), "-v", "1", self.device]
+        # -t Trace-Modus; -d Intervall in Sekunden. Kein -v: nethogs-Default
+        # ist 0 = kB/s (Durchsatz), waehrend -v 1 "total kB" waere.
+        argv = [self.cmd, "-t", "-d", str(self.interval)]
+        if self.device not in (None, "", "auto", "automatic"):
+            argv.append(self.device)
+        return argv
 
     def start(self) -> None:
         if self._running:

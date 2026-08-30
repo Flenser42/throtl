@@ -204,8 +204,10 @@ def normalize(data: dict) -> dict:
     """Rohe (aus TOML geladene) Daten normalisieren und validieren."""
     cfg = default_config()
     cfg["interface"] = (data.get("interface") or None) if isinstance(data.get("interface"), str) else None
+    from .units import DISPLAY_UNITS
+
     unit = data.get("unit", "kbps")
-    if unit not in ("kbps", "kBs"):
+    if unit not in DISPLAY_UNITS:
         raise ConfigError(f"ungueltige Anzeige-Einheit {unit!r}")
     cfg["unit"] = unit
 

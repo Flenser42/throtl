@@ -98,7 +98,16 @@ class NethogsMonitorTest(unittest.TestCase):
     def test_build_argv(self):
         mon = NethogsMonitor("wlo1", interval=2.0)
         self.assertEqual(mon._build_argv(),
-                         ["nethogs", "-t", "-d", "2.0", "-v", "1", "wlo1"])
+                         ["nethogs", "-t", "-d", "2.0", "wlo1"])
+
+    def test_build_argv_skips_auto_device(self):
+        mon = NethogsMonitor("auto", interval=1.0)
+        self.assertEqual(mon._build_argv(), ["nethogs", "-t", "-d", "1.0"])
+
+    def test_parse_filters_pid_zero_and_unknown(self):
+        self.assertIsNone(monitor.parse_trace("unknown TCP/0/0\t0\t0\n"))
+        self.assertIsNone(monitor.parse_trace("/usr/bin/foo/0/1000\t1\t2\n"))
+        self.assertIsNone(monitor.parse_trace("?/0/0\t0\t0\n"))
 
     def test_auto_device(self):
         # detect_default_interface aus config; hier nur smoke test, dass der

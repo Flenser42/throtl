@@ -244,10 +244,12 @@ class ThrotlWindow(Adw.ApplicationWindow):
         try:
             self.gui.call("toggle_enabled", {"enabled": state})
             self.show_info("Throttling " + ("disabled" if not state else "enabled"))
+            # False lassen = default state-set laeuft -> visualer Wechsel
+            return False
         except Exception as error:
             self.show_error(str(error))
-            switch.set_state(not state)
-        return True
+            # True = visualen Wechsel blockieren (State bleibt wie zuvor)
+            return True
 
     def _on_unit(self, dd, *args):
         idx = dd.get_selected()

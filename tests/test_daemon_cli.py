@@ -153,6 +153,13 @@ class DaemonCliEndToEnd(unittest.TestCase):
         with self.assertRaises(protocol.RpcError):
             self.client.call("set_unit", {"unit": "tb"})
 
+    def test_set_unit_mbs_accepted(self):
+        result = self.client.call("set_unit", {"unit": "mBs"})
+        self.assertEqual(result["unit"], "mBs")
+        # Der Daemon darf die mBs-Unit nicht ablehnen/crashen
+        cfg = self.client.call("get_config")
+        self.assertEqual(cfg["unit"], "mBs")
+
     def test_list_processes_live(self):
         state = self.client.call("list_processes")
         self.assertTrue(state["enabled"])

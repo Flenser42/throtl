@@ -154,6 +154,10 @@ class TomlRoundtripTest(unittest.TestCase):
         with self.assertRaises(config.ConfigError):
             config.normalize({"unit": "tb"})
 
+    def test_normalize_accepts_mbs_and_mbps(self):
+        self.assertEqual(config.normalize({"unit": "mBs"})["unit"], "mBs")
+        self.assertEqual(config.normalize({"unit": "mbps"})["unit"], "mbps")
+
     def test_normalize_skips_broken_rule(self):
         cfg = config.normalize({"processes": [{"match_type": "exe"}]})
         self.assertEqual(cfg["processes"], [])

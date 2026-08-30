@@ -118,8 +118,10 @@ class ConfigStore:
         return removed
 
     def set_unit(self, unit: str) -> str:
-        if unit not in ("kbps", "kBs"):
-            raise ValueError("unit muss 'kbps' oder 'kBs' sein")
+        from .units import DISPLAY_UNITS
+
+        if unit not in DISPLAY_UNITS:
+            raise ValueError(f"unit muss eines von {DISPLAY_UNITS} sein")
         self._config["unit"] = unit
         self._persist()
         return unit
@@ -134,6 +136,13 @@ def parse_limit_param(value):
     return pr(value)
 
 
+def _resolve_interface(value) -> str:
+    """Konfig-Wert 'auto'/None/'' in das echte Routing-Interface aufloesen."""
+    if value in (None, "", "auto", "automatic"):
+        return detect_default_interface() or "lo"
+    return value
+
+
 class Daemon:
     def __init__(self, socket_path: str = SOCKET_PATH, config_dir: str = None,
                  engine=None, monitor_factory=None, interval: float = 1.0,
@@ -145,13 +154,12 @@ class Daemon:
         self.interval = interval
 
         cfg = self.store.get()
-        interface = cfg.get("interface") or detect_default_interface() or "lo"
-        self.interface = interface
+        self.interface = _resolve_interface(cfg.get("interface"))
 
         # Engine waehlen: explizit (Tests) oder TrafficTollEngine (tt via venv)
         self.engine = engine
         if self.engine is None:
-            self.engine = TrafficTollEngine(interface, command=tt_command)
+            self.engine = TrafficTollEngine(self.interface, command=tt_command)
 
         self.monitor = None
         self._monitor_factory = monitor_factory or (lambda dev, i: NethogsMonitor(dev, interval=i))
