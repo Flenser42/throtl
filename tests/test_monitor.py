@@ -103,15 +103,15 @@ class NethogsMonitorTest(unittest.TestCase):
     def test_build_argv(self):
         mon = NethogsMonitor("wlo1", interval=2.0, cmd="nethogs")
         self.assertEqual(mon._build_argv(),
-                         ["nethogs", "-t", "-d", "2.0", "-C", "wlo1"])
+                         ["nethogs", "-t", "-d", "2.0", "-C", "-l", "wlo1"])
 
     def test_build_argv_skips_auto_device(self):
         mon = NethogsMonitor("auto", interval=1.0, cmd="nethogs")
-        self.assertEqual(mon._build_argv(), ["nethogs", "-t", "-d", "1.0", "-C"])
+        self.assertEqual(mon._build_argv(), ["nethogs", "-t", "-d", "1.0", "-C", "-l"])
 
     def test_build_argv_without_udp(self):
         mon = NethogsMonitor("wlo1", interval=1.0, cmd="nethogs", capture_udp=False)
-        self.assertEqual(mon._build_argv(), ["nethogs", "-t", "-d", "1.0", "wlo1"])
+        self.assertEqual(mon._build_argv(), ["nethogs", "-t", "-d", "1.0", "-l", "wlo1"])
 
     def test_unattributable_traffic_is_kept(self):
         """Nicht zuordenbarer Traffic darf NICHT verschwinden."""
@@ -134,3 +134,33 @@ class NethogsMonitorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PrettyAppNameTest(unittest.TestCase):
+    """nethogs -l liefert die Kommandozeile -> lesbaren App-Namen ableiten."""
+
+    def test_script_apps(self):
+        from throtl.monitor import pretty_app_name
+
+        self.assertEqual(
+            pretty_app_name("python3 ./legendary install CrabEA --platform Windows -y"),
+            "legendary")
+        self.assertEqual(pretty_app_name("python3 /opt/app/main.py --serve"), "main")
+        self.assertEqual(pretty_app_name("python3 -m http.server"), "http.server")
+        self.assertEqual(pretty_app_name("python3 -u /home/x/udp_load.py"), "udp_load")
+        self.assertEqual(pretty_app_name("node /usr/lib/foo/server.js"), "server")
+
+    def test_native_apps(self):
+        from throtl.monitor import pretty_app_name
+
+        self.assertEqual(pretty_app_name("/usr/bin/curl -s -o /dev/null"), "curl")
+        self.assertEqual(pretty_app_name("/usr/lib/electron43/electron --type=utility"),
+                         "electron")
+        self.assertEqual(pretty_app_name("java -jar JDownloader.jar"), "JDownloader")
+        self.assertEqual(pretty_app_name("reasonix-desktop"), "reasonix-desktop")
+
+    def test_edge_cases(self):
+        from throtl.monitor import pretty_app_name
+
+        self.assertEqual(pretty_app_name(""), "?")
+        self.assertEqual(pretty_app_name("python3"), "python3")

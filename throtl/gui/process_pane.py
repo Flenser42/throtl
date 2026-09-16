@@ -230,28 +230,36 @@ class ProcessTable(Gtk.Box):
     # --- State application ------------------------------------------------
 
     def set_state(self, state: dict) -> None:
-        """Called on every poll; updates live values in place, then re-sorts."""
-        self._rules = state.get("rules", [])
-        processes = state.get("processes", [])
-        self._procs = {str(b.get("pid")): b for b in processes}
+        """Called on every poll; updates live values in place, then re-sorts.
 
-        if not processes:
+        Bevorzugt ``apps`` (pro Anwendung gruppiert, Summe aller PIDs) — sonst
+        sieht man z. B. acht Zeilen "python3" statt einmal "legendary".
+        """
+        self._rules = state.get("rules", [])
+        grouped = "apps" in state
+        items = (state.get("apps") if grouped else state.get("processes")) or []
+        self._procs = {}
+        for blob in items:
+            key = str(blob.get("name") if grouped else blob.get("pid"))
+            self._procs[key] = blob
+
+        if not items:
             self._clear_rows()
             self._show_empty()
             return
         self._hide_empty()
 
-        for pid, blob in self._procs.items():
-            if pid in self._rows:
-                self._update_row(self._rows[pid], blob)
+        for key, blob in self._procs.items():
+            if key in self._rows:
+                self._update_row(self._rows[key], blob)
             else:
-                roww = self._build_row(blob)
-                self._rows[pid] = roww
+                roww = self._build_row(key, blob)
+                self._rows[key] = roww
                 self._list.append(roww.box)
 
-        for pid in list(self._rows):
-            if pid not in self._procs:
-                roww = self._rows.pop(pid)
+        for key in list(self._rows):
+            if key not in self._procs:
+                roww = self._rows.pop(key)
                 if roww.box.get_parent() is not None:
                     self._list.remove(roww.box)
 
@@ -293,9 +301,9 @@ class ProcessTable(Gtk.Box):
         return getattr(client, "state", {"processes": [], "rules": []})
 
     def _rule_for(self, blob: dict) -> dict:
-        """Regel zum Prozess finden (exe-Pfad bevorzugt, dann Name)."""
+        """Regel zur Anwendung finden (exe-Pfad bevorzugt, dann Name)."""
         raw = blob.get("name", "")
-        exe = _first_token(raw)
+        exe = blob.get("exe") or _first_token(raw)
         base = _short_name(raw, 64)
         for rule in self._rules:
             mv = _unescape(rule.get("match_value", ""))
@@ -314,8 +322,9 @@ class ProcessTable(Gtk.Box):
         roww.down.set_text(format_rate(blob.get("download", 0.0), self.unit, 2))
         roww.up.set_text(format_rate(blob.get("upload", 0.0), self.unit, 2))
 
-    def _build_row(self, blob) -> "RowWidgets":
-        pid = str(blob.get("pid"))
+    def _build_row(self, key: str, blob) -> "RowWidgets":
+        pid = str(blob.get("pid") or key)
+        count = int(blob.get("pid_count") or 1)
         unattributed = bool(blob.get("unattributed"))
         rule = {} if unattributed else self._rule_for(blob)
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -323,13 +332,18 @@ class ProcessTable(Gtk.Box):
         if unattributed:
             box.add_css_class("unattributed")
 
-        pid_l = Gtk.Label(label=pid, xalign=0.0)
+        pid_text = f"{count} pids" if count > 1 else (pid if pid != "-" else "—")
+        pid_l = Gtk.Label(label=pid_text, xalign=0.0)
         pid_l.add_css_class("dim-label")
         box.append(self._cell(pid_l, _COLUMNS[0][2]))
 
-        name_l = Gtk.Label(label=_short_name(blob.get("name", "?")), xalign=0.0)
+        app_name = _short_name(blob.get("name", "?"), 40)
+        name_l = Gtk.Label(label=app_name, xalign=0.0)
         name_l.set_ellipsize(Pango.EllipsizeMode.END)
-        name_l.set_tooltip_text((blob.get("name", "") or "")[:400])
+        tip = blob.get("exe") or blob.get("name", "")
+        if count > 1:
+            tip = f"{tip}\n({count} processes: {', '.join(blob.get('pids', [])[:8])})"
+        name_l.set_tooltip_text((tip or "")[:500])
         box.append(self._cell(name_l, _COLUMNS[1][2], True))
 
         down = Gtk.Label(label=format_rate(blob.get("download", 0.0), self.unit, 2),
@@ -398,7 +412,7 @@ class ProcessTable(Gtk.Box):
         self._set_rule_field(pid, "priority", dd.get_priority_name())
 
     def _set_rule_field(self, pid: str, field: str, value) -> None:
-        blob = self._procs.get(pid)
+        blob = self._procs.get(pid)  # key: App-Name (gruppiert) oder PID
         if blob is None:
             # Prozess ist inzwischen weg — Eingabe verwerfen (kein Fehler-Popup).
             return
@@ -439,11 +453,12 @@ class RowWidgets:
 
 
 def _match_type_for(blob: dict) -> str:
-    return "exe" if _first_token(blob.get("name", "")).startswith("/") else "name"
+    exe = blob.get("exe") or _first_token(blob.get("name", ""))
+    return "exe" if exe.startswith("/") else "name"
 
 
 def _match_value_for(blob: dict, match_type: str) -> str:
     raw = blob.get("name", "")
     if match_type == "exe":
-        return _first_token(raw) or raw
+        return blob.get("exe") or _first_token(raw) or raw
     return _short_name(raw, 64) or raw

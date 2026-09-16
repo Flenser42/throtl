@@ -243,5 +243,53 @@ class ProcessTableSortTest(unittest.TestCase):
 
 
 
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class ProcessTableGroupedTest(unittest.TestCase):
+    """Bei gruppierten 'apps' erscheint eine Zeile pro Anwendung."""
+
+    class _Gui:
+        state = {"processes": [], "rules": []}
+        client = None
+        def show_error(self, m): pass
+        def show_info(self, m): pass
+
+    def test_grouped_rows_and_label(self):
+        from throtl.gui.process_pane import ProcessTable
+
+        t = ProcessTable(self._Gui(), unit="mBs")
+        t.set_state({
+            "rules": [],
+            "apps": [
+                {"name": "legendary", "exe": "python3", "download": 10151.0,
+                 "upload": 300.0, "pids": ["1", "2", "3"], "pid_count": 3,
+                 "unattributed": False, "rule_name": None},
+                {"name": "curl", "exe": "/usr/bin/curl", "download": 10.0,
+                 "upload": 1.0, "pids": ["9"], "pid_count": 1,
+                 "unattributed": False, "rule_name": None},
+            ],
+        })
+        self.assertEqual(t.row_count(), 2)
+        self.assertEqual(t.visible_order(), ["legendary", "curl"])  # Download desc
+        # Prozess-Spalte zeigt die Anzahl der PIDs
+        row = t._rows["legendary"]
+        pid_label = row.box.get_first_child().get_first_child()
+        self.assertEqual(pid_label.get_text(), "3 pids")
+
+    def test_grouped_sorted_by_summed_rate(self):
+        from throtl.gui.process_pane import ProcessTable
+
+        t = ProcessTable(self._Gui(), unit="mBs")
+        t.set_state({
+            "rules": [],
+            "apps": [
+                {"name": "a", "exe": "/usr/bin/a", "download": 5.0, "upload": 0.0,
+                 "pids": ["1"], "pid_count": 1, "unattributed": False},
+                {"name": "b", "exe": "/usr/bin/b", "download": 900.0, "upload": 0.0,
+                 "pids": ["2"], "pid_count": 1, "unattributed": False},
+            ],
+        })
+        self.assertEqual(t.visible_order(), ["b", "a"])
+
+
 if __name__ == "__main__":
     unittest.main()

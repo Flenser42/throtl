@@ -90,6 +90,43 @@ def _fake_monitor_factory(device, interval=1.0):
     return FakeMonitor(device, interval)
 
 
+class AppGroupingTest(unittest.TestCase):
+    """Eine App mit vielen Prozessen erscheint als EINE Zeile (Summe)."""
+
+    def test_apps_grouped_and_summed(self):
+        import tempfile
+
+        from throtl.daemon import Daemon
+        from throtl.engine import SimEngine
+
+        class _Mon:
+            def snapshot(self):
+                cmd = "python3 ./legendary install CrabEA --platform Windows -y"
+                return {
+                    "1": {"name": cmd, "uid": "1000", "download": 1000.0, "upload": 10.0},
+                    "2": {"name": cmd, "uid": "1000", "download": 1500.0, "upload": 20.0},
+                    "3": {"name": "/usr/bin/curl -s x", "uid": "1000",
+                          "download": 500.0, "upload": 5.0},
+                }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Daemon(socket_path=tmp + "/d.sock", config_dir=tmp,
+                       engine=SimEngine("lo"), monitor_factory=None)
+            d.monitor = _Mon()
+            snap = d._collect_snapshot()
+
+        apps = {a["name"]: a for a in snap["apps"]}
+        self.assertIn("legendary", apps)
+        self.assertEqual(apps["legendary"]["download"], 2500.0)
+        self.assertEqual(apps["legendary"]["pid_count"], 2)
+        self.assertEqual(apps["legendary"]["exe"], "python3")
+        self.assertIn("legendary install CrabEA".split()[0],
+                      apps["legendary"]["pids"] and apps["legendary"]["name"])
+        self.assertEqual(apps["curl"]["download"], 500.0)
+        # Attribuierte Summe stimmt mit den Apps ueberein
+        self.assertEqual(snap["attributed"]["download"], 3000.0)
+
+
 class DaemonCliEndToEnd(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

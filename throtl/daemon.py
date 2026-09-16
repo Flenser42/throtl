@@ -41,7 +41,12 @@ from .config import (
     save_config,
 )
 from .engine import SimEngine, TrafficTollEngine
-from .monitor import UNATTRIBUTED_PID, NethogsMonitor
+from .monitor import (
+    UNATTRIBUTED_NAME,
+    UNATTRIBUTED_PID,
+    NethogsMonitor,
+    pretty_app_name,
+)
 from .protocol import (
     INVALID_PARAMS,
     METHOD_NOT_FOUND,
@@ -338,11 +343,50 @@ class Daemon:
                 # via Regeln: limits/prioritaet fuer die Anzeige
                 "rule_name": matches.get("name"),
             })
+        # Nach ANWENDUNG gruppieren: eine App laeuft oft in vielen Prozessen
+        # (z. B. ein Downloader mit 8 Workern). NetLimiter-artig soll die App
+        # als EINE Zeile mit der Summe erscheinen — sonst sieht man 8x
+        # "python3" mit je ~0,2 MB/s statt einmal "legendary" mit ~2 MB/s.
+        apps = {}
+        for pid, info in raw.items():
+            if pid == UNATTRIBUTED_PID:
+                app, exe = UNATTRIBUTED_NAME, ""
+            else:
+                cmdline = info.get("name", "")
+                app = pretty_app_name(cmdline)
+                exe = (cmdline.split() or [""])[0]
+            entry = apps.get(app)
+            if entry is None:
+                entry = apps[app] = {
+                    "name": app,
+                    "exe": exe,
+                    "download": 0.0,
+                    "upload": 0.0,
+                    "pids": [],
+                    "unattributed": pid == UNATTRIBUTED_PID,
+                }
+            entry["download"] += info.get("download", 0.0)
+            entry["upload"] += info.get("upload", 0.0)
+            if len(entry["pids"]) < 16:
+                entry["pids"].append(pid)
+        app_list = []
+        for entry in apps.values():
+            entry["download"] = round(entry["download"], 3)
+            entry["upload"] = round(entry["upload"], 3)
+            entry["pid_count"] = len(entry["pids"])
+            if entry["unattributed"]:
+                entry["rule_name"] = None
+            else:
+                matches = _match_rules(rules, entry["exe"] or entry["name"], None)
+                entry["rule_name"] = matches.get("name")
+            app_list.append(entry)
+
         global_down, global_up = self._iface_throughput()
         return {
             "interface": self.interface,
             "enabled": cfg["global"].get("enabled", True),
             "processes": processes,
+            "apps": app_list,  # pro Anwendung gruppiert (Summe aller PIDs)
             "rules": rules,  # fuer GUI: union von Regel + Live-Stats
             "monitored": self.monitor is not None,
             # Echte Interface-Rate (alles) vs. nur zugeordneter Traffic

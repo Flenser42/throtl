@@ -51,6 +51,62 @@ def resolve_nethogs_binary(cmd: str = None) -> str:
     return shutil.which("nethogs") or "nethogs"
 
 
+# Interpreter, bei denen argv[0] nicht der App-Name ist
+_INTERPRETERS = {
+    "python", "python2", "python3", "pypy", "pypy3", "node", "nodejs", "deno",
+    "sh", "bash", "zsh", "dash", "fish", "perl", "ruby", "php", "env",
+    "wine", "wine64", "java", "mono", "dotnet",
+}
+_SCRIPT_SUFFIXES = (".py", ".js", ".mjs", ".cjs", ".sh", ".rb", ".pl", ".php")
+
+
+def _basename(path: str) -> str:
+    return (path or "").strip().strip('"').strip("'").rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+
+
+def pretty_app_name(cmdline: str) -> str:
+    """Lesbaren App-Namen aus der nethogs-Kommandozeile ableiten.
+
+    nethogs liefert argv[0] (oft "python3") plus, mit -l, die Argumente:
+      "python3 ./legendary install CrabEA …"  -> "legendary"
+      "python3 /opt/app/main.py --serve"      -> "main"
+      "python3 -m http.server"                -> "http.server"
+      "java -jar JDownloader.jar"             -> "JDownloader"
+      "/usr/lib/electron43/electron --type=…" -> "electron"
+    """
+    tokens = (cmdline or "").split()
+    if not tokens:
+        return "?"
+    base = _basename(tokens[0]) or tokens[0]
+    looks_like_interpreter = (
+        base in _INTERPRETERS
+        or base.startswith("python")
+        or base.startswith("node")
+    )
+    if not looks_like_interpreter:
+        return base
+    rest = tokens[1:]
+    index = 0
+    while index < len(rest):
+        token = rest[index]
+        if token == "-m" and index + 1 < len(rest):
+            return _basename(rest[index + 1]) or base
+        if token == "-jar" and index + 1 < len(rest):
+            name = _basename(rest[index + 1])
+            return name[:-4] if name.lower().endswith(".jar") else (name or base)
+        if token.startswith("-"):
+            index += 1
+            continue
+        name = _basename(token)
+        lowered = name.lower()
+        for suffix in _SCRIPT_SUFFIXES:
+            if lowered.endswith(suffix):
+                name = name[: -len(suffix)]
+                break
+        return name or base
+    return base
+
+
 def parse_trace(line: str):
     """Parse one nethogs trace line.
 
@@ -169,6 +225,9 @@ class NethogsMonitor:
         argv = [self.cmd, "-t", "-d", str(self.interval)]
         if self.capture_udp:
             argv.append("-C")
+        # -l: vollstaendige Kommandozeile mit ausgeben. Ohne -l meldet nethogs
+        # nur argv[0] ("python3"), damit sind Skript-Apps nicht unterscheidbar.
+        argv.append("-l")
         if self.device not in (None, "", "auto", "automatic"):
             argv.append(self.device)
         return argv
