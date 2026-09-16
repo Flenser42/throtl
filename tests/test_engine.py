@@ -164,3 +164,68 @@ class EngineStatusDeadlockTest(unittest.TestCase):
         eng = TrafficTollEngine("lo", command="/bin/true")
         self.assertFalse(eng.is_running())
         self.assertFalse(eng.status()["running"])
+
+
+class TcCleanupTest(unittest.TestCase):
+    """Vor jedem tt-Start muessen tc-Reste entfernt werden (sonst scheitert der
+    QDisc-Aufbau: 'Exclusivity flag on' / 'Parent Qdisc doesn't exists')."""
+
+    def test_cleanup_deletes_root_and_ingress(self):
+        from unittest import mock
+
+        from throtl.engine import TrafficTollEngine
+
+        eng = TrafficTollEngine("enp0s3")
+        with mock.patch("throtl.engine.subprocess.run") as run:
+            eng._tc_cleanup()
+        calls = [c.args[0] for c in run.call_args_list]
+        self.assertIn(["tc", "qdisc", "del", "dev", "enp0s3", "root"], calls)
+        self.assertIn(["tc", "qdisc", "del", "dev", "enp0s3", "ingress"], calls)
+
+    def test_cleanup_skipped_in_dry_run(self):
+        from unittest import mock
+
+        from throtl.engine import TrafficTollEngine
+
+        eng = TrafficTollEngine("enp0s3")
+        eng.dry_run = True
+        with mock.patch("throtl.engine.subprocess.run") as run:
+            eng._tc_cleanup()
+        run.assert_not_called()
+
+
+class GracefulStopTest(unittest.TestCase):
+    """tt wird per SIGINT beendet, damit sein atexit-Cleanup die QDiscs raeumt."""
+
+    def test_stop_sends_sigint(self):
+        import subprocess
+        import tempfile
+        import time
+        from pathlib import Path
+
+        from throtl.engine import TrafficTollEngine
+
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "sig.txt"
+            fake = Path(tmp) / "tt"
+            # Python (wie das echte tt): der Handler laeuft sofort, bei einer
+            # Shell wuerde ein trap erst nach dem Vordergrund-`sleep` greifen.
+            fake.write_text(
+                "#!/usr/bin/env python3\n"
+                "import signal, sys, time\n"
+                f"LOG = {str(log)!r}\n"
+                "def _h(signum, frame):\n"
+                "    open(LOG, 'a').write(('INT' if signum == signal.SIGINT else 'TERM') + '\\n')\n"
+                "    sys.exit(0)\n"
+                "signal.signal(signal.SIGINT, _h)\n"
+                "signal.signal(signal.SIGTERM, _h)\n"
+                "time.sleep(30)\n"
+            )
+            fake.chmod(0o755)
+            eng = TrafficTollEngine("enp0s3", command=str(fake))
+            eng.dry_run = True          # keine tc-Aufrufe im Test
+            eng._proc = subprocess.Popen([str(fake)])
+            time.sleep(0.4)
+            eng.stop()
+            self.assertTrue(log.exists(), "fake tt hat kein Signal erhalten")
+            self.assertIn("INT", log.read_text())

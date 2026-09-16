@@ -143,6 +143,7 @@ class TrafficTollEngine:
         self.command = command
         self.delay = delay
         self.on_restart = on_restart
+        self.dry_run = False
         self._proc = None
         # RLock ist zwingend: status() haelt den Lock und wertet intern den
         # Prozesszustand aus. Mit einem nicht-reentranten threading.Lock()
@@ -185,8 +186,33 @@ class TrafficTollEngine:
         if self.on_restart is not None:
             self.on_restart(disabled=False, error=None)
 
+    def _tc_cleanup(self) -> None:
+        """tc-Reste entfernen, damit tt seine QDiscs frisch aufbauen kann.
+
+        TrafficToll legt beim Start ein neues root-qdisc an. Existiert noch
+        eines aus einem vorherigen Lauf (z. B. weil tt per SIGTERM beendet
+        wurde und sein atexit-Cleanup nicht lief), scheitert der Aufbau mit
+        "Exclusivity flag on, cannot modify" / "Parent Qdisc doesn't exists"
+        und die Limits greifen nicht mehr.
+        """
+        if self.dry_run:
+            return
+        devices = [self.device]
+        for name in ("ifb0", "ifb1"):
+            if os.path.exists(f"/sys/class/net/{name}"):
+                devices.append(name)
+        for device in devices:
+            for args in (("qdisc", "del", "dev", device, "root"),
+                         ("qdisc", "del", "dev", device, "ingress")):
+                try:
+                    subprocess.run(["tc", *args], stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL, timeout=5)
+                except (OSError, subprocess.SubprocessError):
+                    pass
+
     def _start_locked(self, yaml: str) -> None:
         cfg_path = self._write_yaml(yaml)
+        self._tc_cleanup()
         argv = self._build_argv(cfg_path)
         try:
             self._proc = subprocess.Popen(
@@ -240,14 +266,21 @@ class TrafficTollEngine:
     def _stop_locked(self) -> None:
         proc = self._proc
         if proc is not None and proc.poll() is None:
+            # SIGINT (nicht SIGTERM): TrafficToll faengt KeyboardInterrupt und
+            # sein atexit-Cleanup entfernt danach die QDiscs. Mit SIGTERM
+            # blieben sie liegen -> naechster Start scheitert (siehe _tc_cleanup).
             try:
-                proc.terminate()
-                proc.wait(timeout=3.0)
+                proc.send_signal(signal.SIGINT)
+                proc.wait(timeout=4.0)
             except (subprocess.TimeoutExpired, OSError):
                 try:
-                    proc.kill()
-                except OSError:
-                    pass
+                    proc.terminate()
+                    proc.wait(timeout=2.0)
+                except (subprocess.TimeoutExpired, OSError):
+                    try:
+                        proc.kill()
+                    except OSError:
+                        pass
         # stderr-Reader-/Watchdog-Threads beenden (fds schliessen damit Reader endet)
         if proc is not None:
             if proc.stderr is not None:
