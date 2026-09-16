@@ -98,6 +98,9 @@ class Client:
         self._next_id = 0
         self._responses = {}
         self._cond = threading.Condition()
+        # Serialisiert sendall(): mehrere Threads (GUI-Poller + Nutzeraktionen)
+        # duerfen sich nicht auf dem Socket verschraenken.
+        self._send_lock = threading.Lock()
 
     def connect(self) -> None:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -140,7 +143,8 @@ class Client:
             self._next_id += 1
             message_id = self._next_id
         request = {"id": message_id, "method": method, "params": params or {}}
-        send_message(self._sock, request)
+        with self._send_lock:
+            send_message(self._sock, request)
         with self._cond:
             deadline = time.monotonic() + timeout
             while message_id not in self._responses:

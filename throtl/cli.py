@@ -74,7 +74,8 @@ def cmd_status(client, args):
 def _proc_display(name: str, limit: int = 32) -> str:
     """nethogs nennt die ganze Kommandozeile -> fuer die Anzeige kuerzen."""
     first = (name or "?").split()
-    base = (first[0] if first else name).rsplit("/", 1)[-1]
+    base = (first[0] if first else name).strip().strip('"').strip("'")
+    base = base.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
     return base if len(base) <= limit else base[: limit - 1] + "…"
 
 
@@ -88,7 +89,7 @@ def cmd_list(client, args):
             f"{proc.get('pid','?'):<8}{_proc_display(proc.get('name','?')):<34}"
             f"{_fmt_rate(proc.get('download')):<18}{_fmt_rate(proc.get('upload')):<16}{rule}"
         )
-    print(f"\nAngewendete Regeln ({len(state.get('rules', []))}):")
+    print(f"\nRules ({len(state.get('rules', []))}):")
     for rule in state.get("rules", []):
         dl = _fmt_rate(rule.get("download_limit"))
         ul = _fmt_rate(rule.get("upload_limit"))
@@ -121,7 +122,7 @@ def cmd_set_global(client, args):
         sys.stderr.write("Keine Aenderung angegeben.\n")
         return 1
     result = client.call("set_global", params)
-    print("Gesetzt:")
+    print("Set:")
     for key in ("enabled", "download_limit", "upload_limit",
                 "download_minimum", "upload_minimum",
                 "download_priority", "upload_priority"):
@@ -154,7 +155,7 @@ def cmd_set_process(client, args):
         "recursive": args.recursive,
     }
     result = client.call("set_process", params)
-    print("Regel gesetzt/aktualisiert:")
+    print("Rule saved/updated:")
     print(f"  key:   {result.get('key')}")
     print(f"  name:  {result.get('name')}")
     print(f"  match: {result.get('match_type')}:{result.get('match_value')}")
@@ -166,7 +167,7 @@ def cmd_set_process(client, args):
 
 def cmd_remove(client, args):
     result = client.call("remove_process", {"key": args.key})
-    print("Geloescht." if result.get("removed") else "Regel nicht gefunden.")
+    print("Deleted." if result.get("removed") else "Rule not found.")
     return 0 if result.get("removed") else 3
 
 
@@ -195,7 +196,7 @@ def cmd_monitor(client, args):
             if rows:
                 print("\n".join(rows))
             else:
-                print("  (kein aktiver Traffic)")
+                print("  (no active traffic)")
             time.sleep(1.0)
     except KeyboardInterrupt:
         return 0
@@ -207,7 +208,7 @@ def cmd_autocap(client, args):
     Erstellt eine Regel fuer 'iperf3' oder ruft sie ab, startet einen Uebertrag
     und zeigt die gemessene Bandbreite. In echtem Setup mit root.
     """
-    print("Demo: autocap derzeit nur als Smoke-Test vorhanden.")
+    print("Demo: autocap is only a smoke test for now.")
     return 0
 
 

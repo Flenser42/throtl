@@ -119,3 +119,65 @@ def parse_rate_lenient(value) -> int:
     if low in ("unlimited", "unbegrenzt", "none", "unendlich", "∞", "-"):
         return None
     return parse_rate(text)
+
+
+# Faktor: 1 Zahl in dieser Anzeige-Einheit -> kbit/s
+_UNIT_TO_KBIT = {
+    "kbps": 1.0,
+    "mbps": 1000.0,
+    "kBs": 8.0,
+    "mBs": 8000.0,
+}
+
+_UNIT_SUFFIXES = (
+    "kbps", "mbps", "gbps", "kbit/s", "mbit/s", "gbit/s", "kbit", "mbit", "gbit",
+    "kb/s", "mb/s", "gb/s", "kb", "mb", "gb",
+)
+
+
+def has_explicit_unit(text: str) -> bool:
+    """Enthaelt der Text ein Einheiten-Suffix? (z.B. '2 MB/s')"""
+    low = (text or "").strip().lower().replace(" ", "")
+    return any(low.endswith(suffix) for suffix in _UNIT_SUFFIXES)
+
+
+def parse_rate_in_unit(value, unit: str = "kbps"):
+    """GUI-Eingabe in der ANGEZEIGTEN Einheit parsen.
+
+    Wichtig: Eine nackte Zahl wie '2' bedeutet in der Einheit ``unit``
+    (z.B. 'mBs' -> 2 MB/s), nicht kbit/s. Ein explizites Suffix ('2 kbps',
+    '1.5 MB/s') hat immer Vorrang. Leer/unlimited -> None.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return int(round(float(value) * _UNIT_TO_KBIT.get(unit, 1.0)))
+    text = (value or "").strip().replace(",", ".")
+    if not text:
+        return None
+    low = text.lower().replace(" ", "")
+    if low in ("unlimited", "unbegrenzt", "none", "unendlich", "∞", "-"):
+        return None
+    if has_explicit_unit(text):
+        return parse_rate(text)
+    try:
+        number = float(text)
+    except ValueError:
+        raise ValueError(f"ungueltige Rate: {value!r}") from None
+    if number < 0:
+        raise ValueError(f"negative Rate ungueltig: {value!r}")
+    return int(round(number * _UNIT_TO_KBIT.get(unit, 1.0)))
+
+
+def format_rate_for_entry(kbit_per_s, unit: str = "kbps", precision: int = 3) -> str:
+    """Rate (kbit/s) als editierbare Zahl in der Anzeige-Einheit (ohne Suffix).
+
+    Damit passen Feldinhalt und Platzhalter/Einheit zusammen (vorher stand in
+    den Feldern immer kbit/s, waehrend die Einheit MB/s angezeigt wurde).
+    """
+    if kbit_per_s is None:
+        return ""
+    factor = _UNIT_TO_KBIT.get(unit, 1.0)
+    value = float(kbit_per_s) / factor
+    text = f"{value:.{precision}f}".rstrip("0").rstrip(".")
+    return text if text else "0"

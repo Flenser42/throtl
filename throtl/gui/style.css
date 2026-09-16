@@ -1,52 +1,83 @@
-/* Throtl-GUI: dunkles, minimalistisches Design (Omarchy/Hyprland-affin).
-   Dieser CSS-Block ergaenzt das Adwaita-Dunkeltheme minimal. */
+/* Throtl GUI — dark, quiet, NetLimiter-ish. Layered on top of Adwaita. */
 
-window.throtl-window {
-    background-color: #14171b;
-    color: #e8eaed;
+.toolbar {
+    background-color: #1d2127;
+    border: 1px solid #2b3138;
+    border-radius: 10px;
+    padding: 10px 14px;
 }
+
+/* --- Totals ---------------------------------------------------------- */
+
+.total-label {
+    font-weight: 700;
+    font-size: 1.02em;
+    padding: 2px 4px;
+}
+
+/* --- Table ----------------------------------------------------------- */
+
+.table-header-row {
+    background-color: #1d2127;
+    border: 1px solid #2b3138;
+    border-radius: 8px;
+    padding: 6px 8px;
+    margin-bottom: 4px;
+}
+
+.table-header {
+    font-weight: 700;
+    font-size: 0.86em;
+    color: #9aa4af;
+}
+
+.row {
+    background-color: #191d22;
+    border-radius: 6px;
+    padding: 3px 8px;
+    min-height: 30px;
+}
+
+.row:hover {
+    background-color: #222831;
+}
+
+/* Tabular numbers keep the columns from jittering while rates change */
+.table-header,
+.row label {
+    font-feature-settings: "tnum";
+}
+
+/* --- Graph ----------------------------------------------------------- */
 
 .throtl-graph {
     border-radius: 10px;
-    border: 1px solid #2a2f36;
+    border: 1px solid #2b3138;
+    background-color: #101418;
 }
 
-.throtl-icon-circle {
-    background-color: #2ea043;
-    color: #0b0f12;
-    font-weight: 700;
-    border-radius: 9px;
-    min-width: 26px;
-    min-height: 26px;
-    padding: 2px 6px;
-}
-
-.cell {
-    border-radius: 8px;
-    padding: 6px 8px;
-    background-color: #1c2026;
-    border: 1px solid #2a2f36;
-}
-
-.toolbar {
-    background-color: #1a1e24;
-    border-radius: 8px;
-    padding: 6px 10px;
-}
-
-.status-bar {
-    padding: 4px 10px;
-    min-height: 2px;
-}
+/* --- Inputs ---------------------------------------------------------- */
 
 .throtl-rate-entry {
-    min-width: 90px;
+    min-width: 84px;
+}
+
+.throtl-unit {
+    margin-left: 4px;
+}
+
+/* --- Status bar ------------------------------------------------------ */
+
+.status-bar {
+    padding: 5px 12px;
+    background-color: #1a1e23;
+    border-top: 1px solid #262c33;
+}
+
+.dim-label {
+    color: #8b949e;
 }
 
 .bold {
     font-weight: 700;
-}
-
-.dim-label {
-    opacity: 0.7;
 }

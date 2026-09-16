@@ -15,23 +15,36 @@ PRIORITY_LABELS = {
     "niedrig": "Low",
 }
 
+# Anzeige-Einheiten: (Config-Wert, Label). Gemeinsam fuer app.py und Tabellen.
+UNIT_CHOICES = (
+    ("mBs", "MB/s"),
+    ("mbps", "Mbit/s"),
+    ("kBs", "KB/s"),
+    ("kbps", "kbit/s"),
+)
+UNIT_LABELS = dict(UNIT_CHOICES)
+UNIT_IDS = [unit for unit, _label in UNIT_CHOICES]
+
 
 class RateEntry(Gtk.Entry):
-    """Input field for a bandwidth rate (accepts e.g. '2 MB/s', '512 kbps').
+    """Input field for a bandwidth rate.
 
-    Empty text means 'unlimited'. The placeholder hints at the current unit.
+    A bare number is interpreted in the currently selected unit (see
+    units.parse_rate_in_unit); an explicit suffix such as '2 kbps' or
+    '1.5 MB/s' always wins. Empty means 'unlimited'.
     """
 
-    def __init__(self, unit_hint: str = ""):
+    def __init__(self, unit: str = "mBs"):
         super().__init__(width_chars=12)
         self.add_css_class("throtl-rate-entry")
-        self._unit_hint = unit_hint
-        self.set_placeholder_text("unlimited")
+        self.set_unit_hint(unit)
 
-    def set_unit_hint(self, unit_hint: str):
-        self._unit_hint = unit_hint
-        if unit_hint:
-            self.set_placeholder_text(f"limit in {unit_hint}")
+    def set_unit_hint(self, unit: str):
+        label = UNIT_LABELS.get(unit, unit or "")
+        self.set_tooltip_text(
+            f"Limit in {label}. Leave empty for unlimited. "
+            "An explicit suffix (e.g. '2 kbps') also works.")
+        self.set_placeholder_text(f"unlimited  ({label})" if label else "unlimited")
 
 
 class PriorityDropdown(Gtk.DropDown):

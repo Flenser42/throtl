@@ -61,3 +61,48 @@ class FormatRateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnitAwareEntryTest(unittest.TestCase):
+    """Eingabefelder muessen in der ANGEZEIGTEN Einheit interpretiert werden."""
+
+    def test_bare_number_uses_selected_unit(self):
+        from throtl import units
+
+        # "2" in MB/s bedeutet 2 MB/s = 16000 kbit/s (nicht 2 kbit/s!)
+        self.assertEqual(units.parse_rate_in_unit("2", "mBs"), 16000)
+        self.assertEqual(units.parse_rate_in_unit("2", "mbps"), 2000)
+        self.assertEqual(units.parse_rate_in_unit("2", "kBs"), 16)
+        self.assertEqual(units.parse_rate_in_unit("2", "kbps"), 2)
+
+    def test_explicit_suffix_wins(self):
+        from throtl import units
+
+        self.assertEqual(units.parse_rate_in_unit("2 kbps", "mBs"), 2)
+        self.assertEqual(units.parse_rate_in_unit("1 MB/s", "kbps"), 8000)
+        self.assertEqual(units.parse_rate_in_unit("1.5 MB/s", "kbps"), 12000)
+
+    def test_empty_and_commas(self):
+        from throtl import units
+
+        self.assertIsNone(units.parse_rate_in_unit("", "mBs"))
+        self.assertIsNone(units.parse_rate_in_unit("   ", "mBs"))
+        self.assertIsNone(units.parse_rate_in_unit("unlimited", "mBs"))
+        self.assertEqual(units.parse_rate_in_unit("1,5", "mBs"), 12000)
+
+    def test_format_for_entry_matches_unit(self):
+        from throtl import units
+
+        self.assertEqual(units.format_rate_for_entry(16000, "mBs"), "2")
+        self.assertEqual(units.format_rate_for_entry(2000, "mBs"), "0.25")
+        self.assertEqual(units.format_rate_for_entry(2000, "mbps"), "2")
+        self.assertEqual(units.format_rate_for_entry(None, "mBs"), "")
+
+    def test_roundtrip_entry(self):
+        from throtl import units
+
+        for kbit in (8, 16000, 100000, 2500000):
+            for unit in ("kbps", "mbps", "kBs", "mBs"):
+                text = units.format_rate_for_entry(kbit, unit)
+                self.assertAlmostEqual(
+                    units.parse_rate_in_unit(text, unit), kbit, delta=max(1, kbit // 1000))
