@@ -71,14 +71,21 @@ def cmd_status(client, args):
     return 0
 
 
+def _proc_display(name: str, limit: int = 32) -> str:
+    """nethogs nennt die ganze Kommandozeile -> fuer die Anzeige kuerzen."""
+    first = (name or "?").split()
+    base = (first[0] if first else name).rsplit("/", 1)[-1]
+    return base if len(base) <= limit else base[: limit - 1] + "…"
+
+
 def cmd_list(client, args):
     state = client.call("list_processes")
-    print(f"{'PID':<8}{'Prozess':<34}{'Runter (kbit/s)':<18}{'Rauf (kbit/s)':<16}Rolle")
+    print(f"{'PID':<8}{'Process':<34}{'Down (kbit/s)':<18}{'Up (kbit/s)':<16}Rule")
     print("-" * 90)
     for proc in state.get("processes", []):
         rule = proc.get("rule_name") or "-"
         print(
-            f"{proc.get('pid','?'):<8}{proc.get('name','?'):<34}"
+            f"{proc.get('pid','?'):<8}{_proc_display(proc.get('name','?')):<34}"
             f"{_fmt_rate(proc.get('download')):<18}{_fmt_rate(proc.get('upload')):<16}{rule}"
         )
     print(f"\nAngewendete Regeln ({len(state.get('rules', []))}):")

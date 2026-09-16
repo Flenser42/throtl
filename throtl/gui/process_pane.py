@@ -9,16 +9,28 @@ typing in the limit/priority fields without losing focus — the GUI is never
 rebuilt wholesale on live updates.
 """
 
+import gi
+
+gi.require_version("Gtk", "4.0")
+
 from gi.repository import Gtk, GLib
 
 from ..units import format_rate, parse_rate_lenient
 from .widgets import RateEntry, PriorityDropdown
 
 
+def _first_token(raw: str) -> str:
+    """nethogs liefert als 'name' die ganze Kommandozeile; das erste Token ist
+    das eigentliche Binary (z.B. '/usr/lib/electron43/electron')."""
+    parts = (raw or "").split()
+    return parts[0] if parts else ""
+
+
 def _short_name(raw: str, limit: int = 24) -> str:
     if not raw:
         return "?"
-    name = raw.rsplit("/", 1)[-1]
+    base = _first_token(raw) or raw
+    name = base.rsplit("/", 1)[-1]
     if len(name) > limit:
         return name[: limit - 1] + "…"
     return name
@@ -242,8 +254,8 @@ def _match_type_for(blob: dict) -> str:
 
 
 def _match_value_for(blob: dict, match_type: str) -> str:
-    vals = {
-        "exe": blob.get("name", ""),
-        "name": blob.get("name", "").rsplit("/", 1)[-1],
-    }
-    return vals.get(match_type, "")
+    raw = blob.get("name", "")
+    if match_type == "exe":
+        # Voller Pfad des Binaries (erstes Token der nethogs-Kommandozeile)
+        return _first_token(raw) or raw
+    return _short_name(raw, 64) or raw

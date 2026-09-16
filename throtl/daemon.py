@@ -143,6 +143,26 @@ def _resolve_interface(value) -> str:
     return value
 
 
+def _resolve_tt_command(value) -> str:
+    """tt-Binary ermitteln, wenn keines explizit angegeben wurde.
+
+    Reihenfolge: Argument -> $THROTL_TT -> venv-Pfad aus install.sh -> PATH.
+    Vorher war der Default der nackte Name 'tt', der ausserhalb des venv-PATH
+    nicht existiert ("TrafficToll (tt) wurde nicht gefunden").
+    """
+    import shutil
+
+    if value:
+        return value
+    env = os.environ.get("THROTL_TT")
+    if env:
+        return env
+    venv_tt = "/opt/netlimiter-clone/venv/bin/tt"
+    if os.path.exists(venv_tt):
+        return venv_tt
+    return shutil.which("tt") or "tt"
+
+
 def preflight(tt_command: str, interface: str) -> list:
     """Root-/Tool-Vorauspruefung: gibt Liste von Warnungen/Fehlern zurueck."""
     import shutil
@@ -499,8 +519,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Netzwerk-Interface (Default: auto)")
     parser.add_argument("--simulate", action="store_true",
                         help="Tooling-Demo: verwende SimEngine (kein Root/noch kein tt)")
-    parser.add_argument("--tt-command", default="tt",
-                        help="Pfad zum tt-Binary (Default: tt aus venv)")
+    parser.add_argument("--tt-command", default=None,
+                        help="Pfad zum tt-Binary (Default: automatisch ermitteln)")
     return parser
 
 
@@ -521,7 +541,7 @@ def main(argv=None) -> int:
         socket_path=args.socket,
         config_dir=cfg_dir,
         interval=1.0,
-        tt_command=args.tt_command,
+        tt_command=_resolve_tt_command(args.tt_command),
     )
     if args.interface:
         daemon.interface = args.interface

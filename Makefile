@@ -1,4 +1,5 @@
-PYTHON ?= python3
+# System-Python bevorzugen: nur /usr/bin/python3 hat PyGObject (gi) fuer die GUI.
+PYTHON ?= $(shell test -x /usr/bin/python3 && echo /usr/bin/python3 || echo python3)
 
 .PHONY: test install uninstall lint
 

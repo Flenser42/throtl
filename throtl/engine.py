@@ -144,7 +144,13 @@ class TrafficTollEngine:
         self.delay = delay
         self.on_restart = on_restart
         self._proc = None
-        self._lock = threading.Lock()
+        # RLock ist zwingend: status() haelt den Lock und wertet intern den
+        # Prozesszustand aus. Mit einem nicht-reentranten threading.Lock()
+        # blockierte der Aufruf sich selbst -> Daemon antwortete nie (Deadlock).
+        self._lock = threading.RLock()
+        # Getrennter Lock fuer den stderr-Puffer: der Reader-Thread darf nie
+        # auf dem Lifecycle-Lock warten muessen.
+        self._stderr_lock = threading.Lock()
         self._active_config = None
         self._generation = 0
         self._exit_code = None
@@ -209,7 +215,7 @@ class TrafficTollEngine:
             line = raw.decode("utf-8", "replace").rstrip("\n")
             if not line:
                 continue
-            with self._lock:
+            with self._stderr_lock:
                 self._stderr_tail.append(line)
                 if self._stderr_path:
                     try:
@@ -257,15 +263,36 @@ class TrafficTollEngine:
         return [self.command, self.device, cfg_path, "--delay", str(self.delay)]
 
     def _write_yaml(self, yaml: str) -> str:
-        """YAML unter dem state-Dir ablegen; Pfad zurueckgeben."""
+        """YAML im Laufzeitverzeichnis ablegen (NICHT /tmp).
+
+        In /tmp kollidieren die Rechte verschiedener Nutzer (beobachtet:
+        EACCES auf /tmp/netlimiter-tt-config.yaml). Reihenfolge:
+        $THROTL_RUN_DIR -> /run/netlimiter-clone -> Temp-Verzeichnis.
+        """
         import tempfile
 
-        directory = os.environ.get("THROTL_RUN_DIR", tempfile.gettempdir())
-        path = os.path.join(directory, "netlimiter-tt-config.yaml")
-        os.makedirs(directory, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(yaml)
-        return path
+        candidates = []
+        env_dir = os.environ.get("THROTL_RUN_DIR")
+        if env_dir:
+            candidates.append(env_dir)
+        candidates.append("/run/netlimiter-clone")
+        candidates.append(tempfile.gettempdir())
+
+        last_error = None
+        for directory in candidates:
+            try:
+                os.makedirs(directory, exist_ok=True)
+                path = os.path.join(directory, "netlimiter-tt-config.yaml")
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(yaml)
+                return path
+            except OSError as error:
+                last_error = error
+                continue
+        raise RuntimeError(
+            "Konnte die TrafficToll-Config nicht schreiben (versucht: "
+            f"{candidates}): {last_error}"
+        )
 
     def is_running(self) -> bool:
         with self._lock:
@@ -276,15 +303,22 @@ class TrafficTollEngine:
             self._stop_locked()
 
     def status(self) -> dict:
+        # Kein verschachteltes Locking: der Prozesszustand wird inline gelesen
+        # statt is_running() aufzurufen (das war der Deadlock mit Lock()).
         with self._lock:
-            return {
-                "running": self.is_running(),
-                "device": self.device,
-                "generation": self._generation,
-                "exit_code": self._exit_code,
-                "stderr_tail": list(self._stderr_tail)[-5:],
-                "stderr_path": self._stderr_path,
-            }
+            running = self._proc is not None and self._proc.poll() is None
+            exit_code = self._exit_code
+            generation = self._generation
+        with self._stderr_lock:
+            tail = list(self._stderr_tail)[-5:]
+        return {
+            "running": running,
+            "device": self.device,
+            "generation": generation,
+            "exit_code": exit_code,
+            "stderr_tail": tail,
+            "stderr_path": self._stderr_path,
+        }
 
 
 class SimEngine:

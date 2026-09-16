@@ -137,3 +137,30 @@ class PriorityMappingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EngineStatusDeadlockTest(unittest.TestCase):
+    """Regression: status() darf sich nicht selbst blockieren (Lock-Deadlock)."""
+
+    def test_status_returns_without_deadlock(self):
+        import threading
+        from throtl.engine import TrafficTollEngine
+
+        eng = TrafficTollEngine("lo", command="/bin/true")
+        result = {}
+
+        def _call():
+            result["status"] = eng.status()
+
+        t = threading.Thread(target=_call, daemon=True)
+        t.start()
+        t.join(timeout=5.0)
+        self.assertFalse(t.is_alive(), "status() hat sich selbst blockiert (Deadlock)")
+        self.assertIn("running", result["status"])
+
+    def test_is_running_and_status_no_deadlock(self):
+        from throtl.engine import TrafficTollEngine
+
+        eng = TrafficTollEngine("lo", command="/bin/true")
+        self.assertFalse(eng.is_running())
+        self.assertFalse(eng.status()["running"])

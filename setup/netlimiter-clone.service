@@ -19,6 +19,9 @@ RuntimeDirectory=netlimiter-clone
 # Limits/Prioritaeten hier (root-writierbar). Die GUI liest die Config über die
 # Unix-Socket-API get_config — nie direkt aus der Datei.
 Environment=THROTL_CONFIG_DIR=/etc/netlimiter-clone
+# Laufzeitverzeichnis fuer generierte YAML + tt-Log. Vorher lag die YAML in /tmp,
+# wo sie durch Rechte-Kollisionen nicht schreibbar war (EACCES).
+Environment=THROTL_RUN_DIR=/run/netlimiter-clone
 # Trusted CAP-NF-Administration/CAP_SYS_MODULE fuer tc + modprobe ifb explizit geben,
 # falls die Boot-Capability-Limits eingeschraenkt sind. root-Prozess erbt vollen Satz,
 # aber das macht es explizit.

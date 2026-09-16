@@ -8,3 +8,4 @@ build/
 *.log
 .netlimiter-clone/
 .reasonix/
+attic/

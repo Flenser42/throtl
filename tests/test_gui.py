@@ -18,6 +18,16 @@ from throtl import daemon, protocol
 from throtl.engine import SimEngine
 
 
+def _gi_available():
+    """PyGObject verfuegbar? (nur /usr/bin/python3 hat gi, mise-python nicht)."""
+    try:
+        import gi  # noqa: F401
+
+        return True
+    except Exception:
+        return False
+
+
 def _display_available():
     try:
         import gi
@@ -53,6 +63,7 @@ class PriorityMappingTest(unittest.TestCase):
                          ["kritisch", "hoch", "normal", "niedrig"])
 
 
+@unittest.skipUnless(_gi_available(), "PyGObject (gi) fehlt - /usr/bin/python3 nutzen")
 class GuiClientStateTest(unittest.TestCase):
     """Testet den GuiClient gegen einen echten Daemon (ohne GTK-Display).
 
@@ -126,10 +137,7 @@ class GuiWidgetTest(unittest.TestCase):
         self.assertEqual(parse_rate_lenient("512 kbps"), 512)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
 class ProcessTableInPlaceTest(unittest.TestCase):
     """set_state() darf Zeilen NICHT neu aufbauen (Fokus-/Teleing-Ueberleben)."""
 
@@ -176,3 +184,7 @@ class ProcessTableInPlaceTest(unittest.TestCase):
         self.assertEqual(table.row_count(), 1)
         table.set_state({"processes": [], "rules": []})
         self.assertEqual(table.row_count(), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
