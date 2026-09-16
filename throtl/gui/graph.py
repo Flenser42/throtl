@@ -1,141 +1,227 @@
-"""Live-Bandbreiten-Graph (Cairo-Zeichnung ueber GtkDrawingArea).
+"""Live bandwidth graph: scrollable history + hover readout (Cairo / GtkDrawingArea).
 
-Zeichnet Download- und Upload-Kurve der Gesamtbandbreite ueber ein Zeitfenster.
-Dunkles, minimalistisches Design passend zu Omarchy.
+The graph keeps up to ``max_samples`` samples (1 per poll). Samples are drawn
+``PX_PER_SAMPLE`` pixels apart, and the drawing area lives in a horizontal
+ScrolledWindow — so you can scroll back through history. New samples keep the
+view pinned to the right edge until you scroll away from it.
+
+Hovering with the mouse shows the exact values at that point in time (marker
+line + readout text below the graph).
 """
 
-import math
-from collections import deque
+import time as _time
 
-import gi  # noqa: F401
+import gi
 
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Gtk, Gdk  # noqa: F401
+from gi.repository import Gtk
+
+from ..units import format_rate
+
+PX_PER_SAMPLE = 6
+GRAPH_HEIGHT = 132
 
 
-class BandwidthGraph(Gtk.DrawingArea):
-    """Zeitlicher Verlauf der Gesamtbandbreite (Down + Up)."""
+class BandwidthGraph(Gtk.Box):
+    """Bandwidth over time with scrolling and a hover readout."""
 
-    def __init__(self, window_seconds: int = 60, max_rate_kbps: int | None = None):
-        super().__init__()
-        self.window_seconds = window_seconds
-        self.max_rate_kbps = max_rate_kbps  # None -> Auto-Skalierung
-        self._samples = deque(maxlen=window_seconds)  # (t, down_kbps, up_kbps)
-        self._auto_baseline = 1000  # kbit/s Startwert fuer Auto-Skalierung
-        # GTK4: gibt es kein set_height_request; Hoehe ueber set_size_request.
-        self.set_size_request(-1, 120)
-        self.set_draw_func(self._draw, None)
-        self.add_css_class("throtl-graph")
+    def __init__(self, max_samples: int = 900, unit: str = "mBs"):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        self._max_samples = max_samples
+        self._samples = []          # (t_epoch, down_kbit, up_kbit)
+        self._unit = unit
+        self._hover = None
+        self._autoscroll = True
+        self._baseline = 1000.0     # kbit/s, smooths the auto Y-scale
 
-    def push(self, down_kbps: float, up_kbps: float, now: float | None = None) -> None:
-        import time
+        self._area = Gtk.DrawingArea()
+        self._area.set_size_request(320, GRAPH_HEIGHT)
+        self._area.set_draw_func(self._draw, None)
+        self._area.add_css_class("throtl-graph")
 
-        if now is None:
-            now = time.monotonic()
-        self._samples.append((now, max(0.0, down_kbps), max(0.0, up_kbps)))
-        self.queue_draw()
+        self._scroll = Gtk.ScrolledWindow()
+        self._scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.NEVER)
+        self._scroll.set_child(self._area)
+        self._scroll.set_size_request(-1, GRAPH_HEIGHT + 6)
+        self._scroll.set_vexpand(False)
+        self.append(self._scroll)
+
+        self._readout = Gtk.Label(label="", xalign=0.0)
+        self._readout.add_css_class("dim-label")
+        self.append(self._readout)
+
+        self._hadj = self._scroll.get_hadjustment()
+        self._hadj.connect("value-changed", self._on_scrolled)
+
+        motion = Gtk.EventControllerMotion()
+        motion.connect("motion", self._on_motion)
+        motion.connect("leave", self._on_leave)
+        self._area.add_controller(motion)
+
+    # --- Public API -------------------------------------------------------
+
+    def set_unit(self, unit: str) -> None:
+        self._unit = unit
+        self._update_readout()
+        self._area.queue_draw()
+
+    def push(self, down_kbit: float, up_kbit: float, now: float | None = None) -> None:
+        t = _time.time() if now is None else now
+        self._samples.append((t, max(0.0, down_kbit), max(0.0, up_kbit)))
+        if len(self._samples) > self._max_samples:
+            del self._samples[: len(self._samples) - self._max_samples]
+        self._resize_area()
+        if self._autoscroll:
+            self._scroll_to_end()
+        self._area.queue_draw()
 
     def clear(self) -> None:
         self._samples.clear()
-        self.queue_draw()
+        self._hover = None
+        self._update_readout()
+        self._area.queue_draw()
 
-    def _draw(self, area, cr, width, height, _data) -> None:
-        # Hintergrund
-        cr.set_source_rgba(0.10, 0.12, 0.14, 1.0)
+    # --- Scrolling --------------------------------------------------------
+
+    def _resize_area(self) -> None:
+        visible = max(320, self._scroll.get_width())
+        wanted = max(visible, len(self._samples) * PX_PER_SAMPLE)
+        if wanted != self._area.get_width():
+            self._area.set_size_request(wanted, GRAPH_HEIGHT)
+
+    def _scroll_to_end(self) -> None:
+        upper = self._hadj.get_upper()
+        page = self._hadj.get_page_size()
+        self._hadj.set_value(max(0.0, upper - page))
+
+    def _on_scrolled(self, hadj, *_args):
+        upper = hadj.get_upper()
+        page = hadj.get_page_size()
+        at_end = hadj.get_value() >= (upper - page - 2.0)
+        self._autoscroll = at_end
+        # Beim Scrollen die Auslese aktualisieren (Position bleibt gleich x)
+        self._update_readout()
+
+    # --- Hover ------------------------------------------------------------
+
+    def _index_at(self, x: float):
+        if not self._samples:
+            return None
+        idx = int(x // PX_PER_SAMPLE)
+        return max(0, min(len(self._samples) - 1, idx))
+
+    def _on_motion(self, _controller, x, _y):
+        idx = self._index_at(x)
+        if idx != self._hover:
+            self._hover = idx
+            self._update_readout()
+            self._area.queue_draw()
+
+    def _on_leave(self, *_args):
+        if self._hover is not None:
+            self._hover = None
+            self._update_readout()
+            self._area.queue_draw()
+
+    def _update_readout(self) -> None:
+        if self._hover is None or self._hover >= len(self._samples):
+            self._readout.set_text(
+                f"History: {len(self._samples)} s — hover the graph to inspect a moment")
+            return
+        t, down, up = self._samples[self._hover]
+        stamp = _time.strftime("%H:%M:%S", _time.localtime(t))
+        self._readout.set_text(
+            f"{stamp}   ▼ {format_rate(down, self._unit, 2)}"
+            f"   ▲ {format_rate(up, self._unit, 2)}")
+
+    # --- Drawing ----------------------------------------------------------
+
+    def _draw(self, _area, cr, width, height, _data) -> None:
+        cr.set_source_rgba(0.06, 0.08, 0.10, 1.0)
         cr.rectangle(0, 0, width, height)
         cr.fill()
 
         if not self._samples:
-            self._draw_empty(cr, width, height)
+            self._draw_centered_text(cr, width, height, "Waiting for traffic…")
             return
 
-        now = self._samples[-1][0]
-        start = now - self.window_seconds
-        # Auf Daten im Fenster filtern
-        samples = [s for s in self._samples if s[0] >= start]
-        if not samples:
-            self._draw_empty(cr, width, height)
-            return
+        y_max = self._y_scale()
 
-        # Y-Skalierung
-        max_down = max(s[1] for s in samples)
-        max_up = max(s[2] for s in samples)
-        current_max = max(max_down, max_up, 1.0)
-        if self.max_rate_kbps:
-            y_max = float(self.max_rate_kbps)
-        else:
-            # Auto: 1.3x aktuelles Max, mind. Startwert
-            y_max = max(current_max * 1.3, self._auto_baseline)
-            if y_max > 0:
-                self._auto_baseline = y_max * 0.9
-
-        def x_of(t: float) -> float:
-            frac = (t - start) / self.window_seconds
-            return 6.0 + frac * (width - 12.0)
+        def x_of(index: int) -> float:
+            return index * PX_PER_SAMPLE + PX_PER_SAMPLE / 2.0
 
         def y_of(rate: float) -> float:
-            frac = min(1.0, max(0.0, rate / y_max))
+            frac = min(1.0, max(0.0, rate / y_max)) if y_max > 0 else 0.0
             return 8.0 + (1.0 - frac) * (height - 16.0)
 
-        # Rasterlinien
-        cr.set_source_rgba(0.22, 0.26, 0.30, 0.5)
+        # Grid
+        cr.set_source_rgba(0.20, 0.24, 0.28, 0.6)
         cr.set_line_width(1.0)
         bands = 4
         for i in range(bands + 1):
-            yy = 8.0 + i * (float(height - 16.0) / bands)
-            cr.move_to(6.0, yy)
-            cr.line_to(width - 6.0, yy)
+            yy = 8.0 + i * ((height - 16.0) / bands)
+            cr.move_to(0, yy)
+            cr.line_to(width, yy)
         cr.stroke()
 
-        # Grid-Labels (max-rate)
         cr.set_font_size(10)
-        cr.set_source_rgba(0.6, 0.66, 0.72, 0.9)
-        cr.move_to(8.0, 14.0)
-        cr.show_text(self._fmt_rate(y_max))
-        cr.move_to(8.0, height - 10.0)
+        cr.set_source_rgba(0.55, 0.61, 0.67, 0.95)
+        cr.move_to(6, 14)
+        cr.show_text(format_rate(y_max, self._unit, 1))
+        cr.move_to(6, height - 8)
         cr.show_text("0")
 
-        # Download-Kurve (gruen/teal)
-        self._stroke_polyline(cr, samples, x_of, y_of, lambda s: s[1],
-                              (0.35, 0.85, 0.55, 1.0))
-        # Upload-Kurve (orange)
-        self._stroke_polyline(cr, samples, x_of, y_of, lambda s: s[2],
-                              (0.95, 0.62, 0.25, 1.0))
+        self._stroke_curve(cr, x_of, y_of, 1, (0.35, 0.85, 0.55, 1.0))
+        self._stroke_curve(cr, x_of, y_of, 2, (0.95, 0.62, 0.25, 1.0))
 
-        # Legende
+        # Hover marker
+        if self._hover is not None and self._hover < len(self._samples):
+            hx = x_of(self._hover)
+            t, down, up = self._samples[self._hover]
+            cr.set_source_rgba(0.85, 0.89, 0.94, 0.55)
+            cr.set_line_width(1.0)
+            cr.move_to(hx, 4)
+            cr.line_to(hx, height - 4)
+            cr.stroke()
+            cr.set_source_rgba(0.35, 0.85, 0.55, 1.0)
+            cr.arc(hx, y_of(down), 3.0, 0, 6.2832)
+            cr.fill()
+            cr.set_source_rgba(0.95, 0.62, 0.25, 1.0)
+            cr.arc(hx, y_of(up), 3.0, 0, 6.2832)
+            cr.fill()
+
+        # Legend (top right of the visible area)
         cr.set_font_size(10)
         cr.set_source_rgba(0.35, 0.85, 0.55, 1.0)
-        cr.move_to(width - 70, 16)
-        cr.show_text("Dwn")
+        cr.move_to(width - 58, 14)
+        cr.show_text("Dl")
         cr.set_source_rgba(0.95, 0.62, 0.25, 1.0)
-        cr.move_to(width - 70, 30)
-        cr.show_text("Up")
+        cr.move_to(width - 58, 26)
+        cr.show_text("Ul")
 
-    def _stroke_polyline(self, cr, samples, x_of, y_of, rate_of, color):
-        if len(samples) < 2:
-            cr.set_source_rgba(*color)
-            cr.set_line_width(2.0)
-            cr.move_to(x_of(samples[0][0]), y_of(rate_of(samples[0])))
-            cr.line_to(x_of(samples[-1][0] + 0.001), y_of(rate_of(samples[-1])))
-            cr.stroke()
+    def _y_scale(self) -> float:
+        peak = 1.0
+        for _t, down, up in self._samples:
+            peak = max(peak, down, up)
+        target = max(peak * 1.25, self._baseline)
+        # sanfte Anpassung, damit die Skala nicht springt
+        self._baseline = max(self._baseline * 0.94, target * 0.9, 100.0)
+        return max(target, 100.0)
+
+    def _stroke_curve(self, cr, x_of, y_of, index, color) -> None:
+        if not self._samples:
             return
         cr.set_source_rgba(*color)
         cr.set_line_width(2.0)
-        cr.move_to(x_of(samples[0][0]), y_of(rate_of(samples[0])))
-        for s in samples[1:]:
-            cr.line_to(x_of(s[0]), y_of(rate_of(s)))
+        cr.move_to(x_of(0), y_of(self._samples[0][index]))
+        for i in range(1, len(self._samples)):
+            cr.line_to(x_of(i), y_of(self._samples[i][index]))
         cr.stroke()
 
-    def _draw_empty(self, cr, width, height):
+    def _draw_centered_text(self, cr, width, height, text) -> None:
         cr.set_font_size(11)
         cr.set_source_rgba(0.5, 0.55, 0.6, 1.0)
-        text = "Keine Daten"
-        cr.move_to((width / 2) - cr.text_extents(text).width / 2,
-                   height / 2)
+        extents = cr.text_extents(text)
+        cr.move_to((width - extents.width) / 2, height / 2)
         cr.show_text(text)
-
-    def _fmt_rate(self, kbps: float) -> str:
-        if kbps >= 1000:
-            return f"{kbps / 1000:.1f} Mbps"
-        return f"{kbps:.0f} kbps"

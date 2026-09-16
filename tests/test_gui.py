@@ -29,10 +29,14 @@ def _gi_available():
 
 
 def _display_available():
+    """GTK muss initialisiert sein, sonst ist Gdk.Display immer None."""
     try:
         import gi
 
-        gi.require_version("Gdk", "4.0")
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gtk
+
+        Gtk.init_check()
         from gi.repository import Gdk
 
         return Gdk.Display.get_default() is not None
@@ -184,6 +188,59 @@ class ProcessTableInPlaceTest(unittest.TestCase):
         self.assertEqual(table.row_count(), 1)
         table.set_state({"processes": [], "rules": []})
         self.assertEqual(table.row_count(), 0)
+
+
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class ProcessTableSortTest(unittest.TestCase):
+    """Sortierung: Standard = Download absteigend; Kopfklick aendert die Spalte."""
+
+    class _Gui:
+        state = {"processes": [], "rules": []}
+        client = None
+        def show_error(self, m): pass
+        def show_info(self, m): pass
+
+    def _table(self):
+        from throtl.gui.process_pane import ProcessTable
+        return ProcessTable(self._Gui(), unit="mBs")
+
+    @staticmethod
+    def _state():
+        return {"rules": [], "processes": [
+            {"pid": "1", "name": "/usr/bin/slow", "download": 10.0, "upload": 900.0},
+            {"pid": "2", "name": "/usr/bin/fast", "download": 5000.0, "upload": 20.0},
+            {"pid": "3", "name": "/usr/bin/mid", "download": 700.0, "upload": 300.0},
+        ]}
+
+    def test_default_sort_is_download_desc(self):
+        t = self._table()
+        t.set_state(self._state())
+        self.assertEqual(t.visible_order(), ["2", "3", "1"])
+
+    def test_sort_by_upload(self):
+        t = self._table()
+        t.set_state(self._state())
+        t.set_sort("upload", True)
+        self.assertEqual(t.visible_order(), ["1", "3", "2"])
+
+    def test_sort_by_name_asc(self):
+        t = self._table()
+        t.set_state(self._state())
+        t.set_sort("name", False)
+        self.assertEqual(t.visible_order(), ["2", "3", "1"])  # fast, mid, slow
+
+    def test_header_click_toggles_direction(self):
+        t = self._table()
+        t.set_state(self._state())
+        t._on_sort_clicked(None, "download")   # schon aktiv -> Richtung kippt
+        self.assertEqual(t.visible_order(), ["1", "3", "2"])
+        t._on_sort_clicked(None, "download")
+        self.assertEqual(t.visible_order(), ["2", "3", "1"])
+
+    def test_table_expands(self):
+        t = self._table()
+        self.assertTrue(t.get_vexpand())
+
 
 
 if __name__ == "__main__":

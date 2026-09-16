@@ -5,12 +5,16 @@ per-process download/upload limit + priority. Setting a limit creates/updates a
 TrafficToll rule (matched by exe/name) via the daemon.
 
 Design notes:
-* Rows are built once and updated IN PLACE on every poll — only the two rate
-  labels change, so typing in the limit fields keeps focus.
-* Limit fields are shown and parsed in the currently selected unit (MB/s,
-  Mbit/s, KB/s, kbit/s) — a bare number means that unit.
+* The table is a vertical Box (header + one expanding ScrolledWindow), so the
+  list grows to the bottom edge of the window.
+* Rows are built once and updated IN PLACE on every poll — only the rate labels
+  change, so typing in the limit fields keeps focus.
+* Rows are re-ordered in place according to the current sort (default:
+  download rate, highest first). Click a column header to sort by it; click
+  again to flip the direction.
+* Limit fields are shown and parsed in the currently selected unit.
 * Programmatic widget updates are wrapped in ``_syncing`` so they never fire
-  daemon RPCs (no feedback loops while loading/refreshing).
+  daemon RPCs.
 """
 
 import re
@@ -25,16 +29,22 @@ from gi.repository import Gtk, GLib, Pango
 from ..units import format_rate, format_rate_for_entry, parse_rate_in_unit
 from .widgets import RateEntry, PriorityDropdown, UNIT_LABELS
 
-# Spaltenbreiten — identisch fuer Kopfzeile und Datenzeilen (saubere Ausrichtung)
+# (sort key | None, title, width) — identische Breiten fuer Kopf und Zeilen
 _COLUMNS = (
-    ("PID", 66),
-    ("Process", 210),
-    ("▼ Download", 118),
-    ("▲ Upload", 118),
-    ("DL limit", 112),
-    ("UL limit", 112),
-    ("Priority", 128),
+    ("pid", "PID", 66),
+    ("name", "Process", 200),
+    ("download", "▼ Download", 116),
+    ("upload", "▲ Upload", 116),
+    (None, "DL limit", 112),
+    (None, "UL limit", 112),
+    ("priority", "Priority", 124),
 )
+
+# Sortier-Richtung, die beim Klick auf eine Spalte sinnvoll ist
+_DEFAULT_DESC = {"download": True, "upload": True, "name": False,
+                 "pid": False, "priority": False}
+
+_PRIORITY_RANK = {"kritisch": 0, "hoch": 1, "normal": 2, "niedrig": 3}
 
 
 def _first_token(raw: str) -> str:
@@ -62,35 +72,50 @@ def _unescape(pattern: str) -> str:
         return pattern or ""
 
 
-class ProcessTable(Gtk.ScrolledWindow):
-    """Scrollable, editable table of processes + their throttling settings."""
+class ProcessTable(Gtk.Box):
+    """Editable, sortable table of processes + their throttling settings."""
 
     def __init__(self, gui, unit: str = "mBs"):
-        super().__init__(vexpand=True)
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.set_vexpand(True)
         self.gui = gui
         self.unit = unit
-        self._rows = {}      # pid -> RowWidgets
-        self._order = []     # pids in display order
+        self._rows = {}          # pid -> RowWidgets
+        self._procs = {}         # pid -> current blob (for sorting)
         self._rules = []
         self._syncing = False
         self._empty = None
+        self._sort_key = "download"
+        self._sort_desc = True
+        self._sort_labels = {}
 
-        columns_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        # --- header (clickable = sort) ---
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         header.add_css_class("table-header-row")
-        for title, width in _COLUMNS:
-            label = Gtk.Label(label=title, xalign=0.0)
-            label.add_css_class("table-header")
-            header.append(self._cell(label, width))
-        columns_box.append(header)
+        for key, title, width in _COLUMNS:
+            if key is None:
+                label = Gtk.Label(label=title, xalign=0.0)
+                label.add_css_class("table-header")
+                header.append(self._cell(label, width))
+            else:
+                button = Gtk.Button(label=title)
+                button.add_css_class("table-header")
+                button.add_css_class("flat")
+                button.set_halign(Gtk.Align.FILL)
+                button.connect("clicked", self._on_sort_clicked, key)
+                self._sort_labels[key] = (button, title)
+                header.append(self._cell(button, width))
+        self.append(header)
 
-        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        # --- rows ---
+        self._list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        self._list.set_valign(Gtk.Align.START)
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroll.set_child(body)
-        columns_box.append(scroll)
-        self._list = body
-        self.set_child(columns_box)
+        scroll.set_vexpand(True)
+        scroll.set_child(self._list)
+        self.append(scroll)
+        self._update_sort_labels()
 
     @staticmethod
     def _cell(child, width: int) -> Gtk.Box:
@@ -100,13 +125,77 @@ class ProcessTable(Gtk.ScrolledWindow):
         box.append(child)
         return box
 
+    # --- Sorting ----------------------------------------------------------
+
+    def set_sort(self, key: str, desc: bool) -> None:
+        self._sort_key = key
+        self._sort_desc = desc
+        self._update_sort_labels()
+        self._apply_sort()
+
+    def _on_sort_clicked(self, _button, key: str) -> None:
+        if key == self._sort_key:
+            self._sort_desc = not self._sort_desc
+        else:
+            self._sort_key = key
+            self._sort_desc = _DEFAULT_DESC.get(key, False)
+        self._update_sort_labels()
+        self._apply_sort()
+
+    def _update_sort_labels(self) -> None:
+        for key, (button, title) in self._sort_labels.items():
+            if key == self._sort_key:
+                arrow = "▼" if self._sort_desc else "▲"
+                button.set_label(f"{title}  {arrow}")
+            else:
+                button.set_label(title)
+
+    def _sort_value(self, pid: str):
+        blob = self._procs.get(pid, {})
+        key = self._sort_key
+        if key == "download":
+            return float(blob.get("download", 0.0) or 0.0)
+        if key == "upload":
+            return float(blob.get("upload", 0.0) or 0.0)
+        if key == "name":
+            return _short_name(blob.get("name", "")).lower()
+        if key == "pid":
+            return int(pid) if str(pid).isdigit() else 0
+        if key == "priority":
+            rule = self._rule_for(blob)
+            return _PRIORITY_RANK.get(rule.get("priority", "normal"), 2)
+        return 0
+
+    def _apply_sort(self) -> None:
+        """Zeilen IM PLATZ umsortieren (keine Widgets neu bauen)."""
+        pids = sorted(self._procs.keys(), key=self._sort_value,
+                      reverse=self._sort_desc)
+        previous = None
+        for pid in pids:
+            roww = self._rows.get(pid)
+            if roww is None:
+                continue
+            self._list.reorder_child_after(roww.box, previous)
+            previous = roww.box
+
+    def visible_order(self) -> list:
+        """Aktuelle Anzeige-Reihenfolge (Tests/Hilfe)."""
+        order = []
+        child = self._list.get_first_child()
+        while child is not None:
+            for pid, roww in self._rows.items():
+                if roww.box is child:
+                    order.append(pid)
+                    break
+            child = child.get_next_sibling()
+        return order
+
     # --- Unit -------------------------------------------------------------
 
     def set_unit(self, unit: str) -> None:
         self.unit = unit
-        state = self.gui_client_state()
         for pid, roww in list(self._rows.items()):
-            blob = self._blob_for_pid(state, pid)
+            blob = self._procs.get(pid)
             if not blob:
                 continue
             roww.down.set_text(format_rate(blob.get("download", 0.0), unit, 2))
@@ -130,30 +219,32 @@ class ProcessTable(Gtk.ScrolledWindow):
     # --- State application ------------------------------------------------
 
     def set_state(self, state: dict) -> None:
-        """Called on every poll; updates live values in place."""
+        """Called on every poll; updates live values in place, then re-sorts."""
         self._rules = state.get("rules", [])
         processes = state.get("processes", [])
+        self._procs = {str(b.get("pid")): b for b in processes}
+
         if not processes:
             self._clear_rows()
             self._show_empty()
             return
         self._hide_empty()
-        for blob in processes:
-            pid = str(blob.get("pid"))
+
+        for pid, blob in self._procs.items():
             if pid in self._rows:
                 self._update_row(self._rows[pid], blob)
             else:
                 roww = self._build_row(blob)
                 self._rows[pid] = roww
                 self._list.append(roww.box)
-                self._order.append(pid)
-        alive = {str(b.get("pid")) for b in processes}
-        for pid in list(self._order):
-            if pid not in alive:
+
+        for pid in list(self._rows):
+            if pid not in self._procs:
                 roww = self._rows.pop(pid)
                 if roww.box.get_parent() is not None:
                     self._list.remove(roww.box)
-                self._order.remove(pid)
+
+        self._apply_sort()
 
     # Backwards compatible alias
     def refresh(self, state: dict) -> None:
@@ -178,23 +269,17 @@ class ProcessTable(Gtk.ScrolledWindow):
             self._list.remove(self._empty)
 
     def _clear_rows(self) -> None:
-        for pid in list(self._order):
-            roww = self._rows.pop(pid, None)
-            if roww is not None and roww.box.get_parent() is not None:
+        for pid in list(self._rows):
+            roww = self._rows.pop(pid)
+            if roww.box.get_parent() is not None:
                 self._list.remove(roww.box)
-        self._order.clear()
+        self._procs.clear()
 
     # --- Helpers ---------------------------------------------------------
 
     def gui_client_state(self) -> dict:
         client = getattr(self.gui, "gui", None)
         return getattr(client, "state", {"processes": [], "rules": []})
-
-    def _blob_for_pid(self, state, pid: str) -> dict | None:
-        for b in state.get("processes", []):
-            if str(b.get("pid")) == pid:
-                return b
-        return None
 
     def _rule_for(self, blob: dict) -> dict:
         """Regel zum Prozess finden (exe-Pfad bevorzugt, dann Name)."""
@@ -226,36 +311,37 @@ class ProcessTable(Gtk.ScrolledWindow):
 
         pid_l = Gtk.Label(label=pid, xalign=0.0)
         pid_l.add_css_class("dim-label")
-        box.append(self._cell(pid_l, _COLUMNS[0][1]))
+        box.append(self._cell(pid_l, _COLUMNS[0][2]))
 
         name_l = Gtk.Label(label=_short_name(blob.get("name", "?")), xalign=0.0)
         name_l.set_ellipsize(Pango.EllipsizeMode.END)
         name_l.set_tooltip_text((blob.get("name", "") or "")[:400])
-        box.append(self._cell(name_l, _COLUMNS[1][1]))
+        box.append(self._cell(name_l, _COLUMNS[1][2]))
 
         down = Gtk.Label(label=format_rate(blob.get("download", 0.0), self.unit, 2),
                          xalign=0.0)
-        box.append(self._cell(down, _COLUMNS[2][1]))
+        box.append(self._cell(down, _COLUMNS[2][2]))
 
         up = Gtk.Label(label=format_rate(blob.get("upload", 0.0), self.unit, 2),
                        xalign=0.0)
-        box.append(self._cell(up, _COLUMNS[3][1]))
+        box.append(self._cell(up, _COLUMNS[3][2]))
 
         dl = RateEntry(self.unit)
         dl.set_text(format_rate_for_entry(rule.get("download_limit"), self.unit))
-        dl.set_tooltip_text(f"Limit in {UNIT_LABELS.get(self.unit, self.unit)} — empty = unlimited")
+        dl.set_tooltip_text(
+            f"Limit in {UNIT_LABELS.get(self.unit, self.unit)} — empty = unlimited")
         dl.connect("changed", self._on_limit, pid, "download_limit")
-        box.append(self._cell(dl, _COLUMNS[4][1]))
+        box.append(self._cell(dl, _COLUMNS[4][2]))
 
         ul = RateEntry(self.unit)
         ul.set_text(format_rate_for_entry(rule.get("upload_limit"), self.unit))
         ul.connect("changed", self._on_limit, pid, "upload_limit")
-        box.append(self._cell(ul, _COLUMNS[5][1]))
+        box.append(self._cell(ul, _COLUMNS[5][2]))
 
         prio = PriorityDropdown()
         prio.set_priority_name(rule.get("priority", "normal") or "normal")
         prio.connect("notify::selected", self._on_priority, pid)
-        box.append(self._cell(prio, _COLUMNS[6][1]))
+        box.append(self._cell(prio, _COLUMNS[6][2]))
 
         return RowWidgets(box=box, pid=pid, down=down, up=up, dl=dl, ul=ul, prio=prio)
 
@@ -290,7 +376,7 @@ class ProcessTable(Gtk.ScrolledWindow):
         self._set_rule_field(pid, "priority", dd.get_priority_name())
 
     def _set_rule_field(self, pid: str, field: str, value) -> None:
-        blob = self._blob_for_pid(self.gui_client_state(), pid)
+        blob = self._procs.get(pid)
         if blob is None:
             # Prozess ist inzwischen weg — Eingabe verwerfen (kein Fehler-Popup).
             return

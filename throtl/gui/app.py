@@ -51,7 +51,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self.gui = gui
         self.app = app
         self.set_title("Throtl — Network Bandwidth Manager")
-        self.set_default_size(1000, 640)
+        self.set_default_size(1060, 780)
         self.unit = "mBs"
         self._syncing = False
 
@@ -139,11 +139,13 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self.total_label.add_css_class("total-label")
         view.append(self.total_label)
 
-        self.graph = BandwidthGraph(window_seconds=60)
+        # Scrollbare History (~15 min bei 1 Hz), Hover zeigt Werte
+        self.graph = BandwidthGraph(max_samples=900, unit=self.unit)
         view.append(self.graph)
 
-        # --- Process table ---
+        # --- Process table (fuellt den Rest bis zum unteren Rand) ---
         self.table = ProcessTable(self, unit=self.unit)
+        self.table.set_vexpand(True)
         view.append(self.table)
 
     def _caption(self, text: str) -> Gtk.Label:
@@ -206,6 +208,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
 
     def _sync_unit_widgets(self) -> None:
         self.table.set_unit(self.unit)
+        self.graph.set_unit(self.unit)
         idx = UNIT_IDS.index(self.unit)
         if self.unit_dd.get_selected() != idx:
             self._syncing = True
@@ -291,6 +294,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
             return
         self.unit = UNIT_IDS[idx]
         self.table.set_unit(self.unit)
+        self.graph.set_unit(self.unit)
         hint = f"limit in {UNIT_LABELS.get(self.unit, 'MB/s')}"
         for entry in (self.global_dl_entry, self.global_ul_entry):
             entry.set_placeholder_text(hint)
