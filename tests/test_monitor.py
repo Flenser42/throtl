@@ -90,18 +90,23 @@ class NethogsMonitorTest(unittest.TestCase):
         self.assertIn("1457", latest)
         self.assertEqual(latest["1457"]["name"], "/usr/lib/firefox/firefox")
 
+    def test_default_cmd_is_absolute(self):
+        """Damit ein systemd-Dienst nethogs auch bei minimalem PATH findet."""
+        mon = NethogsMonitor("wlo1", interval=1.0)
+        self.assertTrue(mon.cmd.startswith("/") or mon.cmd == "nethogs")
+
     def test_missing_binary_raises(self):
         mon = NethogsMonitor("enp34s0", cmd="/nonexistent/nethogs")
         with self.assertRaises(RuntimeError):
             mon.start()
 
     def test_build_argv(self):
-        mon = NethogsMonitor("wlo1", interval=2.0)
+        mon = NethogsMonitor("wlo1", interval=2.0, cmd="nethogs")
         self.assertEqual(mon._build_argv(),
                          ["nethogs", "-t", "-d", "2.0", "wlo1"])
 
     def test_build_argv_skips_auto_device(self):
-        mon = NethogsMonitor("auto", interval=1.0)
+        mon = NethogsMonitor("auto", interval=1.0, cmd="nethogs")
         self.assertEqual(mon._build_argv(), ["nethogs", "-t", "-d", "1.0"])
 
     def test_parse_filters_pid_zero_and_unknown(self):

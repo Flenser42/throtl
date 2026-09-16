@@ -188,8 +188,21 @@ class ThrotlWindow(Adw.ApplicationWindow):
             self._sync_global_fields(cfg)
             state = self.gui.call("list_processes")
             self._apply_state(state)
+            self._report_monitor_status()
         except Exception as error:
             self.show_error(str(error))
+
+    def _report_monitor_status(self) -> None:
+        """Klaren Hinweis zeigen, wenn keine Prozessdaten kommen koennen."""
+        try:
+            st = self.gui.call("status")
+        except Exception:
+            return
+        err = st.get("monitor_error")
+        if err:
+            self.show_error(f"Monitoring disabled — no process list. Cause: {err}")
+        elif not st.get("monitoring"):
+            self.show_error("Monitoring is not active — no process list available.")
 
     def _sync_unit_widgets(self) -> None:
         self.table.set_unit(self.unit)

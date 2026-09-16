@@ -53,6 +53,12 @@ def cmd_status(client, args):
     engine = status.get("engine") or {}
     print(f"  Engine:      running={engine.get('running')} "
           f"generation={engine.get('generation')}")
+    if status.get("engine_error"):
+        print(f"  Engine error: {status['engine_error']}")
+    if engine.get("last_error"):
+        print(f"  Engine last error: {engine['last_error']}")
+    if status.get("monitor_error"):
+        print(f"  Monitor error: {status['monitor_error']}")
     if engine.get("exit_code") is not None:
         print(f"  Engine exit: {engine.get('exit_code')} "
               f"(latest tt crash; siehe stderr/unten)")

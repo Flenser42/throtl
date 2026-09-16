@@ -158,6 +158,7 @@ class TrafficTollEngine:
         self._stderr_path = log_path
         self._reader_thread = None
         self._watchdog = None
+        self._last_error = None
 
     def apply(self, config: dict) -> None:
         """Neue Config schreiben und tt neu starten."""
@@ -174,10 +175,13 @@ class TrafficTollEngine:
                 return
             try:
                 self._start_locked(yaml)
-            except (OSError, subprocess.SubprocessError) as error:
+            except Exception as error:
+                self._last_error = f"{type(error).__name__}: {error}"
                 if self.on_restart is not None:
                     self.on_restart(disabled=False, error=str(error))
                 raise
+            else:
+                self._last_error = None
         if self.on_restart is not None:
             self.on_restart(disabled=False, error=None)
 
@@ -318,6 +322,7 @@ class TrafficTollEngine:
             "exit_code": exit_code,
             "stderr_tail": tail,
             "stderr_path": self._stderr_path,
+            "last_error": self._last_error,
         }
 
 

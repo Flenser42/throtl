@@ -212,6 +212,9 @@ class Daemon:
             )
 
         self.monitor = None
+        self.monitor_error = None
+        self.engine_error = None
+        self._monitor_retry_tick = 0
         self._monitor_factory = monitor_factory or (lambda dev, i: NethogsMonitor(dev, interval=i))
 
         self._clients = set()
@@ -260,6 +263,13 @@ class Daemon:
             time.sleep(self.interval)
 
     def _tick_monitor(self) -> None:
+        # Monitor nachziehen, falls der Start zuvor fehlgeschlagen ist
+        # (z. B. nethogs war noch nicht bereit). Alle ~10 Ticks erneut versuchen.
+        if self.monitor is None:
+            self._monitor_retry_tick += 1
+            if self._monitor_retry_tick >= 10:
+                self._monitor_retry_tick = 0
+                self._start_monitor()
         self._last_snapshot = self._collect_snapshot()
 
     def _collect_snapshot(self) -> dict:
@@ -299,7 +309,10 @@ class Daemon:
         try:
             self.engine.apply(cfg)
         except Exception as error:
-            print(f"Engine-Fehler: {error}")
+            self.engine_error = f"{type(error).__name__}: {error}"
+            print(f"Engine-Fehler: {self.engine_error}", flush=True)
+        else:
+            self.engine_error = None
 
     def _start_monitor(self) -> None:
         if self.monitor is None:
@@ -307,8 +320,11 @@ class Daemon:
             try:
                 self.monitor.start()
             except Exception as error:
-                print(f"Monitor-Fehler: {error}")
+                self.monitor_error = f"{type(error).__name__}: {error}"
+                print(f"Monitor-Fehler: {self.monitor_error}", flush=True)
                 self.monitor = None
+            else:
+                self.monitor_error = None
 
     def _stop_monitor(self) -> None:
         if self.monitor is not None:
@@ -391,6 +407,8 @@ class Daemon:
             "interface": self.interface,
             "enabled": cfg["global"].get("enabled", True),
             "monitoring": self.monitor is not None,
+            "monitor_error": self.monitor_error,
+            "engine_error": self.engine_error,
             "engine": engine_status,
             "simulated": getattr(self.engine, "simulated", False),
             "preflight": preflight(tt_cmd, self.interface),

@@ -15,11 +15,31 @@ DOWNLOAD (eingehend), "sent" dem UPLOAD (ausgehend). Der Parser mappt daher
 recv -> download und sent -> upload.
 """
 
+import os
+import shutil
 import subprocess
 import threading
 
 # nethogs `-t`: Identifier (name/pid/uid) + 2 Werte
 TRACE_FIELD_COUNT = 3
+
+
+def resolve_nethogs_binary(cmd: str = None) -> str:
+    """nethogs als ABSOLUTEN Pfad ermitteln.
+
+    Wichtig fuer systemd-Dienste mit eingeschraenktem/abweichendem PATH:
+    sonst findet der Daemon "nethogs" nicht und das Monitoring bleibt aus.
+    Reihenfolge: Argument -> $THROTL_NETHOGS -> /usr/bin/nethogs -> PATH.
+    """
+    if cmd:
+        return cmd
+    env = os.environ.get("THROTL_NETHOGS")
+    if env:
+        return env
+    for candidate in ("/usr/bin/nethogs", "/usr/local/bin/nethogs"):
+        if os.path.exists(candidate):
+            return candidate
+    return shutil.which("nethogs") or "nethogs"
 
 
 def parse_trace(line: str):
@@ -125,11 +145,11 @@ class NethogsMonitor:
     Über ``inject`` kann ein faike File-Like-Objekt (Tests) uebergeben werden.
     """
 
-    def __init__(self, device: str, interval: float = 1.0, cmd: str = "nethogs",
+    def __init__(self, device: str, interval: float = 1.0, cmd: str = None,
                  inject=None):
         self.device = device
         self.interval = interval
-        self.cmd = cmd
+        self.cmd = resolve_nethogs_binary(cmd)
         self._inject = inject
         self._proc = None
         self._parser = TraceParser()
