@@ -113,8 +113,8 @@ class ThrotlWindow(Adw.ApplicationWindow):
         # --- Global limits ---
         glob = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
         glob.add_css_class("toolbar")
-        self.global_dl_entry = self._labelled_entry(glob, "Global download")
-        self.global_ul_entry = self._labelled_entry(glob, "Global upload")
+        self.global_dl_entry = self._labelled_entry(glob, "Global download limit")
+        self.global_ul_entry = self._labelled_entry(glob, "Global upload limit")
 
         prio_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         prio_box.append(self._caption("Global priority"))
@@ -242,13 +242,29 @@ class ThrotlWindow(Adw.ApplicationWindow):
     def _apply_state(self, state: dict) -> None:
         self.table.set_state(state)
         processes = state.get("processes", [])
-        total_d = sum(p.get("download", 0.0) for p in processes)
-        total_u = sum(p.get("upload", 0.0) for p in processes)
-        self.total_label.set_text(
-            f"Total ({len(processes)} processes):"
-            f"   ▼ {format_rate(total_d, self.unit, 1)}"
-            f"   ▲ {format_rate(total_u, self.unit, 1)}")
-        self.graph.push(total_d, total_u)
+        iface = state.get("interface", "?")
+        # "Global" = echte Rate des Interfaces (aus /proc/net/dev) — korrekt,
+        # weil sie auch nicht zuordenbaren Traffic enthaelt.
+        g = state.get("global") or {}
+        a = state.get("attributed") or {}
+        if g.get("download") is None:
+            main = f"Global ({iface}):  measuring…"
+            graph_d = a.get("download", 0.0)
+            graph_u = a.get("upload", 0.0)
+        else:
+            main = (f"Global ({iface}):"
+                    f"   ▼ {format_rate(g.get('download'), self.unit, 1)}"
+                    f"   ▲ {format_rate(g.get('upload'), self.unit, 1)}")
+            graph_d, graph_u = g.get("download"), g.get("upload")
+        sub = (f"{len(processes)} procs, attributed"
+               f" ▼ {format_rate(a.get('download', 0.0), self.unit, 1)}"
+               f" ▲ {format_rate(a.get('upload', 0.0), self.unit, 1)}")
+        self.total_label.set_text(f"{main}      ·      {sub}")
+        self.total_label.set_tooltip_text(
+            "Global = real interface throughput (kernel counters, includes "
+            "traffic that cannot be attributed to a process).\n"
+            "attributed = what nethogs could map to processes.")
+        self.graph.push(graph_d, graph_u)
         if not self._syncing:
             enabled = bool(state.get("enabled", True))
             if self.toggle_switch.get_active() != enabled:

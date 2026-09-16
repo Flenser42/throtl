@@ -17,9 +17,10 @@
 
 /* --- Table ----------------------------------------------------------- */
 
+/* Kein border hier: ein 1px-Rahmen verkleinert die Innenbreite um 2px und
+   die (expandierende) Prozess-Spalte waere dann schmaler als in den Zeilen. */
 .table-header-row {
     background-color: #1d2127;
-    border: 1px solid #2b3138;
     border-radius: 8px;
     padding: 6px 8px;
     margin-bottom: 4px;
@@ -59,7 +60,21 @@
 /* --- Inputs ---------------------------------------------------------- */
 
 .throtl-rate-entry {
-    min-width: 84px;
+    min-width: 0;
+    padding-left: 6px;
+    padding-right: 6px;
+    font-feature-settings: "tnum";
+}
+
+/* Header-Buttons sollen exakt die Spaltenbreite annehmen, nicht mehr:
+   Buttons bringen sonst Polster/Mindestbreite mit und verschieben die
+   Spalten gegenueber den Datenzeilen. */
+.table-header-row button,
+.table-header-row button.flat {
+    padding: 0 2px;
+    min-width: 0;
+    min-height: 0;
+    border-radius: 4px;
 }
 
 .throtl-unit {

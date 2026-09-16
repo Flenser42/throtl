@@ -103,16 +103,26 @@ class NethogsMonitorTest(unittest.TestCase):
     def test_build_argv(self):
         mon = NethogsMonitor("wlo1", interval=2.0, cmd="nethogs")
         self.assertEqual(mon._build_argv(),
-                         ["nethogs", "-t", "-d", "2.0", "wlo1"])
+                         ["nethogs", "-t", "-d", "2.0", "-C", "wlo1"])
 
     def test_build_argv_skips_auto_device(self):
         mon = NethogsMonitor("auto", interval=1.0, cmd="nethogs")
-        self.assertEqual(mon._build_argv(), ["nethogs", "-t", "-d", "1.0"])
+        self.assertEqual(mon._build_argv(), ["nethogs", "-t", "-d", "1.0", "-C"])
 
-    def test_parse_filters_pid_zero_and_unknown(self):
-        self.assertIsNone(monitor.parse_trace("unknown TCP/0/0\t0\t0\n"))
-        self.assertIsNone(monitor.parse_trace("/usr/bin/foo/0/1000\t1\t2\n"))
-        self.assertIsNone(monitor.parse_trace("?/0/0\t0\t0\n"))
+    def test_build_argv_without_udp(self):
+        mon = NethogsMonitor("wlo1", interval=1.0, cmd="nethogs", capture_udp=False)
+        self.assertEqual(mon._build_argv(), ["nethogs", "-t", "-d", "1.0", "wlo1"])
+
+    def test_unattributable_traffic_is_kept(self):
+        """Nicht zuordenbarer Traffic darf NICHT verschwinden."""
+        got = monitor.parse_trace("unknown TCP/0/0\t1.5\t2.5\n")
+        self.assertEqual(got[0], monitor.UNATTRIBUTED_NAME)
+        self.assertEqual(got[1], monitor.UNATTRIBUTED_PID)
+        self.assertEqual(got[3], 1.5)
+        self.assertEqual(got[4], 2.5)
+        # pid 0 ohne "unknown" ebenfalls als nicht zuordenbar markieren
+        self.assertEqual(monitor.parse_trace("/usr/bin/foo/0/1000\t1\t2\n")[1],
+                         monitor.UNATTRIBUTED_PID)
 
     def test_auto_device(self):
         # detect_default_interface aus config; hier nur smoke test, dass der

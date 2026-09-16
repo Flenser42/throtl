@@ -41,7 +41,7 @@ from .config import (
     save_config,
 )
 from .engine import SimEngine, TrafficTollEngine
-from .monitor import NethogsMonitor
+from .monitor import UNATTRIBUTED_PID, NethogsMonitor
 from .protocol import (
     INVALID_PARAMS,
     METHOD_NOT_FOUND,
@@ -222,6 +222,7 @@ class Daemon:
         self._running = True
         self._monitor_thread = None
         self._last_snapshot = {}
+        self._iface_sample = None
         self._ruleset_generation = 0
         self._monitor_enabled = True
 
@@ -272,8 +273,45 @@ class Daemon:
                 self._start_monitor()
         self._last_snapshot = self._collect_snapshot()
 
+    def _iface_throughput(self):
+        """Echte Interface-Rate (kbit/s) aus /proc/net/dev-Deltas.
+
+        Das ist die verlaessliche "globale" Zahl: sie enthaelt ALLES, was ueber
+        das Interface geht (auch Traffic, den nethogs keinem Prozess zuordnen
+        kann, z. B. VPN/UDP/anderer Nutzer). Ohne Vergleichswert -> (None, None).
+        """
+        import time as _time
+
+        try:
+            rx = tx = None
+            with open("/proc/net/dev", "r", encoding="utf-8") as handle:
+                for line in handle:
+                    if ":" not in line:
+                        continue
+                    name, rest = line.split(":", 1)
+                    if name.strip() != self.interface:
+                        continue
+                    fields = rest.split()
+                    rx, tx = int(fields[0]), int(fields[8])
+                    break
+        except (OSError, ValueError, IndexError):
+            return None, None
+        if rx is None:
+            return None, None
+        now = _time.monotonic()
+        previous = self._iface_sample
+        self._iface_sample = (now, rx, tx)
+        if previous is None:
+            return None, None
+        elapsed = now - previous[0]
+        if elapsed < 0.2:                     # zu kurz fuer eine sinnvolle Rate
+            return None, None
+        down = max(0, rx - previous[1]) * 8.0 / 1000.0 / elapsed
+        up = max(0, tx - previous[2]) * 8.0 / 1000.0 / elapsed
+        return round(down, 1), round(up, 1)
+
     def _collect_snapshot(self) -> dict:
-        """Prozess-Stats + angewendete Regeln zusammenfassen."""
+        """Prozess-Stats + echte Interface-Rate + angewendete Regeln."""
         raw = {}
         if self.monitor is not None:
             try:
@@ -283,23 +321,34 @@ class Daemon:
         cfg = self.store.get()
         rules = cfg.get("processes", [])
         processes = []
+        attributed_down = attributed_up = 0.0
         for pid, info in raw.items():
             matches = _match_rules(rules, info.get("name"), info.get("pid", pid))
+            download = round(info.get("download", 0.0), 3)
+            upload = round(info.get("upload", 0.0), 3)
+            if pid != UNATTRIBUTED_PID:
+                attributed_down += download
+                attributed_up += upload
             processes.append({
                 "pid": pid,
                 "name": info.get("name", "?"),
-                "download": round(info.get("download", 0.0), 3),
-                "upload": round(info.get("upload", 0.0), 3),
+                "download": download,
+                "upload": upload,
+                "unattributed": pid == UNATTRIBUTED_PID,
                 # via Regeln: limits/prioritaet fuer die Anzeige
                 "rule_name": matches.get("name"),
             })
-        # Regel-Informationen separat liefern, damit die GUI sie zuordnen kann
+        global_down, global_up = self._iface_throughput()
         return {
             "interface": self.interface,
             "enabled": cfg["global"].get("enabled", True),
             "processes": processes,
             "rules": rules,  # fuer GUI: union von Regel + Live-Stats
             "monitored": self.monitor is not None,
+            # Echte Interface-Rate (alles) vs. nur zugeordneter Traffic
+            "global": {"download": global_down, "upload": global_up},
+            "attributed": {"download": round(attributed_down, 1),
+                           "upload": round(attributed_up, 1)},
         }
 
     # --- Engine ---

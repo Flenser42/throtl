@@ -92,11 +92,12 @@ class ProcessTable(Gtk.Box):
         # --- header (clickable = sort) ---
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         header.add_css_class("table-header-row")
-        for key, title, width in _COLUMNS:
+        for index, (key, title, width) in enumerate(_COLUMNS):
+            expand = index == 1          # nur "Process" waechst mit
             if key is None:
                 label = Gtk.Label(label=title, xalign=0.0)
                 label.add_css_class("table-header")
-                header.append(self._cell(label, width))
+                header.append(self._cell(label, width, expand))
             else:
                 button = Gtk.Button(label=title)
                 button.add_css_class("table-header")
@@ -104,12 +105,16 @@ class ProcessTable(Gtk.Box):
                 button.set_halign(Gtk.Align.FILL)
                 button.connect("clicked", self._on_sort_clicked, key)
                 self._sort_labels[key] = (button, title)
-                header.append(self._cell(button, width))
-        self.append(header)
+                header.append(self._cell(button, width, expand))
+        self._header = header
 
         # --- rows ---
+        # Header und Zeilen liegen im SELBEN Container: nur so sind die
+        # Spalten exakt deckungsgleich (sonst verschiebt die Breite der
+        # vertikalen Scrollbar die Zeilen gegenueber dem Header).
         self._list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
         self._list.set_valign(Gtk.Align.START)
+        self._list.append(header)
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroll.set_vexpand(True)
@@ -118,10 +123,16 @@ class ProcessTable(Gtk.Box):
         self._update_sort_labels()
 
     @staticmethod
-    def _cell(child, width: int) -> Gtk.Box:
+    def _cell(child, width: int, expand: bool = False) -> Gtk.Box:
+        """Zelle mit fester Breite; nur die Process-Spalte darf wachsen.
+
+        Wichtig: Header und Zeilen benutzen dieselben Breiten und dieselbe
+        Expand-Regel — sonst driften die Spalten auseinander (Header-Buttons
+        haben andere Naturgroessen als Labels/Eingabefelder).
+        """
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         box.set_size_request(width, -1)
-        child.set_hexpand(True)
+        child.set_hexpand(expand)
         box.append(child)
         return box
 
@@ -170,7 +181,7 @@ class ProcessTable(Gtk.Box):
         """Zeilen IM PLATZ umsortieren (keine Widgets neu bauen)."""
         pids = sorted(self._procs.keys(), key=self._sort_value,
                       reverse=self._sort_desc)
-        previous = None
+        previous = self._header           # Header bleibt ganz oben
         for pid in pids:
             roww = self._rows.get(pid)
             if roww is None:
@@ -305,9 +316,12 @@ class ProcessTable(Gtk.Box):
 
     def _build_row(self, blob) -> "RowWidgets":
         pid = str(blob.get("pid"))
-        rule = self._rule_for(blob)
+        unattributed = bool(blob.get("unattributed"))
+        rule = {} if unattributed else self._rule_for(blob)
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         box.add_css_class("row")
+        if unattributed:
+            box.add_css_class("unattributed")
 
         pid_l = Gtk.Label(label=pid, xalign=0.0)
         pid_l.add_css_class("dim-label")
@@ -316,7 +330,7 @@ class ProcessTable(Gtk.Box):
         name_l = Gtk.Label(label=_short_name(blob.get("name", "?")), xalign=0.0)
         name_l.set_ellipsize(Pango.EllipsizeMode.END)
         name_l.set_tooltip_text((blob.get("name", "") or "")[:400])
-        box.append(self._cell(name_l, _COLUMNS[1][2]))
+        box.append(self._cell(name_l, _COLUMNS[1][2], True))
 
         down = Gtk.Label(label=format_rate(blob.get("download", 0.0), self.unit, 2),
                          xalign=0.0)
@@ -342,6 +356,14 @@ class ProcessTable(Gtk.Box):
         prio.set_priority_name(rule.get("priority", "normal") or "normal")
         prio.connect("notify::selected", self._on_priority, pid)
         box.append(self._cell(prio, _COLUMNS[6][2]))
+
+        if unattributed:
+            # Kein Prozess -> keine Regel moeglich. Felder nur anzeigen.
+            for widget in (dl, ul, prio):
+                widget.set_sensitive(False)
+            dl.set_tooltip_text("Traffic that nethogs could not map to a process")
+            name_l.set_tooltip_text("Traffic nethogs could not attribute "
+                                    "(VPN, UDP, other users, short-lived sockets)")
 
         return RowWidgets(box=box, pid=pid, down=down, up=up, dl=dl, ul=ul, prio=prio)
 

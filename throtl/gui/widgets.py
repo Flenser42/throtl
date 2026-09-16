@@ -35,7 +35,11 @@ class RateEntry(Gtk.Entry):
     """
 
     def __init__(self, unit: str = "mBs"):
-        super().__init__(width_chars=12)
+        super().__init__(width_chars=8)
+        # Adwaita gibt Eingabefeldern eine grosse NATUERLICHE Breite (~168px).
+        # Ohne Deckelung werden die Tabellenspalten breiter als der Header und
+        # die Spalten laufen auseinander.
+        self.set_max_width_chars(9)
         self.add_css_class("throtl-rate-entry")
         self.set_unit_hint(unit)
 

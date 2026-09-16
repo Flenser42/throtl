@@ -149,6 +149,31 @@ class DaemonCliEndToEnd(unittest.TestCase):
         cfg = self.client.call("get_config")
         self.assertFalse(cfg["global"]["enabled"])
 
+    def test_interface_throughput_sampler(self):
+        """/proc/net/dev-Deltas liefern die echte Interface-Rate."""
+        import time as _t
+
+        from throtl.daemon import Daemon
+
+        d = Daemon(socket_path=self.harness.socket_path + ".x",
+                   config_dir=self.harness.config_dir,
+                   engine=SimEngine("lo"), interval=1.0,
+                   monitor_factory=None)
+        d.interface = "lo"
+        first = d._iface_throughput()
+        self.assertEqual(first, (None, None))    # erster Aufruf: kein Delta
+        _t.sleep(0.3)
+        second = d._iface_throughput()
+        self.assertEqual(len(second), 2)
+        self.assertTrue(second[0] is None or second[0] >= 0)
+
+    def test_snapshot_has_global_and_attributed(self):
+        state = self.client.call("list_processes")
+        self.assertIn("global", state)
+        self.assertIn("attributed", state)
+        self.assertIn("download", state["global"])
+        self.assertIn("upload", state["attributed"])
+
     def test_set_unit_invalid_rejected(self):
         with self.assertRaises(protocol.RpcError):
             self.client.call("set_unit", {"unit": "tb"})

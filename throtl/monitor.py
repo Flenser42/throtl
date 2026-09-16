@@ -1,18 +1,23 @@
-"""Live-Bandbreiten-Monitoring pro Prozess via nethogs im Trace-Modus.
+"""Live per-process bandwidth monitoring via nethogs (trace mode).
 
-nethogs `-t` gibt pro Refresh-Block einen "Refreshing:"-Header und dann pro
-Prozess eine Zeile im Format::
+nethogs `-t` prints one "Refreshing:" block per interval, each containing lines
+like::
 
     Program[ <cmdline>]/<pid>/<uid>\t<sent_kBs>\t<recv_kBs>
 
-Werte sind in **Kilobyte pro Sekunde** (Anzeige-Modus). Der Parser liest diesen
-Stream inkrementell und liefert pro Tick ein Dict von Prozessen.
+Values are throughput in kB/s (view mode 0). Per the nethogs source
+(cui.cpp, ``Line::log()``) the first number is ``sent_value`` (upload) and the
+second is ``recv_value`` (download); we map them accordingly and convert to
+kbit/s.
 
-Hinweis zur Semantik (aus nethogs-Quelle cui.cpp `Line::log()`): die erste Zahl
-nach dem Identifier ist `sent_value`, die zweite `recv_value`. Die ncurses-
-Kopfzeilen bezeichnen sie als "SENT"/"RECVD"; "recv" entspricht technisch dem
-DOWNLOAD (eingehend), "sent" dem UPLOAD (ausgehend). Der Parser mappt daher
-recv -> download und sent -> upload.
+Traffic that cannot be attributed to a process is reported by nethogs as
+``unknown TCP/0/0``. We keep it under a synthetic entry (pid ``-``,
+name ``(unattributed)``) instead of discarding it, so nothing silently
+disappears and the sum reconciles with the interface counters.
+
+We monitor exactly ONE device (the shaped interface): nethogs emits a line per
+(device, process) and the trace format carries no device name, so monitoring
+several devices would add the same flow multiple times.
 """
 
 import os
@@ -20,16 +25,20 @@ import shutil
 import subprocess
 import threading
 
-# nethogs `-t`: Identifier (name/pid/uid) + 2 Werte
+# nethogs `-t`: identifier (name/pid/uid) + 2 values
 TRACE_FIELD_COUNT = 3
+
+# Synthetic pid/name for traffic nethogs cannot attribute to a process
+UNATTRIBUTED_PID = "-"
+UNATTRIBUTED_NAME = "(unattributed)"
 
 
 def resolve_nethogs_binary(cmd: str = None) -> str:
-    """nethogs als ABSOLUTEN Pfad ermitteln.
+    """Locate nethogs as an ABSOLUTE path.
 
-    Wichtig fuer systemd-Dienste mit eingeschraenktem/abweichendem PATH:
-    sonst findet der Daemon "nethogs" nicht und das Monitoring bleibt aus.
-    Reihenfolge: Argument -> $THROTL_NETHOGS -> /usr/bin/nethogs -> PATH.
+    Matters for systemd services with a minimal/odd PATH: otherwise the daemon
+    cannot find "nethogs" and monitoring stays off.
+    Order: argument -> $THROTL_NETHOGS -> /usr/bin/nethogs -> PATH.
     """
     if cmd:
         return cmd
@@ -43,9 +52,11 @@ def resolve_nethogs_binary(cmd: str = None) -> str:
 
 
 def parse_trace(line: str):
-    """Eine nethogs-Trace-Zeile parsen.
+    """Parse one nethogs trace line.
 
-    Returns: (name, pid, uid, sent_kBs, recv_kBs) oder None bei unparsbar.
+    Returns ``(name, pid, uid, sent_kBs, recv_kBs)`` or None if unparsable.
+    Unattributable traffic (pid 0 / "unknown …") is returned with
+    ``pid == UNATTRIBUTED_PID`` so the caller can keep it.
     """
     line = line.rstrip("\n")
     if not line or line == "Refreshing:" or line.startswith("Unknown connection"):
@@ -54,38 +65,35 @@ def parse_trace(line: str):
     if len(fields) != TRACE_FIELD_COUNT:
         return None
     ident, sent, recv = fields
-    # ident ist "<name>[/<cmdline>]/<pid>/<uid>"
     parts = ident.split("/")
     if len(parts) < 3:
         return None
     pid_str = parts[-2]
     uid_str = parts[-1]
-    if pid_str in ("0", "?"):
-        return None
     name = "/".join(parts[:-2]) or "?"
-    if name.lower().startswith("unknown"):
-        return None
     try:
         sent_kBs = float(sent)
         recv_kBs = float(recv)
     except ValueError:
         return None
+    if pid_str in ("0", "?") or name.lower().startswith("unknown"):
+        return UNATTRIBUTED_NAME, UNATTRIBUTED_PID, uid_str, sent_kBs, recv_kBs
     return name, pid_str, uid_str, sent_kBs, recv_kBs
 
 
 def _kBs_to_kbit(kBs: float) -> float:
-    """nethogs liefert kB/s; intern rechnen wir in kbit/s."""
+    """nethogs reports kB/s; we use kbit/s internally."""
     from .units import kBs_to_kbit
 
     return kBs_to_kbit(kBs)
 
 
 class TraceParser:
-    """Inkrementeller Parser fuer den nethogs-`-t`-Stream.
+    """Incremental parser for the nethogs `-t` stream.
 
-    Jede "Refreshing:"-Zeile beendet den vorherigen Tick und liefert ihn als
-    Ergebnis von ``feed``. Ein Prozess, der nicht mehr auftaucht, faellt im
-    naechsten Tick einfach weg (der Aufrufer kann Alt-Eintraege auf 0 setzen).
+    Every "Refreshing:" line completes the previous tick and is returned by
+    ``feed``. A process that no longer appears simply disappears in the next
+    tick.
     """
 
     def __init__(self):
@@ -93,12 +101,6 @@ class TraceParser:
         self._seen_mark = False
 
     def feed(self, chunk: str) -> list:
-        """Daten zufuehren; liefert eine Liste fertiggestellter Ticks.
-
-        Ein Tick wird an seiner Abschluss-``Refreshing:``-Marke ausgeliefert
-        (Daten des vorherigen Intervalls). Leere erste Marken werden
-        uebersprungen; das Fenster nach der letzten Marke liefert ``finish()``.
-        """
         ticks = []
         for raw_line in chunk.splitlines():
             line = raw_line.rstrip("\n")
@@ -125,13 +127,13 @@ class TraceParser:
                     "upload": upload,
                 }
             else:
-                # derselbe Prozess in mehreren Zeilen -> akkumulieren
+                # same process on several lines -> accumulate
                 entry["download"] += download
                 entry["upload"] += upload
         return ticks
 
     def finish(self) -> dict:
-        """Offenes Fenster (nach der letzten Marke) als finalen Tick liefern."""
+        """Return the open window (after the last mark) as the final tick."""
         if self._current:
             result = self._current
             self._current = {}
@@ -140,16 +142,17 @@ class TraceParser:
 
 
 class NethogsMonitor:
-    """Startet nethogs -t als Subprozess und parst den Trace-Stream.
+    """Runs nethogs -t as a subprocess and parses the trace stream.
 
-    Über ``inject`` kann ein faike File-Like-Objekt (Tests) uebergeben werden.
+    ``inject`` accepts a file-like object for tests.
     """
 
     def __init__(self, device: str, interval: float = 1.0, cmd: str = None,
-                 inject=None):
+                 inject=None, capture_udp: bool = True):
         self.device = device
         self.interval = interval
         self.cmd = resolve_nethogs_binary(cmd)
+        self.capture_udp = capture_udp
         self._inject = inject
         self._proc = None
         self._parser = TraceParser()
@@ -159,9 +162,13 @@ class NethogsMonitor:
         self._latest = {}
 
     def _build_argv(self) -> list:
-        # -t Trace-Modus; -d Intervall in Sekunden. Kein -v: nethogs-Default
-        # ist 0 = kB/s (Durchsatz), waehrend -v 1 "total kB" waere.
+        # -t trace mode, -d interval. No -v: nethogs' default 0 = kB/s (rate);
+        # -v 1 would be cumulative "total kB".
+        # -C captures TCP *and* UDP (QUIC/VPN/DNS live on UDP and would
+        # otherwise be missing entirely).
         argv = [self.cmd, "-t", "-d", str(self.interval)]
+        if self.capture_udp:
+            argv.append("-C")
         if self.device not in (None, "", "auto", "automatic"):
             argv.append(self.device)
         return argv
@@ -205,7 +212,7 @@ class NethogsMonitor:
             self._latest = self._parser.finish()
 
     def snapshot(self) -> dict:
-        """Neuester Tick: pid -> {name, uid, download (kbit/s), upload (kbit/s)}."""
+        """Latest tick: pid -> {name, uid, download (kbit/s), upload (kbit/s)}."""
         with self._lock:
             return dict(self._latest)
 
@@ -221,7 +228,7 @@ class NethogsMonitor:
 
 
 def parse_trace_stream(stream) -> list:
-    """Gesamten Stream parsen (Tests/Diagnose): liefert Liste aller Ticks."""
+    """Parse a whole stream (tests/diagnostics): list of all ticks."""
     parser = TraceParser()
     ticks = []
     for line in stream:
