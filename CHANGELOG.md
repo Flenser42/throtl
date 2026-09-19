@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entry, icon and uninstaller.
 - Test suite (unittest) covering units, config persistence, IPC framing,
   nethogs parsing, the TrafficToll engine and the daemon/CLI end-to-end paths.
+- A dedicated app icon (a throttle/gauge mark) and repository/community files:
+  `CODE_OF_CONDUCT.md`, `SECURITY.md`, issue and PR templates, `.editorconfig`,
+  `.gitattributes` and Dependabot.
 
 ### Fixed
 

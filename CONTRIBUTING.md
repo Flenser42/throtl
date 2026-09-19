@@ -49,9 +49,17 @@ Notes:
 
 ## Reporting bugs
 
-Please include:
+Please use the GitHub issue templates and include:
 
 - distribution and kernel version,
 - output of `throtl-cli status` (with `systemctl status throtl`),
 - whether the daemon runs in simulation or real mode,
 - the exact steps to reproduce.
+
+For security issues, do **not** open a public issue — see
+[`SECURITY.md`](SECURITY.md).
+
+## Code of conduct
+
+Participation in this project is covered by
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).

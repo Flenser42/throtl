@@ -1,31 +1,50 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-  <!-- Throtl-Icon: Stilisierter Tacho/Halbkreis mit Pfeil, dunkel mit Akzentfarbe -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#24292e"/>
-      <stop offset="1" stop-color="#101418"/>
+      <stop offset="0" stop-color="#242b34"/>
+      <stop offset="1" stop-color="#0c1014"/>
     </linearGradient>
-    <linearGradient id="arrow" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#7ee787"/>
-      <stop offset="1" stop-color="#2ea043"/>
+    <linearGradient id="meter" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4fd07f"/>
+      <stop offset="0.55" stop-color="#e6d24a"/>
+      <stop offset="1" stop-color="#f5a45a"/>
+    </linearGradient>
+    <linearGradient id="needle" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#aeb8c2"/>
+      <stop offset="1" stop-color="#f2f6fa"/>
     </linearGradient>
   </defs>
-  <rect x="4" y="4" width="120" height="120" rx="26" fill="url(#bg)"/>
-  <!-- Bogen (Halbkreis) als offener Pfad -->
-  <path d="M 30 88 A 34 34 0 0 1 98 88"
-        fill="none" stroke="#3a4046" stroke-width="10" stroke-linecap="round"/>
-  <!-- Skala -->
-  <path d="M 40 82 A 26 26 0 0 1 88 82"
-        fill="none" stroke="#2ea043" stroke-width="10" stroke-linecap="round"
-        stroke-dasharray="70 99999"/>
-  <!-- Pfeil Richtung Runter -->
-  <path d="M 78 62 L 96 44 M 96 44 L 82 43 M 96 44 L 95 59"
-        fill="none" stroke="url(#arrow)" stroke-width="8" stroke-linecap="round"
-        stroke-linejoin="round"/>
-  <!-- Verkehrs-Linien (up/down) -->
-  <path d="M 34 36 h 16 M 56 36 h 16 M 34 44 h 24"
-        fill="none" stroke="#5c646d" stroke-width="5" stroke-linecap="round"/>
-  <path d="M 78 108 h 12 M 94 108 h 10 M 70 108 h 4"
-        fill="none" stroke="#5c646d" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Badge -->
+  <rect x="4" y="4" width="120" height="120" rx="28"
+        fill="url(#bg)" stroke="#333c46" stroke-width="2"/>
+
+  <!-- Gauge track (270° over the top) -->
+  <path d="M 38.5 91.5 A 36 36 0 1 1 89.5 91.5"
+        fill="none" stroke="#2b323b" stroke-width="11" stroke-linecap="round"/>
+
+  <!-- Gauge value (green -> amber -> orange) -->
+  <path d="M 38.5 91.5 A 36 36 0 1 1 89.5 91.5"
+        fill="none" stroke="url(#meter)" stroke-width="11" stroke-linecap="round"
+        stroke-dasharray="150 999"/>
+
+  <!-- Scale ticks -->
+  <g stroke="#5c646d" stroke-width="3" stroke-linecap="round">
+    <line x1="64" y1="22" x2="64" y2="31"/>
+    <line x1="46.5" y1="28.7" x2="51.2" y2="36.0"/>
+    <line x1="81.5" y1="28.7" x2="76.8" y2="36.0"/>
+  </g>
+
+  <!-- Needle -->
+  <line x1="64" y1="66" x2="85.5" y2="44.5"
+        stroke="url(#needle)" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="64" cy="66" r="8" fill="#e6edf3"/>
+  <circle cx="64" cy="66" r="3.4" fill="#4fd07f"/>
+
+  <!-- Download / upload hint -->
+  <path d="M 47 104 l 5 5 5 -5" fill="none" stroke="#4fd07f"
+        stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 71 109 l 5 -5 5 5" fill="none" stroke="#f5a45a"
+        stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

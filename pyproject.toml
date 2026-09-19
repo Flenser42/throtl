@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
-authors = [{ name = "Flenser42", email = "flenser42@gmx.de" }]
+authors = [{ name = "Flenser42" }]
 keywords = [
     "bandwidth",
     "qos",
@@ -45,6 +45,7 @@ dev = ["ruff>=0.6", "build>=1.2"]
 Homepage = "https://github.com/Flenser42/throtl"
 Repository = "https://github.com/Flenser42/throtl"
 Issues = "https://github.com/Flenser42/throtl/issues"
+Discussions = "https://github.com/Flenser42/throtl/discussions"
 Changelog = "https://github.com/Flenser42/throtl/blob/master/CHANGELOG.md"
 
 [project.scripts]

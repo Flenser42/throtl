@@ -1,0 +1,13 @@
+# Normalize line endings; keep binaries untouched.
+* text=auto eol=lf
+
+*.png binary
+*.svg text
+*.sh text eol=lf
+*.service text eol=lf
+*.desktop text eol=lf
+
+# Keep generated/vendored trees out of language stats
+docs/screenshot.png linguist-generated
+docs/graph.png linguist-generated
+docs/table.png linguist-generated

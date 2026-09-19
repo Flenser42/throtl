@@ -1,5 +1,7 @@
 # Throtl
 
+<img src="data/hicolor/scalable/apps/throtl.svg" alt="Throtl icon" width="76" align="right">
+
 **Per-application bandwidth limits and traffic prioritisation for Linux.**
 
 [![CI](https://github.com/Flenser42/throtl/actions/workflows/ci.yml/badge.svg)](https://github.com/Flenser42/throtl/actions/workflows/ci.yml)
@@ -279,7 +281,9 @@ make build          # sdist + wheel into dist/ (needs `build`)
 - GUI widget tests are skipped when no display is available.
 - Run `make clean` to drop build artifacts and caches.
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/RELEASING.md`](docs/RELEASING.md).
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/RELEASING.md`](docs/RELEASING.md);
+the project follows [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) and has a
+[`SECURITY.md`](SECURITY.md) policy.
 
 ---
 
@@ -304,8 +308,8 @@ commercial use, and you are **not** required to tell me anything. But if you do
 use Throtl commercially, I would honestly love to hear about it — where it ends
 up and how big it grows. That is pure curiosity, not a license condition.
 
-A short note to [flenser42@gmx.de](mailto:flenser42@gmx.de) or an issue on
-GitHub is more than enough.
+A short note — an issue or a [discussion](https://github.com/Flenser42/throtl/discussions)
+is more than enough, and keeps my inbox clean.
 
 ---
 
