@@ -129,6 +129,8 @@ Fenster bietet:
 - **Regel-Editor**: pro Anwendung Download-/Upload-Limit (Mbit/s-Kbit/s,
   umschaltbar) + Prioritäts-Stufen (Kritisch/Hoch/Normal/Niedrig).
 
+![Throtl GUI](https://raw.githubusercontent.com/Flenser42/throtl/master/docs/screenshot.png)
+
 ### CLI (ohne GUI testen)
 
 Der Daemon lässt sich vollständig über die CLI steuern — damit kannst du
