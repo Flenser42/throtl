@@ -47,7 +47,7 @@ class RateEntry(Gtk.Entry):
         self.set_tooltip_text(
             f"Limit in {label}. Leave empty for unlimited. "
             "An explicit suffix (e.g. '2 kbps') also works.")
-        self.set_placeholder_text(f"unlimited  ({label})" if label else "unlimited")
+        self.set_placeholder_text("unlimited")
 
 
 class PriorityDropdown(Gtk.DropDown):

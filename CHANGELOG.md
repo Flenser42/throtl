@@ -30,10 +30,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - IPC framing: bytes following a message's newline in the same `recv()` are now
   buffered instead of discarded, so coalesced responses/events and pipelined
   requests are no longer lost.
+- GUI: editing a limit/priority on a grouped per-application row no longer
+  re-escapes the stored match pattern (which produced duplicate, non-matching
+  rules); updates are applied to the existing rule by key.
+- GUI: the PID column shows the real PID(s) instead of repeating the app name.
 - Monitor shutdown now reaps the `nethogs` subprocess and closes its pipe
   (no more leaked/zombie processes).
 - Daemon: `monitor_factory=None` now genuinely disables monitoring instead of
   silently starting `nethogs`.
+
+### Changed
+
+- GUI styling overhaul: an explicit dark palette (readable regardless of the
+  host theme), colour-coded download/upload rates, a framed table body, a
+  status bar with an error state and a proper empty state with icon.
 
 [Unreleased]: https://github.com/Flenser42/throtl/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/Flenser42/throtl/releases/tag/v0.1.0

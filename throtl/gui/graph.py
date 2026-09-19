@@ -47,9 +47,19 @@ class BandwidthGraph(Gtk.Box):
         self._scroll.set_vexpand(False)
         self.append(self._scroll)
 
-        self._readout = Gtk.Label(label="", xalign=0.0)
+        self._readout = Gtk.Label(label="", xalign=0.0, hexpand=True)
         self._readout.add_css_class("dim-label")
-        self.append(self._readout)
+        bottom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        bottom.append(self._readout)
+        legend = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        legend_down = Gtk.Label(label="● Download")
+        legend_down.add_css_class("legend-down")
+        legend_up = Gtk.Label(label="● Upload")
+        legend_up.add_css_class("legend-up")
+        legend.append(legend_down)
+        legend.append(legend_up)
+        bottom.append(legend)
+        self.append(bottom)
 
         self._hadj = self._scroll.get_hadjustment()
         self._hadj.connect("value-changed", self._on_scrolled)
@@ -74,6 +84,7 @@ class BandwidthGraph(Gtk.Box):
         self._resize_area()
         if self._autoscroll:
             self._scroll_to_end()
+        self._update_readout()
         self._area.queue_draw()
 
     def clear(self) -> None:
@@ -190,15 +201,6 @@ class BandwidthGraph(Gtk.Box):
             cr.set_source_rgba(0.95, 0.62, 0.25, 1.0)
             cr.arc(hx, y_of(up), 3.0, 0, 6.2832)
             cr.fill()
-
-        # Legend (top right of the visible area)
-        cr.set_font_size(10)
-        cr.set_source_rgba(0.35, 0.85, 0.55, 1.0)
-        cr.move_to(width - 58, 14)
-        cr.show_text("Dl")
-        cr.set_source_rgba(0.95, 0.62, 0.25, 1.0)
-        cr.move_to(width - 58, 26)
-        cr.show_text("Ul")
 
     def _y_scale(self) -> float:
         peak = 1.0

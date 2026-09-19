@@ -103,6 +103,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
 
     def _build_body(self):
         view = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        view.add_css_class("throtl-root")
         view.set_margin_top(10)
         view.set_margin_bottom(10)
         view.set_margin_start(12)
@@ -172,10 +173,12 @@ class ThrotlWindow(Adw.ApplicationWindow):
 
     def show_error(self, message: str) -> None:
         self.status_label.set_text(f"⚠  {message}")
+        self._status_revealer.add_css_class("error")
         self._status_revealer.set_reveal_child(True)
 
     def show_info(self, message: str) -> None:
         self.status_label.set_text(message)
+        self._status_revealer.remove_css_class("error")
         self._status_revealer.set_reveal_child(True)
 
     # --- Daemon sync ------------------------------------------------------
@@ -255,7 +258,13 @@ class ThrotlWindow(Adw.ApplicationWindow):
                     f"   ▼ {format_rate(g.get('download'), self.unit, 1)}"
                     f"   ▲ {format_rate(g.get('upload'), self.unit, 1)}")
             graph_d, graph_u = g.get("download"), g.get("upload")
-        sub = (f"{len(processes)} procs, attributed"
+        if "apps" in state:
+            count = len(state.get("apps") or [])
+            unit_word = "apps"
+        else:
+            count = len(processes)
+            unit_word = "procs"
+        sub = (f"{count} {unit_word}, attributed"
                f" ▼ {format_rate(a.get('download', 0.0), self.unit, 1)}"
                f" ▲ {format_rate(a.get('upload', 0.0), self.unit, 1)}")
         self.total_label.set_text(f"{main}      ·      {sub}")

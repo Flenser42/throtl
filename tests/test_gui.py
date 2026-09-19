@@ -289,6 +289,37 @@ class ProcessTableGroupedTest(unittest.TestCase):
         })
         self.assertEqual(t.visible_order(), ["b", "a"])
 
+    def test_editing_grouped_row_targets_the_app(self):
+        """Editieren einer gruppierten Zeile muss den App-Key treffen und die
+        Regel aus Name/exe ableiten (nicht die angezeigte PID)."""
+        from throtl.gui.process_pane import ProcessTable
+
+        calls = []
+
+        class _Client:
+            def call(self, method, params):
+                calls.append((method, params))
+                return params
+
+        class _Gui:
+            client = _Client()
+
+            def show_error(self, m): pass
+            def show_info(self, m): pass
+
+        t = ProcessTable(_Gui(), unit="mBs")
+        t.set_state({"rules": [], "apps": [
+            {"name": "legendary", "exe": "python3", "download": 10.0,
+             "upload": 1.0, "pids": ["1", "2"], "pid_count": 2,
+             "unattributed": False},
+        ]})
+        t._set_rule_field("legendary", "download_limit", 1234)
+        self.assertEqual(calls[0][0], "set_process")
+        params = calls[0][1]
+        self.assertEqual(params["match_type"], "name")
+        self.assertEqual(params["match_value"], "legendary")
+        self.assertEqual(params["download_limit"], 1234)
+
 
 if __name__ == "__main__":
     unittest.main()

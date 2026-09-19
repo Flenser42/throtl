@@ -33,8 +33,8 @@ from .widgets import UNIT_LABELS, PriorityDropdown, RateEntry
 _COLUMNS = (
     ("pid", "PID", 66),
     ("name", "Process", 200),
-    ("download", "▼ Download", 116),
-    ("upload", "▲ Upload", 116),
+    ("download", "Download", 116),
+    ("upload", "Upload", 116),
     (None, "DL limit", 112),
     (None, "UL limit", 112),
     ("priority", "Priority", 124),
@@ -116,6 +116,7 @@ class ProcessTable(Gtk.Box):
         self._list.set_valign(Gtk.Align.START)
         self._list.append(header)
         scroll = Gtk.ScrolledWindow()
+        scroll.add_css_class("table-scroll")
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroll.set_vexpand(True)
         scroll.set_child(self._list)
@@ -273,13 +274,22 @@ class ProcessTable(Gtk.Box):
 
     def _show_empty(self) -> None:
         if self._empty is None:
-            self._empty = Gtk.Label(
-                label="No processes with active traffic yet.\n"
-                      "Traffic appears as soon as an application uses the network.",
-                xalign=0.5, justify=Gtk.Justification.CENTER)
-            self._empty.add_css_class("dim-label")
-            self._empty.set_margin_top(24)
+            self._empty = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6,
+                                  halign=Gtk.Align.CENTER)
+            self._empty.set_margin_top(32)
             self._empty.set_margin_bottom(24)
+            icon = Gtk.Image.new_from_icon_name("network-offline-symbolic")
+            icon.set_pixel_size(48)
+            icon.add_css_class("dim-label")
+            title = Gtk.Label(label="No active traffic yet")
+            title.add_css_class("empty-title")
+            hint = Gtk.Label(
+                label="Applications appear here as soon as they use the network.",
+                justify=Gtk.Justification.CENTER, wrap=True)
+            hint.add_css_class("empty-hint")
+            self._empty.append(icon)
+            self._empty.append(title)
+            self._empty.append(hint)
         if self._empty.get_parent() is None:
             self._list.append(self._empty)
 
@@ -323,8 +333,20 @@ class ProcessTable(Gtk.Box):
         roww.up.set_text(format_rate(blob.get("upload", 0.0), self.unit, 2))
 
     def _build_row(self, key: str, blob) -> "RowWidgets":
-        pid = str(blob.get("pid") or key)
-        count = int(blob.get("pid_count") or 1)
+        # ``key`` ist der stabile Zeilen-Schluessel (App-Name bei gruppierten
+        # Zeilen, sonst PID) und wird an die Callbacks gebunden. Die PID-Spalte
+        # zeigt davon unabhaengig die echte(n) PID(s).
+        pids = [str(p) for p in (blob.get("pids") or [])]
+        count = int(blob.get("pid_count") or len(pids) or 1)
+        real_pid = blob.get("pid")
+        if count > 1:
+            pid_text = f"{count} pids"
+        elif pids and pids[0] not in ("", "-"):
+            pid_text = pids[0]
+        elif real_pid not in (None, "", "-"):
+            pid_text = str(real_pid)
+        else:
+            pid_text = "—"
         unattributed = bool(blob.get("unattributed"))
         rule = {} if unattributed else self._rule_for(blob)
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -332,7 +354,6 @@ class ProcessTable(Gtk.Box):
         if unattributed:
             box.add_css_class("unattributed")
 
-        pid_text = f"{count} pids" if count > 1 else (pid if pid != "-" else "—")
         pid_l = Gtk.Label(label=pid_text, xalign=0.0)
         pid_l.add_css_class("dim-label")
         box.append(self._cell(pid_l, _COLUMNS[0][2]))
@@ -348,27 +369,29 @@ class ProcessTable(Gtk.Box):
 
         down = Gtk.Label(label=format_rate(blob.get("download", 0.0), self.unit, 2),
                          xalign=0.0)
+        down.add_css_class("rate-down")
         box.append(self._cell(down, _COLUMNS[2][2]))
 
         up = Gtk.Label(label=format_rate(blob.get("upload", 0.0), self.unit, 2),
                        xalign=0.0)
+        up.add_css_class("rate-up")
         box.append(self._cell(up, _COLUMNS[3][2]))
 
         dl = RateEntry(self.unit)
         dl.set_text(format_rate_for_entry(rule.get("download_limit"), self.unit))
         dl.set_tooltip_text(
             f"Limit in {UNIT_LABELS.get(self.unit, self.unit)} — empty = unlimited")
-        dl.connect("changed", self._on_limit, pid, "download_limit")
+        dl.connect("changed", self._on_limit, key, "download_limit")
         box.append(self._cell(dl, _COLUMNS[4][2]))
 
         ul = RateEntry(self.unit)
         ul.set_text(format_rate_for_entry(rule.get("upload_limit"), self.unit))
-        ul.connect("changed", self._on_limit, pid, "upload_limit")
+        ul.connect("changed", self._on_limit, key, "upload_limit")
         box.append(self._cell(ul, _COLUMNS[5][2]))
 
         prio = PriorityDropdown()
         prio.set_priority_name(rule.get("priority", "normal") or "normal")
-        prio.connect("notify::selected", self._on_priority, pid)
+        prio.connect("notify::selected", self._on_priority, key)
         box.append(self._cell(prio, _COLUMNS[6][2]))
 
         if unattributed:
@@ -379,14 +402,14 @@ class ProcessTable(Gtk.Box):
             name_l.set_tooltip_text("Traffic nethogs could not attribute "
                                     "(VPN, UDP, other users, short-lived sockets)")
 
-        return RowWidgets(box=box, pid=pid, down=down, up=up, dl=dl, ul=ul, prio=prio)
+        return RowWidgets(box=box, pid=key, down=down, up=up, dl=dl, ul=ul, prio=prio)
 
     # --- Callbacks --------------------------------------------------------
 
-    def _on_limit(self, entry, pid, key):
+    def _on_limit(self, entry, row_key, field):
         if self._syncing:
             return
-        timer_attr = f"_lim_{pid}_{key}"
+        timer_attr = f"_lim_{row_key}_{field}"
         old = getattr(self, timer_attr, None)
         if old is not None:
             GLib.source_remove(old)
@@ -401,18 +424,18 @@ class ProcessTable(Gtk.Box):
             except ValueError as error:
                 self.gui.show_error(f"Invalid limit: {error}")
                 return False
-            self._set_rule_field(pid, key, rate)
+            self._set_rule_field(row_key, field, rate)
             return False
 
         setattr(self, timer_attr, GLib.timeout_add(500, _send))
 
-    def _on_priority(self, dd, _pspec, pid):
+    def _on_priority(self, dd, _pspec, row_key):
         if self._syncing:
             return
-        self._set_rule_field(pid, "priority", dd.get_priority_name())
+        self._set_rule_field(row_key, "priority", dd.get_priority_name())
 
-    def _set_rule_field(self, pid: str, field: str, value) -> None:
-        blob = self._procs.get(pid)  # key: App-Name (gruppiert) oder PID
+    def _set_rule_field(self, row_key: str, field: str, value) -> None:
+        blob = self._procs.get(row_key)  # Key: App-Name (gruppiert) oder PID
         if blob is None:
             # Prozess ist inzwischen weg — Eingabe verwerfen (kein Fehler-Popup).
             return

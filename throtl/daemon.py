@@ -36,6 +36,7 @@ from .config import (
     detect_default_interface,
     load_config,
     make_rule,
+    priority_to_int,
     priority_to_name,
     save_config,
 )
@@ -534,6 +535,37 @@ class Daemon:
         return store.get()["global"]
 
     def _h_set_process(self, params):
+        key = params.get("key")
+        existing = None
+        if key:
+            existing = next(
+                (r for r in self.store.get().get("processes", []) if r.get("key") == key),
+                None,
+            )
+        if existing is not None:
+            # Update einer bestehenden Regel: match_type/match_value NICHT neu
+            # ableiten. Die GUI schickt die gespeicherte Regel zurueck; ein
+            # erneutes make_rule() wuerde das bereits re.escape()-te Pattern
+            # nochmals escapen und die Regel matchte nicht mehr.
+            rule = dict(existing)
+            if params.get("name"):
+                rule["name"] = str(params["name"])
+            if "download_limit" in params:
+                rule["download_limit"] = parse_limit_param(params.get("download_limit"))
+            if "upload_limit" in params:
+                rule["upload_limit"] = parse_limit_param(params.get("upload_limit"))
+            if params.get("priority"):
+                rule["priority"] = priority_to_name(
+                    priority_to_int(str(params["priority"]))
+                )
+            if "recursive" in params:
+                rule["recursive"] = bool(params.get("recursive"))
+            with self._state_lock:
+                self.store.upsert_process(rule)
+                self._apply_engine()
+            self._emit_rules_changed()
+            return rule
+
         name = str(params.get("name", ""))
         match_type = str(params.get("match_type", "exe"))
         match_value = str(params.get("match_value", ""))

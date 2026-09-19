@@ -178,6 +178,25 @@ class DaemonCliEndToEnd(unittest.TestCase):
         cfg = self.client.call("get_config")
         self.assertEqual(len(cfg["processes"]), 0)
 
+    def test_updating_rule_does_not_double_escape(self):
+        """GUI schickt gespeicherte Regeln zurueck -> Pattern darf nicht erneut
+        escaped werden (sonst matcht die Regel nicht mehr)."""
+        created = self.client.call(
+            "set_process",
+            {"name": "python3.12", "match_type": "name",
+             "match_value": "python3.12", "priority": "normal"},
+        )
+        self.assertIn("\\.", created["match_value"])  # einmal escaped
+        edited = dict(created)
+        edited["download_limit"] = 1234
+        updated = self.client.call("set_process", edited)
+        self.assertEqual(updated["key"], created["key"])
+        self.assertEqual(updated["download_limit"], 1234)
+        self.assertEqual(updated["match_value"], created["match_value"])
+        cfg = self.client.call("get_config")
+        self.assertEqual(len(cfg["processes"]), 1)  # kein Duplikat
+        self.assertEqual(cfg["processes"][0]["match_value"], created["match_value"])
+
     def test_toggle_enabled(self):
         result = self.client.call("toggle_enabled", {"enabled": False})
         self.assertFalse(result["enabled"])
