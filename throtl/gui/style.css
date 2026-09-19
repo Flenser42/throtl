@@ -132,6 +132,15 @@
     margin-left: 4px;
 }
 
+.throtl-window {
+    font-size: 0.86em;
+    min-height: 24px;
+}
+
+.graph-scroll {
+    background: transparent;
+}
+
 /* --- Empty state ----------------------------------------------------- */
 
 .empty-title {

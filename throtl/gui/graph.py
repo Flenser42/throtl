@@ -1,56 +1,87 @@
-"""Live bandwidth graph: scrollable history + hover readout (Cairo / GtkDrawingArea).
+"""Live bandwidth graph: time-based, auto-scrolling history + hover readout.
 
-The graph keeps up to ``max_samples`` samples (1 per poll). Samples are drawn
-``PX_PER_SAMPLE`` pixels apart, and the drawing area lives in a horizontal
-ScrolledWindow — so you can scroll back through history. New samples keep the
-view pinned to the right edge until you scroll away from it.
+The graph shows a configurable time window (default: the last 60 seconds) and
+scrolls automatically as new samples arrive, so you always see the most recent
+traffic. Scrolling back through the history pauses auto-scroll; scrolling back
+to the right edge resumes it. A small dropdown switches the window between
+30 s / 1 min / 5 min / 15 min / All (fit the whole history).
+
+The x axis is real time (epoch seconds), so irregular poll intervals show up as
+gaps instead of being squashed together.
 
 Hovering with the mouse shows the exact values at that point in time (marker
 line + readout text below the graph).
 """
 
+import bisect
 import time as _time
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Gtk
+from gi.repository import Gio, Gtk
 
 from ..units import format_rate
 
-PX_PER_SAMPLE = 6
 GRAPH_HEIGHT = 132
+PAD = 16.0            # horizontal padding inside the canvas
+MIN_CANVAS = 320.0
+
+# (label, seconds); 0 = fit the entire history into the viewport
+WINDOW_CHOICES = (
+    ("30 s", 30),
+    ("1 min", 60),
+    ("5 min", 300),
+    ("15 min", 900),
+    ("All", 0),
+)
 
 
 class BandwidthGraph(Gtk.Box):
-    """Bandwidth over time with scrolling and a hover readout."""
+    """Bandwidth over time with auto-scrolling and a hover readout."""
 
-    def __init__(self, max_samples: int = 900, unit: str = "mBs"):
+    def __init__(self, max_samples: int = 900, unit: str = "mBs",
+                 window_seconds: int = 60):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         self._max_samples = max_samples
         self._samples = []          # (t_epoch, down_kbit, up_kbit)
+        self._times = []            # cached timestamps, for bisect()
         self._unit = unit
+        self._window_seconds = window_seconds
+        self._pps = 1.0             # pixels per second
         self._hover = None
         self._autoscroll = True
         self._baseline = 1000.0     # kbit/s, smooths the auto Y-scale
 
         self._area = Gtk.DrawingArea()
-        self._area.set_size_request(320, GRAPH_HEIGHT)
+        self._area.set_size_request(int(MIN_CANVAS), GRAPH_HEIGHT)
         self._area.set_draw_func(self._draw, None)
         self._area.add_css_class("throtl-graph")
 
         self._scroll = Gtk.ScrolledWindow()
+        self._scroll.add_css_class("graph-scroll")
         self._scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.NEVER)
         self._scroll.set_child(self._area)
         self._scroll.set_size_request(-1, GRAPH_HEIGHT + 6)
         self._scroll.set_vexpand(False)
         self.append(self._scroll)
 
+        # --- bottom row: readout | window selector | legend ---
+        bottom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         self._readout = Gtk.Label(label="", xalign=0.0, hexpand=True)
         self._readout.add_css_class("dim-label")
-        bottom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         bottom.append(self._readout)
+
+        self._window_dd = Gtk.DropDown(model=Gio.ListStore.new(Gtk.StringObject))
+        for label, _seconds in WINDOW_CHOICES:
+            self._window_dd.get_model().append(Gtk.StringObject.new(label))
+        self._window_dd.set_selected(self._window_index(window_seconds))
+        self._window_dd.set_tooltip_text("Visible time window")
+        self._window_dd.add_css_class("throtl-window")
+        self._window_dd.connect("notify::selected", self._on_window_changed)
+        bottom.append(self._window_dd)
+
         legend = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         legend_down = Gtk.Label(label="● Download")
         legend_down.add_css_class("legend-down")
@@ -63,6 +94,11 @@ class BandwidthGraph(Gtk.Box):
 
         self._hadj = self._scroll.get_hadjustment()
         self._hadj.connect("value-changed", self._on_scrolled)
+        # Sobald das Adjustment sich aendert (Canvas-Breite), ist upper aktuell
+        # -> dann ans Ende springen, solange Auto-Scroll aktiv ist.
+        self._hadj.connect("changed", self._on_adjustment_changed)
+        # Viewport-Groesse (Fenster-Resize) -> Skala/Canvas neu berechnen.
+        self._hadj.connect("notify::page-size", lambda *_a: self._recompute())
 
         motion = Gtk.EventControllerMotion()
         motion.connect("motion", self._on_motion)
@@ -79,9 +115,11 @@ class BandwidthGraph(Gtk.Box):
     def push(self, down_kbit: float, up_kbit: float, now: float | None = None) -> None:
         t = _time.time() if now is None else now
         self._samples.append((t, max(0.0, down_kbit), max(0.0, up_kbit)))
+        self._times.append(t)
         if len(self._samples) > self._max_samples:
             del self._samples[: len(self._samples) - self._max_samples]
-        self._resize_area()
+            self._times = [sample[0] for sample in self._samples]
+        self._recompute()
         if self._autoscroll:
             self._scroll_to_end()
         self._update_readout()
@@ -89,15 +127,45 @@ class BandwidthGraph(Gtk.Box):
 
     def clear(self) -> None:
         self._samples.clear()
+        self._times.clear()
         self._hover = None
         self._update_readout()
         self._area.queue_draw()
 
-    # --- Scrolling --------------------------------------------------------
+    # --- Scaling / layout -------------------------------------------------
 
-    def _resize_area(self) -> None:
-        visible = max(320, self._scroll.get_width())
-        wanted = max(visible, len(self._samples) * PX_PER_SAMPLE)
+    @staticmethod
+    def _window_index(seconds: int) -> int:
+        for index, (_label, value) in enumerate(WINDOW_CHOICES):
+            if value == seconds:
+                return index
+        return 1  # 1 min
+
+    def _window_label(self) -> str:
+        return WINDOW_CHOICES[self._window_index(self._window_seconds)][0]
+
+    def _viewport_width(self) -> float:
+        page = self._hadj.get_page_size()
+        if page <= 0:
+            page = self._scroll.get_width()
+        return max(MIN_CANVAS, float(page))
+
+    def _time_span(self) -> float:
+        if len(self._times) < 2:
+            return 0.0
+        return max(0.0, self._times[-1] - self._times[0])
+
+    def _recompute(self) -> None:
+        """Pixel-pro-Sekunde + Canvas-Breite an Fenster/Viewport anpassen."""
+        viewport = self._viewport_width()
+        span = self._time_span()
+        if self._window_seconds <= 0:
+            # Ganze Historie in den Viewport einpassen (kein Scrollen).
+            self._pps = (viewport - 2 * PAD) / max(span, 1e-6)
+            wanted = int(viewport)
+        else:
+            self._pps = max(0.05, viewport / float(self._window_seconds))
+            wanted = int(max(viewport, span * self._pps + 2 * PAD))
         if wanted != self._area.get_width():
             self._area.set_size_request(wanted, GRAPH_HEIGHT)
 
@@ -106,26 +174,47 @@ class BandwidthGraph(Gtk.Box):
         page = self._hadj.get_page_size()
         self._hadj.set_value(max(0.0, upper - page))
 
+    def _on_adjustment_changed(self, *_args):
+        if self._autoscroll:
+            self._scroll_to_end()
+
     def _on_scrolled(self, hadj, *_args):
         upper = hadj.get_upper()
         page = hadj.get_page_size()
         at_end = hadj.get_value() >= (upper - page - 2.0)
         self._autoscroll = at_end
-        # Beim Scrollen die Auslese aktualisieren (Position bleibt gleich x)
         self._update_readout()
+
+    def _on_window_changed(self, dd, *_args):
+        index = dd.get_selected()
+        if 0 <= index < len(WINDOW_CHOICES):
+            self._window_seconds = WINDOW_CHOICES[index][1]
+        # Fensterwechsel: immer wieder ans aktuelle Ende springen.
+        self._autoscroll = True
+        self._recompute()
+        self._scroll_to_end()
+        self._update_readout()
+        self._area.queue_draw()
 
     # --- Hover ------------------------------------------------------------
 
     def _index_at(self, x: float):
         if not self._samples:
             return None
-        idx = int(x // PX_PER_SAMPLE)
-        return max(0, min(len(self._samples) - 1, idx))
+        width = float(self._area.get_width())
+        t_end = self._times[-1]
+        t = t_end - (width - PAD - x) / max(self._pps, 1e-6)
+        index = bisect.bisect_left(self._times, t)
+        if index >= len(self._samples):
+            index = len(self._samples) - 1
+        elif index > 0 and abs(self._times[index - 1] - t) <= abs(self._times[index] - t):
+            index -= 1
+        return max(0, min(len(self._samples) - 1, index))
 
     def _on_motion(self, _controller, x, _y):
-        idx = self._index_at(x)
-        if idx != self._hover:
-            self._hover = idx
+        index = self._index_at(x)
+        if index != self._hover:
+            self._hover = index
             self._update_readout()
             self._area.queue_draw()
 
@@ -137,8 +226,10 @@ class BandwidthGraph(Gtk.Box):
 
     def _update_readout(self) -> None:
         if self._hover is None or self._hover >= len(self._samples):
+            window = "all" if self._window_seconds <= 0 else self._window_label()
             self._readout.set_text(
-                f"History: {len(self._samples)} s — hover the graph to inspect a moment")
+                f"History: {self._time_span():.0f} s · window {window}"
+                " — hover the graph to inspect a moment")
             return
         t, down, up = self._samples[self._hover]
         stamp = _time.strftime("%H:%M:%S", _time.localtime(t))
@@ -157,10 +248,12 @@ class BandwidthGraph(Gtk.Box):
             self._draw_centered_text(cr, width, height, "Waiting for traffic…")
             return
 
-        y_max = self._y_scale()
+        t_end = self._times[-1]
 
         def x_of(index: int) -> float:
-            return index * PX_PER_SAMPLE + PX_PER_SAMPLE / 2.0
+            return width - PAD - (t_end - self._times[index]) * self._pps
+
+        y_max = self._y_scale()
 
         def y_of(rate: float) -> float:
             frac = min(1.0, max(0.0, rate / y_max)) if y_max > 0 else 0.0

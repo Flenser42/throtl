@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GUI styling overhaul: an explicit dark palette (readable regardless of the
   host theme), colour-coded download/upload rates, a framed table body, a
   status bar with an error state and a proper empty state with icon.
+- Bandwidth graph now uses a real time axis and auto-scrolls: it shows only the
+  last 60 s by default (switchable to 30 s / 1 min / 5 min / 15 min / All) while
+  keeping the full history scrollable. Scrolling back pauses auto-scroll until
+  you return to the live edge.
 
 [Unreleased]: https://github.com/Flenser42/throtl/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/Flenser42/throtl/releases/tag/v0.1.0

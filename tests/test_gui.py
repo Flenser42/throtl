@@ -321,5 +321,53 @@ class ProcessTableGroupedTest(unittest.TestCase):
         self.assertEqual(params["download_limit"], 1234)
 
 
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class BandwidthGraphTest(unittest.TestCase):
+    """Auto-Scroll, Zeitfenster-Auswahl und Zeit-Achse des Graphen."""
+
+    @staticmethod
+    def _adjustment(upper, page, value):
+        class _Adj:
+            def get_upper(self): return upper
+            def get_page_size(self): return page
+            def get_value(self): return value
+        return _Adj()
+
+    def test_window_choices_map_to_seconds(self):
+        from throtl.gui.graph import WINDOW_CHOICES, BandwidthGraph
+
+        self.assertEqual(WINDOW_CHOICES[BandwidthGraph._window_index(0)][0], "All")
+        self.assertEqual(BandwidthGraph._window_index(60), 1)
+        self.assertEqual(BandwidthGraph._window_index(30), 0)
+
+    def test_push_keeps_time_span_and_autoscroll_toggle(self):
+        from throtl.gui.graph import BandwidthGraph
+
+        g = BandwidthGraph(window_seconds=60)
+        for i in range(90):
+            g.push(1000.0, 100.0, now=1000.0 + i)
+        self.assertEqual(g._time_span(), 89.0)
+
+        g._autoscroll = True
+        g._on_scrolled(self._adjustment(2000, 500, 1500))   # am Ende
+        self.assertTrue(g._autoscroll)
+        g._on_scrolled(self._adjustment(2000, 500, 0))      # zurueckgescrollt
+        self.assertFalse(g._autoscroll)
+        g._on_scrolled(self._adjustment(2000, 500, 1500))   # wieder am Ende
+        self.assertTrue(g._autoscroll)
+
+    def test_hover_index_uses_timestamps(self):
+        from throtl.gui.graph import BandwidthGraph
+
+        g = BandwidthGraph(window_seconds=60)
+        for i in range(60):
+            g.push(1000.0, 100.0, now=1000.0 + i)
+        # ohne Allocation ist die Breite 0; Mitte der Samples muss trotzdem
+        # ein gueltiger Index in der Naehe der Mitte sein
+        index = g._index_at(0.0)
+        self.assertIsNotNone(index)
+        self.assertTrue(0 <= index < len(g._samples))
+
+
 if __name__ == "__main__":
     unittest.main()
