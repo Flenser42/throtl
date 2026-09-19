@@ -1,119 +1,119 @@
-# TESTING.md — wie Throtl getestet wird
+# TESTING.md — how Throtl is tested
 
-Diese Datei beschreibt, was automatisiert getestet wird, wie man manuell ohne
-GUI prüfen kann, dass Limits greifen, und welche Grenzen es gibt.
+This document describes what is covered by the automated tests, how to verify
+manually (without the GUI) that limits actually apply, and what the known
+limitations are.
 
 ---
 
-## Automatisierte Tests
+## Automated tests
 
 ```bash
-make check           # ruff-Lint + komplette unittest-Suite
-make test            # nur Tests (python3 -m unittest discover -s tests)
-make lint            # nur Lint (ruff check .)
+make check           # ruff + full unittest suite
+make test            # tests only (python3 -m unittest discover -s tests)
+make lint            # ruff check .
 ```
 
-Aktuelle Suite (`tests/`):
+Current suite (`tests/`):
 
-| Modul | Was | Gemockt |
-|-------|-----|---------|
-| `test_units` | parse/format kbps/kBs | reine Logik |
-| `test_protocol` | JSON-over-Unix-Socket Framing, Client timeout/events/error | In-Process socketpair |
-| `test_config` | TOML-Persistenz roundtrip, Prioritaeten, Rule-Escaping, Matching | tmp-Datei |
-| `test_monitor` | nethogs-`-t`-Parser (Refreshing:-Ticks, recv=download/sent=upload, versch. Prozesse), NethogsMonitor | Injektion eines Fake-Streams |
-| `test_engine` | TrafficToll-YAML-Render, tt-Subprozess (Start/Restart/Disabled), SimEngine | Fake-`tt`-Shellskript |
-| `test_daemon_cli` | End-to-end Daemon(Sim)+CLI: status, set_global+Persistenz, set_process roundtrip, toggle, set_unit, list | echter Unix-Socket, SimEngine+FakeMonitor |
-| `test_gui` | Rate-Format, Prioritaet-Mapping, GuiClient-RPC gegen echten Daemon | Widget-Tests übersprungen ohne Display |
+| Module | What it covers | Mocked |
+|--------|----------------|--------|
+| `test_units` | parse/format kbps/kBs | pure logic |
+| `test_protocol` | JSON-over-Unix-socket framing, buffering, client timeout/events/errors | in-process socketpair |
+| `test_config` | TOML persistence round-trip, priorities, rule escaping, matching | temp file |
+| `test_monitor` | nethogs `-t` parser (Refreshing ticks, recv=download/sent=upload, different processes), NethogsMonitor | injected fake stream |
+| `test_engine` | TrafficToll YAML rendering, `tt` subprocess (start/restart/disabled), SimEngine | fake `tt` shell script |
+| `test_daemon_cli` | end-to-end daemon (sim) + CLI: status, set_global + persistence, set_process round-trip/update, toggle, set_unit, list | real Unix socket, SimEngine + fake monitor |
+| `test_gui` | rate formatting, priority mapping, GuiClient RPC against a real daemon, process table (grouping/sorting/in-place updates), bandwidth graph (window/auto-scroll) | widget tests skipped without a display |
 
-> GUI-Widget-Instanziierung (`PriorityDropdown`, `RuleEditor`) wird in einer
-> Headless-Sandbox (kein Wayland/X11-Display) automatisch **übersprungen**
-> (`skipUnless`). Auf einer laufenden Omarchy-Session (Hyprland) läuft die volle
-> GUI-Suite.
+> GUI widget instantiation (`PriorityDropdown`, `RuleEditor`, `ProcessTable`,
+> `BandwidthGraph`) is automatically **skipped** in a headless environment (no
+> Wayland/X11 display). On a running Wayland session the full GUI suite runs.
 
 ---
 
-## Manuell: Limits testen, ohne die GUI zu öffnen
+## Manual: testing limits without opening the GUI
 
-### 1) Zuerst: Ist der Daemon erreichbar und was ist die Basis?
+### 1) Is the daemon reachable, and what is the baseline?
 
 ```bash
-# echten Dienst (nach Installation)
+# real service (after installation)
 systemctl status netlimiter-clone
-bin/throtl-cli status
+throtl-cli status
 
-# alternativ: Daemon manuell im Sim-Modus (kein root, kein tt benötigt)
-#   bin/throtl-daemon --simulate --socket /tmp/t.sock --config-dir /tmp/tcfg &
-bin/throtl-cli --socket /tmp/t.sock status
+# alternative: run the daemon manually in simulation mode
+#   throtl-daemon --simulate --socket /tmp/t.sock --config-dir /tmp/tcfg &
+throtl-cli --socket /tmp/t.sock status
 ```
 
-Ausgabe sollte `Shaping: AN`, `Engine: {…running…}` zeigen.
+The output should show `Shaping: ON` and an `Engine: …running…` line.
 
-### 2) Regel setzen + Persistenz prüfen
+### 2) Set a rule and check persistence
 
 ```bash
-bin/throtl-cli set-process --name mydl --exe /usr/bin/curl \
+throtl-cli set-process --name mydl --exe /usr/bin/curl \
     --download-limit 512kbps --priority hoch
-cat /etc/netlimiter-clone/config.toml    # process entry vorhanden?
+cat /etc/netlimiter-clone/config.toml    # process entry present?
 ```
 
-### 3) Bandbreite real drosseln (nur mit echtem TrafficToll + root)
+### 3) Actually throttle bandwidth (only with real TrafficToll + root)
 
-In **einem** Terminal:
+In **one** terminal:
 
 ```bash
-bin/throtl-cli set-global --download-limit 50mbps --upload-limit 10mbps
-bin/throtl-cli set-process --name curl --exe /usr/bin/curl \
+throtl-cli set-global --download-limit 50mbps --upload-limit 10mbps
+throtl-cli set-process --name curl --exe /usr/bin/curl \
     --download-limit 512kbps --upload-limit 128kbps
 ```
 
-In **einem zweiten** Terminal dasselbe Messziel, dann messen:
+In a **second** terminal, measure the same transfer:
 
 ```bash
-# Downlink
-curl -o /dev/null -w 'down=%{speed_download} B/s\n' https://speed.cloudflare.com/__down?bytes=10000000
-# Uplink
-curl -o /dev/null -w 'up=%{speed_upload} B/s\n' -F 'file=@somefile' https://speed.cloudflare.com/__up
+# downlink
+curl -o /dev/null -w 'down=%{speed_download} B/s\n' \
+     'https://speed.cloudflare.com/__down?bytes=10000000'
+# uplink
+curl -o /dev/null -w 'up=%{speed_upload} B/s\n' -F 'file=@somefile' \
+     https://speed.cloudflare.com/__up
 ```
 
-Ist die gemessene Rate deutlich unter der Interface-Leistungsfähigkeit und nahe
-am Limit (`512000 B/s` ≈ 512 kbit/s = 64 KB/s), greifen die Limits. Aufheben:
+If the measured rate is clearly below the link capacity and close to the limit
+(`512000 B/s` ≈ 512 kbit/s = 64 KB/s), the limits are working. Remove the rule
+with:
 
 ```bash
-bin/throtl-cli remove-process --key 'exe:/usr/bin/curl'
+throtl-cli remove-process --key 'exe:/usr/bin/curl'
 ```
 
-### 4) Live-Monitoring prüfen
+### 4) Check live monitoring
 
 ```bash
-bin/throtl-cli monitor        # zeigt pro Sekunde aktive Prozesse + Raten
+throtl-cli monitor        # per-second active processes + rates
 ```
 
-### 5) Shaping temporär deaktivieren
+### 5) Temporarily disable shaping
 
 ```bash
-bin/throtl-cli toggle --enabled false   # Semantik: keine tc-Auflagen aktiv
-bin/throtl-cli toggle --enabled true    # zurück
+throtl-cli toggle --enabled false   # no tc rules active
+throtl-cli toggle --enabled true    # back
 ```
 
 ---
 
-## Grenzen & bekannte Punkte
+## Limits & known points
 
-- **nethogs-Kapazität**: nethogs liefert den `name` (meist den exe-Pfad oder
-  Prozessnamen). Die Throtl-Regeln matchen auf `exe` / `name` / `cmdline`
-  (Regex). Bei exe/name werden die Werte `re.escape`-t → Literal-Match. Die
-  UI zeigt sowohl Live-Prozesse als auch die (traffic) gefärbten Regeln; eine
-  exakte 1:1-Verknüpfung PID→Regel ist wegen nethogs' Namensformat nicht immer
-  eindeutig (`rule_name`-Zuordnung ist heuristisch).
-- **TrafficToll hat keinen SIGHUP-Reload**: jede Config/Engine-Änderung
-  startet `tt` neu (siehe README). Kurze Unterbrechung beim Umschalten ist
-  möglich (Sekundenbruchteile), Limits gelten danach sofort wieder.
-- **Priorisierung braucht Interface-Obergrenzen**: ohne globales
-  `download`/`upload`-Limit ist nur Per-App-Limiting, keine QoS-Priorisierung.
-- **GUI-Instanzierung**: Headless-Umgebungen können die Widget-Tests nicht
-  ausführen (benötigt Display). Auf Omarchy/Hyprland sind sie aktiv.
-- **`0` ist ein echtes 0-Limit** (blockt alles). Für „kein Limit“ den Schluessel
-  weglassen bzw. in der GUI das Eingabefeld leer lassen.
-- **Interface-Wahl**: Der Daemon wählt automatisch das Standard-Routing-
-  Interface. Für VPN-Tunnels (z.B. `tailscale0`/`tun0`) per `--interface`
-  festlegen.
+- **nethogs naming**: nethogs reports the command line as the process name. Rules
+  match on `exe` / `name` (escaped literals) or `cmdline` (regex). The GUI groups
+  processes by application and shows live traffic; mapping a PID to a rule is
+  heuristic because of nethogs' name format.
+- **TrafficToll has no SIGHUP reload**: every config/engine change restarts `tt`
+  (see README). There can be a sub-second interruption while switching; the
+  limits apply again immediately afterwards.
+- **Prioritisation needs caps**: without a global `download`/`upload` limit there
+  is only per-app limiting, no QoS prioritisation.
+- **`0` is a real 0-limit** (blocks everything). For “no limit”, omit the key, or
+  leave the GUI field empty.
+- **Interface selection**: the daemon auto-detects the default-route interface.
+  For VPN tunnels (e.g. `tailscale0`/`tun0`) pin it with `--interface`.
+- **GUI instantiation**: headless environments cannot run the widget tests (a
+  display is required). On Omarchy/Hyprland they run.

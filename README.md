@@ -1,32 +1,61 @@
-# Throtl — NetLimiter-artige Bandbreiten-Limits & QoS für Linux
+# Throtl
+
+**NetLimiter-style per-application bandwidth limits and traffic prioritisation for Linux.**
 
 [![CI](https://github.com/Flenser42/throtl/actions/workflows/ci.yml/badge.svg)](https://github.com/Flenser42/throtl/actions/workflows/ci.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational.svg)](#requirements)
 
-**Throtl** bringt NetLimiter-Funktionalität nach Linux/Omarchy: pro Anwendung
-Bandbreiten-Limits (Download/Upload) und Traffic-Priorisierung, verwaltet über
-eine native GTK4+libadwaita-GUI, steuerbar auch per CLI — ohne die Engine neu
-zu erfinden.
+Throtl brings NetLimiter-style control to Linux/Omarchy: set per-application
+download/upload limits and traffic priorities from a native GTK4 + libadwaita
+app, or from a scriptable CLI — without reinventing the shaping engine.
 
-- **Backend-Engine**: [TrafficToll](https://github.com/cryzed/TrafficToll)
-  (`tt`, nutzt `tc` + cgroups unter der Haube) — läuft als eigener Subprozess.
-- **Live-Monitoring**: [nethogs](https://github.com/raboof/nethogs) im
-  Trace-Modus (`-t`) liefert, welcher Prozess gerade wie viel Bandbreite nutzt.
-- **GPU-Sprache**: natives GTK4 + libadwaita (PyGObject), dunkles
-  minimalistisches Design passend zu Omarchy/Hyprland.
+It is a thin, well-behaved layer on top of two proven tools:
+
+- **[TrafficToll](https://github.com/cryzed/TrafficToll)** (`tt`) does the actual
+  `tc`/cgroup shaping and runs as a managed subprocess.
+- **[nethogs](https://github.com/raboof/nethogs)** in trace mode provides live
+  per-process bandwidth.
+
+![Throtl main window](docs/screenshot.png)
 
 ---
 
-## Architektur
+## Features
+
+- **Per-application limits** — download/upload caps for a single app, even when
+  it runs many processes (they are grouped into one row and summed).
+- **Priorities** — Critical / High / Normal / Low for individual apps, plus a
+  global default priority for everything that has no rule.
+- **Live graph** — download/upload over time on a real time axis. Shows the last
+  60 s by default and auto-scrolls; switch the window to 30 s / 1 min / 5 min /
+  15 min / All and scroll back through history at any time.
+- **Live process table** — per-app rates, editable limits and priority, sortable
+  columns, colour-coded up/down values.
+- **Global switch** — turn all shaping on/off without losing your rules.
+- **Headless CLI** — everything the GUI can do, plus a live monitor and a
+  simulation mode that needs neither root nor TrafficToll.
+- **Local only** — a Unix socket, no network port.
+
+### Graph
+
+![Bandwidth graph](docs/graph.png)
+
+### Process table
+
+![Process table](docs/table.png)
+
+---
+
+## How it works
 
 ```
 ┌────────────────────────────┐          ┌───────────────────────────────┐
-│  Frontend (GUI oder CLI)   │          │  Daemon (root, systemd)       │
+│  Frontend (GUI or CLI)     │          │  Daemon (root, systemd)       │
 │  GTK4 + libadwaita         │          │  throtl.daemon                │
-│  throtl.gui                │          │                               │
 └────────────┬───────────────┘          └──────────────┬────────────────┘
-             │  Unix-Socket /run/…/daemon.sock          │
+             │  Unix socket /run/…/daemon.sock          │
              │  JSON, newline-delimited (throtl.protocol)│
              └───────────────► IPC ◄────────────────────┘
                      ┌──────────────┴──────────────┐
@@ -36,230 +65,239 @@ zu erfinden.
                      └──────────────────────────────┘
 ```
 
-- **Privilegierter Daemon** (`throtl-daemon`): läuft als `root`/systemd
-  (`netlimiter-clone.service`), weil `tc` (Traffic Control), die IFB-Device
-  und `nethogs -t` Root brauchen.
-- **IPC**: ausschließlich ein **lokaler Unix-Socket**
-  `/run/netlimiter-clone/daemon.sock` mit JSON-Nachrichten. Es wird **kein**
-  Netzwerk-Port geöffnet. Zugriff nur über local only.
-- **Config-Persistenz**: TOML unter `~/.config/netlimiter-clone/` (manueller
-  Lauf) bzw. `/etc/netlimiter-clone/config.toml` (systemd, weil root nicht in
-  fremde Homes schreiben soll). Die GUI liest die Config **ausschließlich**
-  über die Daemon-API (`get_config`) — nie direkt aus der Datei.
+- The **privileged daemon** (`throtl-daemon`) runs as `root` via systemd
+  (`netlimiter-clone.service`) because `tc`, the IFB device and `nethogs` need
+  root.
+- The **IPC** is a local Unix socket
+  (`/run/netlimiter-clone/daemon.sock`) carrying newline-delimited JSON. No TCP
+  port is opened.
+- **Configuration** is persisted as TOML: `/etc/netlimiter-clone/config.toml`
+  under systemd, or `~/.config/netlimiter-clone/config.toml` for manual runs.
+  The GUI reads it **only** through the daemon API, never from the file.
 
-### Wie Limits „greifen“
+### How limits take effect
 
-TrafficToll liest seine YAML-Config **einmal beim Start** und richtet die
-`tc`-Filter dynamisch für die Ports der gematchten Prozesse ein. Einen
-dynamischen „SIGHUP-Reload“ der Limits gibt es bei TrafficToll **nicht**.
-Deshalb startet die Throtl-Engine den `tt`-Subprozess bei **jeder** Limits-
-/Prioritäts-Änderung neu und schreibt vorher die aktuelle YAML:
+TrafficToll reads its YAML config once at startup and installs the `tc` filters
+for the matched processes; it has no `SIGHUP` reload. Throtl therefore writes the
+current config and **restarts the `tt` subprocess on every change**:
+
 ```
-Config-Änderung (GUI/CLI) ──► YAML rendern ──► tt stoppen ──► tt neu starten
+change (GUI/CLI) ──► render YAML ──► stop tt ──► start tt
 ```
-Das ist der robusteste Weg; TrafficToll braucht dafür keinen Neustart des
-Zielprozesses (die tc-Auflagen gelten sofort am Interface).
 
-### Monitoring-Semantik
+This is the most reliable path and does not require restarting the target
+application — the `tc` rules apply immediately on the interface.
 
-nethogs liefert im `-t`-Modus pro Tick eine Zeile `Name/pid/uid\tsent\trecv`.
-Aus der nethogs-Quelle (`cui.cpp`, `Line::log`) gilt: die erste Zahl ist
-**`sent_value`** (Uplink), die zweite **`recv_value`** (Downlink). Der
-Throtl-Parser mappt daher `recv → download` und `sent → upload`; Werte werden
-in ein internes **kbit/s**-Schema umgerechnet.
+### How priorities behave
+
+Priority numbers map as Critical `0` … Low `3` (lower = served first). The
+**global priority** is the class used for traffic that matches no per-app rule.
+Prioritisation only has a visible effect when the link is **saturated** *and* a
+**global download/upload cap** is set — otherwise TrafficToll runs at line rate
+and there is no queue to prioritise. The GUI hint states this as well.
+
+Throtl sets download and upload priority together from a single control.
+
+### Monitoring semantics
+
+In `-t` mode nethogs prints `Name/pid/uid<TAB>sent<TAB>recv` per tick; per its
+source, the first value is upload and the second is download. Throtl converts
+both to an internal kbit/s schema. Traffic that cannot be attributed to a
+process is kept as a synthetic `(unattributed)` row instead of being dropped.
 
 ---
 
-## Voraussetzungen (Omarchy / Arch Linux)
+## Requirements
 
-- Python 3.11+
-- `nethogs`, `gtk4`, `libadwaita`, `python-gobject`, `python-cairo` (alle in
-  Arch `[extra]`)
-- `traffictoll` (pip) in einem venv unter `/opt/netlimiter-clone`
-- `tc` wird vom Kernel bereitgestellt (HTB/prio), IFB-Modul fürs Ingress-Shaping
+- Linux (developed on **Arch / [Omarchy](https://omarchy.org)**, Wayland)
+- Python **3.11+**
+- `nethogs`, `gtk4`, `libadwaita`, `python-gobject`, `python-cairo`
+  (all in Arch `[extra]`)
+- [`traffictoll`](https://github.com/cryzed/TrafficToll) — installed by the setup
+  script into a venv under `/opt/netlimiter-clone`
+- `tc` and the `ifb` kernel module (for ingress shaping)
 
-Das Setup-Skript installiert alles Nötige.
+The backend itself has **no third-party Python dependencies**; the GUI uses the
+system PyGObject.
 
 ---
 
 ## Installation
 
 ```bash
-git clone https://github.com/Flenser42/throtl.git throtl && cd throtl
+git clone https://github.com/Flenser42/throtl.git
+cd throtl
 sudo ./setup/install.sh
 ```
 
-Das Skript:
-1. installiert die Systempakete (`nethogs`, `gtk4`, `libadwaita`, …),
-2. erzeugt `/opt/netlimiter-clone/venv` und installiert `traffictoll`,
-3. kopiert den Code und die Launcher nach `/opt/netlimiter-clone`,
-4. legt `/etc/netlimiter-clone/config.toml` (Default) und `/run/netlimiter-clone`
-   an,
-5. installiert & startet den systemd-Dienst `netlimiter-clone`,
-6. legt die `.desktop`-Datei + Icon an und bietet Autostart an.
+The script:
 
-Deinstallation: `sudo ./setup/uninstall.sh` (mit `--purge` auch Code/Config).
+1. installs the system packages listed above,
+2. creates `/opt/netlimiter-clone/venv` and installs `traffictoll`,
+3. copies the code and launchers to `/opt/netlimiter-clone` (and symlinks
+   `throtl-cli` / `throtl-gui` / `throtl-daemon` into `/usr/local/bin`),
+4. creates `/etc/netlimiter-clone/config.toml` and `/run/netlimiter-clone`,
+5. installs and starts the `netlimiter-clone` systemd service,
+6. installs the desktop entry, the icon and offers autostart.
 
-Da daemon + Engine **root** brauchen, läuft die Instanz systemweit; das
-Frontend (GUI/CLI) läuft als **User** und spricht über den Unix-Socket mit dem
-Daemon.
+Uninstall with `sudo ./setup/uninstall.sh` (add `--purge` to also remove code
+and configuration).
+
+> The daemon and engine need root, so Throtl installs system-wide. The frontend
+> (GUI/CLI) runs as your user and talks to the daemon over the Unix socket.
 
 ---
 
-## Start & Verwendung
+## Usage
 
-### GUI (nativ, GTK4+libadwaita)
+### GUI
 
-Nach der Installation findest du „Throtl“ im App-Launcher (Quickshell-Menü /
-wofi / rofi). Bewusst kein Kontrast-Chaos: dunkles Adwaita-Theme, wenige
-Accentfarben.
+Open **Throtl** from your launcher, or:
 
 ```bash
-# Manuell, falls nicht ueber den Launcher
 /opt/netlimiter-clone/bin/throtl-gui
-# Autostart (Login): identisch, startet sichtbar; kein unsichtbarer Tray-Modus
-/opt/netlimiter-clone/bin/throtl-gui --autostart
 ```
 
-Fenster bietet:
-- **Ein/Aus-Schalter** für das komplette Shaping (ohne Config zu löschen).
-- **Live-Graph** der Gesamtbandbreite (Download + Upload) über die letzten 60 s.
-- **Live-Liste** aller Prozesse mit aktiver Netzwerkverbindung, inkl. aktueller
-  Auf/Ab-Geschwindigkeit.
-- **Regel-Editor**: pro Anwendung Download-/Upload-Limit (Mbit/s-Kbit/s,
-  umschaltbar) + Prioritäts-Stufen (Kritisch/Hoch/Normal/Niedrig).
+The window gives you a global on/off switch, the display unit, global limits and
+priority, the live graph and the per-app table. Type a limit into a row's
+`DL limit` / `UL limit` field (empty = unlimited) and pick a priority; the change
+is sent to the daemon automatically.
 
-![Throtl GUI](https://raw.githubusercontent.com/Flenser42/throtl/master/docs/screenshot.png)
+> Limits are displayed and interpreted in the selected unit (MB/s, Mbit/s, KB/s,
+> kbit/s). An explicit suffix such as `2 kbps` always wins over the unit.
 
-### CLI (ohne GUI testen)
+### CLI
 
-Der Daemon lässt sich vollständig über die CLI steuern — damit kannst du
-**bevor / ohne GUI** prüfen, ob Limits greifen:
+The daemon is fully controllable without the GUI:
 
 ```bash
-# Status anzeigen
-bin/throtl-cli status
+throtl-cli status
+throtl-cli list-processes
 
-# Globale Limits setzen (2 Mbit/s Download / 1 Mbit/s Upload)
-bin/throtl-cli set-global --download-limit 2mbps --upload-limit 1mbps
+# Global caps (2 Mbit/s down, 1 Mbit/s up)
+throtl-cli set-global --download-limit 2mbps --upload-limit 1mbps
+throtl-cli set-global --download-priority hoch
 
-# Regel fuer Firefox (Limit + Prioritaet) anlegen
-bin/throtl-cli set-process --name Firefox --exe /usr/lib/firefox/firefox \
+# Rule for Firefox
+throtl-cli set-process --name Firefox --exe /usr/lib/firefox/firefox \
     --download-limit 2mbps --priority hoch
 
-# Regel entfernen
-bin/throtl-cli remove-process --key 'exe:/usr/lib/firefox/firefox'
+throtl-cli remove-process --key 'exe:/usr/lib/firefox/firefox'
 
-# Shaping global an/aus
-bin/throtl-cli toggle --enabled false
-
-# Live-Bandbreiten pro Sekunde
-bin/throtl-cli monitor
-
-# Aktive Prozesse + angewendete Regeln
-bin/throtl-cli list-processes
+throtl-cli toggle --enabled false      # pause all shaping
+throtl-cli monitor                     # live rates, once per second
 ```
 
-### Was bei einem manuellen Test passiert
+### Simulation mode
 
-Es gibt zwei Schichten:
-
-1. **Config wirkt an TrafficToll** (ob der `tt`-Prozess die Limits gesetzt hat):
-   siehe `systemctl status netlimiter-clone` und die YAML/TOML unter
-   `/etc/netlimiter-clone`. `bin/throtl-cli status` zeigt das.
-
-2. **Bandbreite real drosseln** (End-to-End): Starte eine Regel für einen
-   Download-/Upload-Test in einem Terminal und misst die tatsächliche Rate
-   mit `curl` oder einem TCP-Tool:
+For a quick look without root or TrafficToll:
 
 ```bash
-# Regel fuer einen Download (z.B. auf den 'curl'-Prozess)
-bin/throtl-cli set-process --name curl --exe /usr/bin/curl \
-    --download-limit 512kbps --priority normal
-
-# separates Test-Terminal: messen, vorher/nachher
-curl -o /dev/null -w 'Speed: %{speed_download} B/s\n' \
-     http://example.com/bigfile.bin
+throtl-daemon --simulate --socket /tmp/throtl.sock &
+throtl-cli --socket /tmp/throtl.sock status
+throtl-cli --socket /tmp/throtl.sock set-global --download-limit 2mbps
 ```
-
-Ohne physisches Interface/testbaren Download im sandboxartigen CLI-Test steht
-der **Simulationsmodus** bereit (kein Root, kein tt nötig):
-
-```bash
-bin/throtl-daemon --simulate --socket /tmp/throtl.sock &
-bin/throtl-cli --socket /tmp/throtl.sock status       # Limits sind "gesetzt"
-bin/throtl-cli --socket /tmp/throtl.sock set-global --download-limit 2mbps
-```
-
-> **Hinweis zur Priorisierung**: TrafficToll-Priorisierung funktioniert nur,
-> wenn das Interface-Limit (`download`/`upload`) **nahe an der realen
-> Leitungstransferrate** liegt. Für „nur Pro-Anwendung-Limits“ ohne Priorisierung
-> können die globalen Limits weggelassen werden (unbegrenzt).
 
 ---
 
-## Sicherheit
+## Verifying that limits really work
 
-- **Nur lokaler Unix-Socket** — kein TCP-Port. Der Socket lebt unter
-  `/run/netlimiter-clone/` (root-owner, 0755-Verzeichnis).
-- Das **Frontend ist User-prozess**; es kann über die API nur Limits/Prioritäten
-  setzen, die der (root-)Daemon an TrafficToll weitergibt. Es gibt keinen
-  beliebigen Shell-Zugriff über den Socket.
-- Die YAML wird von der Engine deterministisch gerendert (kein User-shell-
-  Injection); Match-Werte für exe/name werden `re.escape`-t, `cmdline` ist
-  explizit als Regex gedacht.
-- Der Daemon zwingt `NoNewPrivileges=true`; sein Dateizugriff ist auf
-  `/run/netlimiter-clone` + `/etc/netlimiter-clone` begrenzt
-  (`ReadWritePaths`).
+There are two layers:
+
+1. **Did the config reach TrafficToll?** `throtl-cli status` shows preflight
+   warnings and the engine state; `systemctl status netlimiter-clone` and the
+   files under `/etc/netlimiter-clone` show the details.
+2. **Is bandwidth actually throttled?** Add a rule for your test tool and measure
+   the real rate:
+
+   ```bash
+   throtl-cli set-process --name curl --exe /usr/bin/curl \
+       --download-limit 512kbps --priority normal
+
+   curl -o /dev/null -w 'Speed: %{speed_download} B/s\n' \
+        https://example.com/bigfile.bin
+   ```
+
+Without a real interface to shape, the simulation mode above is enough to test
+the control flow.
+
+See [`docs/TESTING.md`](docs/TESTING.md) for manual test recipes and known
+limitations.
 
 ---
 
-## Projektstruktur
+## Security
+
+- **Local Unix socket only** — no TCP port. The socket lives in
+  `/run/netlimiter-clone/` and is world-connectable (`0666`) so the user-facing
+  GUI/CLI can reach the root daemon; access is purely local.
+- The frontend can only set limits and priorities via the API; there is **no
+  arbitrary shell access** over the socket.
+- The TrafficToll YAML is rendered deterministically; `exe`/`name` match values
+  are escaped, `cmdline` is explicitly a regex.
+- The systemd unit deliberately runs without additional sandboxing because
+  `nethogs` needs `cap_sys_ptrace`/`cap_dac_read_search` and the engine needs
+  `CAP_NET_ADMIN`; the reasoning is documented inline in the unit file.
+
+---
+
+## Project layout
 
 ```
 throtl/
-  __init__.py        Pfad-/App-Konstanten
-  units.py           kbit/s-Normschema, rate parse/format
-  protocol.py        IPC: JSON over Unix-Socket, Client mit Reader-Thread
-  config.py          TOML-Schema + Prioritaeten + Rule/Persistenz
-  monitor.py         nethogs -t Parser + NethogsMonitor
-  engine.py          TrafficToll-YAML-Render + tt-Prozess + SimEngine
-  daemon.py          Unix-Socket-RPC-Daemon (root)
+  __init__.py        path/app constants
+  units.py           kbit/s schema, rate parse/format
+  protocol.py        IPC: JSON over Unix socket, client with reader thread
+  config.py          TOML schema, priorities, rule/persistence helpers
+  monitor.py         nethogs -t parser + NethogsMonitor
+  engine.py          TrafficToll YAML renderer + tt process + SimEngine
+  daemon.py          Unix-socket RPC daemon (root)
   cli.py             CLI (throtl-cli)
-  gui/               GTK4+libadwaita Frontend
-tests/               unittest-Suite
-setup/               install/uninstall + systemd-unit + .desktop + Autostart
-data/                Icon (SVG)
-LICENSE  GPL-3.0
+  gui/               GTK4 + libadwaita frontend
+tests/               unittest suite
+setup/               install/uninstall, systemd unit, .desktop, autostart
+data/                icon (SVG)
+docs/                TESTING.md, RELEASING.md, screenshots
 ```
 
-## Entwickeln & Testen
+---
+
+## Development
 
 ```bash
-make check              # Lint (ruff) + komplette unittest-Suite
-make test               # nur Tests: python3 -m unittest discover -s tests
-make lint               # nur Lint: ruff check .
-make lint-fix           # Lint-Autofixes (Imports/Formatierung)
-make build              # sdist + wheel in dist/ (benoetigt `build`)
+make check          # ruff + full unittest suite
+make test           # python3 -m unittest discover -s tests
+make lint           # ruff check .
+make lint-fix       # ruff autofixes (imports/formatting)
+make build          # sdist + wheel into dist/ (needs `build`)
 ```
 
-Die volle GUI-Test-Suite (Widget-/Tabellen-Tests) laeuft nur mit
-verfuegbarem Display; headless werden diese Tests automatisch uebersprungen.
-Siehe `docs/TESTING.md` fuer Test-Optik und bekannte Grenzen.
+- Prefer the **system Python** for GUI tests (`/usr/bin/python3`), since a
+  virtualenv typically lacks PyGObject. The `Makefile` does this automatically.
+- GUI widget tests are skipped when no display is available.
+- Run `make clean` to drop build artifacts and caches.
 
-### Paket bauen / veroeffentlichen
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/RELEASING.md`](docs/RELEASING.md).
 
-Das Projekt ist PEP-517-konform aufgesetzt (`pyproject.toml`, Setuptools):
+---
 
-```bash
-python -m build          # dist/throtl-<version>.tar.gz + .whl
-```
+## Troubleshooting
 
-Die Installation auf einem Zielsystem erfolgt weiterhin ueber
-`setup/install.sh` (systemd-Dienst, Systempakete, venv fuer TrafficToll).
-Eine reine `pip install`-Installation liefert nur die Python-Module und
-CLI-/Daemon-/GUI-Entry-Points.
+- **No process list in the GUI** — the daemon could not start `nethogs`. Check
+  `throtl-cli status` (`Monitor error`) and `systemctl status netlimiter-clone`.
+- **Limits don't seem to apply** — verify the interface. Throtl auto-detects the
+  default-route interface; for VPN tunnels pin it explicitly:
+  `throtl-daemon --interface tailscale0`.
+- **Prioritisation does nothing** — set global download/upload caps; see
+  [How priorities behave](#how-priorities-behave).
+- **`tt` not found** — re-run `sudo ./setup/install.sh` (it installs TrafficToll
+  into `/opt/netlimiter-clone/venv`).
 
-## Lizenzen
+---
 
-Throtl-Code: GPL-3.0. TrafficToll: GPL-3.0. nethogs: GPL-2.0.
+## License
+
+Throtl is licensed under **GPL-3.0-or-later** (see [`LICENSE`](LICENSE)).
+
+Bundled/companion projects keep their own licenses: TrafficToll is GPL-3.0,
+nethogs is GPL-2.0.
