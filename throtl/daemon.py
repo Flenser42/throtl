@@ -4,7 +4,7 @@ Architektur:
     [GTK4-Frontend / CLI] --Unix-Socket (JSON)-- [Daemon]
         ├── TrafficTollEngine  -> tt-Subprozess (tc + cgroups, root)
         ├── NethogsMonitor     -> Live-Bandbreiten pro Prozess
-        └── ConfigStore        -> ~/.config/netlimiter-clone/config.toml
+        └── ConfigStore        -> ~/.config/throtl/config.toml
 
 IPC-Nachrichten: siehe throtl.protocol (Request/Response/Event).
 
@@ -24,6 +24,7 @@ Events:
 
 import argparse
 import atexit
+import copy
 import os
 import socket
 import threading
@@ -167,7 +168,7 @@ def _resolve_tt_command(value) -> str:
     env = os.environ.get("THROTL_TT")
     if env:
         return env
-    venv_tt = "/opt/netlimiter-clone/venv/bin/tt"
+    venv_tt = "/opt/throtl/venv/bin/tt"
     if os.path.exists(venv_tt):
         return venv_tt
     return shutil.which("tt") or "tt"
@@ -240,13 +241,20 @@ class Daemon:
         self._iface_sample = None
         self._ruleset_generation = 0
         self._monitor_enabled = True
+        # Engine-Neustarts laufen in einem eigenen Thread (ein tt-Apply dauert
+        # ~2 s und darf weder die RPC-Antworten noch die GUI blockieren).
+        self._apply_event = threading.Event()
+        self._apply_thread = None
+        self._engine_applying = False
 
         atexit.register(self.shutdown)
 
     # --- Lifecycle ---
 
     def start(self) -> None:
+        # Initiale Config synchron anwenden, danach uebernimmt der Worker.
         self._apply_engine()
+        self._start_apply_worker()
         self._start_monitor()
         self._server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
@@ -354,8 +362,8 @@ class Daemon:
                 "rule_name": matches.get("name"),
             })
         # Nach ANWENDUNG gruppieren: eine App laeuft oft in vielen Prozessen
-        # (z. B. ein Downloader mit 8 Workern). NetLimiter-artig soll die App
-        # als EINE Zeile mit der Summe erscheinen — sonst sieht man 8x
+        # (z. B. ein Downloader mit 8 Workern). Die App soll als EINE Zeile mit
+        # der Summe erscheinen — sonst sieht man 8x
         # "python3" mit je ~0,2 MB/s statt einmal "legendary" mit ~2 MB/s.
         apps = {}
         for pid, info in raw.items():
@@ -407,15 +415,52 @@ class Daemon:
 
     # --- Engine ---
 
-    def _apply_engine(self) -> None:
-        cfg = self.store.get()
+    def _apply_engine(self, config: dict | None = None) -> None:
+        """Engine (tt) mit der aktuellen/uebergebenen Config synchronisieren.
+
+        Wird beim Start einmal synchron aufgerufen; danach uebernimmt der
+        Background-Worker (:meth:`_schedule_engine_apply`), damit ein ~2 s
+        dauernder tt-Neustart weder RPC-Antworten noch die GUI blockiert.
+        """
+        if config is None:
+            config = self._snapshot_config()
         try:
-            self.engine.apply(cfg)
+            self.engine.apply(config)
         except Exception as error:
             self.engine_error = f"{type(error).__name__}: {error}"
             print(f"Engine-Fehler: {self.engine_error}", flush=True)
         else:
             self.engine_error = None
+
+    def _snapshot_config(self) -> dict:
+        """Tiefe Kopie der Config unter State-Lock (nicht auf lebenden Daten rendern)."""
+        with self._state_lock:
+            return copy.deepcopy(self.store.get())
+
+    def _start_apply_worker(self) -> None:
+        self._apply_thread = threading.Thread(
+            target=self._apply_loop, daemon=True, name="throtl-engine-apply"
+        )
+        self._apply_thread.start()
+
+    def _apply_loop(self) -> None:
+        """Serialisiert Engine-Neustarts und fasst schnelle Aenderungen zusammen."""
+        while self._running:
+            self._apply_event.wait(timeout=0.5)
+            if not self._running:
+                break
+            if not self._apply_event.is_set():
+                continue
+            self._apply_event.clear()
+            self._engine_applying = True
+            try:
+                self._apply_engine()
+            finally:
+                self._engine_applying = False
+
+    def _schedule_engine_apply(self) -> None:
+        """Engine-Apply anfordern: nicht blockierend und coalesced."""
+        self._apply_event.set()
 
     def _start_monitor(self) -> None:
         if self._monitor_factory is None:
@@ -514,6 +559,7 @@ class Daemon:
             "monitoring": self.monitor is not None,
             "monitor_error": self.monitor_error,
             "engine_error": self.engine_error,
+            "engine_applying": self._engine_applying,
             "engine": engine_status,
             "simulated": getattr(self.engine, "simulated", False),
             "preflight": preflight(tt_cmd, self.interface),
@@ -530,7 +576,7 @@ class Daemon:
         changes = dict(params)
         with self._state_lock:
             store.update_global(**changes)
-            self._apply_engine()
+        self._schedule_engine_apply()
         self._emit_rules_changed()
         return store.get()["global"]
 
@@ -562,7 +608,7 @@ class Daemon:
                 rule["recursive"] = bool(params.get("recursive"))
             with self._state_lock:
                 self.store.upsert_process(rule)
-                self._apply_engine()
+            self._schedule_engine_apply()
             self._emit_rules_changed()
             return rule
 
@@ -583,7 +629,7 @@ class Daemon:
         )
         with self._state_lock:
             self.store.upsert_process(rule)
-            self._apply_engine()
+        self._schedule_engine_apply()
         self._emit_rules_changed()
         return rule
 
@@ -593,7 +639,7 @@ class Daemon:
             raise ValueError("key fehlt")
         with self._state_lock:
             removed = self.store.remove_process(key)
-            self._apply_engine()
+        self._schedule_engine_apply()
         self._emit_rules_changed()
         return {"removed": removed}
 
@@ -605,7 +651,7 @@ class Daemon:
             enabled = bool(raw)
         with self._state_lock:
             self.store.update_global(enabled=enabled)
-            self._apply_engine()
+        self._schedule_engine_apply()
         self._emit_rules_changed()
         return {"enabled": enabled}
 
@@ -626,6 +672,10 @@ class Daemon:
 
     def shutdown(self) -> None:
         self._running = False
+        self._apply_event.set()          # Apply-Worker aufwecken
+        if self._apply_thread is not None:
+            self._apply_thread.join(timeout=5.0)
+            self._apply_thread = None
         self._stop_monitor()
         if self.engine is not None:
             try:
@@ -670,7 +720,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="im Vordergrund laufen (fuer systemd/Testing)")
     parser.add_argument("--socket", default=SOCKET_PATH, help="Unix-Socket-Pfad")
     parser.add_argument("--config-dir", default=None,
-                        help="Config-Verzeichnis (Default: ~/.config/netlimiter-clone)")
+                        help="Config-Verzeichnis (Default: ~/.config/throtl)")
     parser.add_argument("--interface", default=None,
                         help="Netzwerk-Interface (Default: auto)")
     parser.add_argument("--simulate", action="store_true",

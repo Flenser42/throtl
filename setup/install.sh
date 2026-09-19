@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Throtl-Installation fuer Omarchy (Arch Linux + Hyprland, Wayland).
 # - Installiert Systempakete: nethogs, gtk4, libadwaita, python-gobject, python-cairo
-# - Installiert TrafficToll (pip) in ein venv unter /opt/netlimiter-clone
+# - Installiert TrafficToll (pip) in ein venv unter /opt/throtl
 # - Legt systemd-Service, .desktop-Datei, Icon an
 # - Richtet Autostart ein
 #
@@ -11,9 +11,9 @@ set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SELF_DIR")"
-OPT="/opt/netlimiter-clone"
-ETC="/etc/netlimiter-clone"
-RUN="/run/netlimiter-clone"
+OPT="/opt/throtl"
+ETC="/etc/throtl"
+RUN="/run/throtl"
 
 echo "=== [1/6] Systempakete installieren ==="
 # pacman-Pakete (alle in [extra])
@@ -55,13 +55,13 @@ if [ ! -f "$ETC/config.toml" ]; then
 fi
 
 echo "=== [5/6] systemd-Service installieren ==="
-sudo install -m 0644 "$SELF_DIR"/netlimiter-clone.service /etc/systemd/system/
+sudo install -m 0644 "$SELF_DIR"/throtl.service /etc/systemd/system/
 sudo systemctl daemon-reload
 # Restart-Zaehler leeren (falls die Unit zuvor in einer Start-Loop steckte)
-sudo systemctl reset-failed netlimiter-clone 2>/dev/null || true
-sudo systemctl enable netlimiter-clone
-sudo systemctl restart netlimiter-clone
-echo "   Daemon-Service: netlimiter-clone  (Status: systemctl status netlimiter-clone)"
+sudo systemctl reset-failed throtl 2>/dev/null || true
+sudo systemctl enable throtl
+sudo systemctl restart throtl
+echo "   Daemon-Service: throtl  (Status: systemctl status throtl)"
 
 echo "=== [6/6] Desktop-Datei + Icon + Autostart ==="
 sudo install -Dm 0755 -d /usr/share/applications
@@ -83,6 +83,6 @@ fi
 
 echo
 echo " FERTIG. Throtl ist installiert."
-echo "   CLI:     /opt/netlimiter-clone/bin/throtl-cli status"
+echo "   CLI:     /opt/throtl/bin/throtl-cli status"
 echo "   GUI:     Starte 'Throtl' im App-Menue (Quickshell/wofi/rofi)"
 echo "   Uninstall: sudo ./setup/uninstall.sh"

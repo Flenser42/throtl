@@ -1,6 +1,6 @@
-"""Throtl GUI — a NetLimiter-style bandwidth manager for Linux (GTK4 + libadwaita).
+"""Throtl GUI — a per-application bandwidth manager for Linux (GTK4 + libadwaita).
 
-Layout (inspired by NetLimiter):
+Layout:
     HeaderBar:  [Throttling switch]                      [Unit ▾] [Reload]
     ─────────────────────────────────────────────────────────────────────────
     Global limits:  Download [____]  Upload [____]  Priority [▾]   hint…
@@ -290,25 +290,33 @@ class ThrotlWindow(Adw.ApplicationWindow):
     def _on_toggle(self, switch, state):
         """Nutzer schaltet das Shaping um.
 
-        Wir setzen den sichtbaren Zustand SELBST (nach erfolgreichem RPC) und
-        geben True zurueck, damit GTKs Default-Handler ihn nicht ueberschreibt —
-        sonst liefen Schalter und Daemon auseinander (Switch blieb optisch AN,
-        obwohl der Daemon AUS meldete).
+        Der Schalter wird sofort umgelegt (optimistisch) und der RPC laeuft im
+        Hintergrund — ein tt-Neustart darf das Fenster nicht einfrieren. Bei
+        einem Fehler wird der Schalter zurueckgesetzt.
         """
         if self._syncing:
             return False
-        try:
-            self.gui.call("toggle_enabled", {"enabled": bool(state)})
-        except Exception as error:
-            self.show_error(str(error))
-            return True  # Zustand unveraendert lassen
-        self.show_info("Throttling " + ("off" if not state else "on"))
+        enabled = bool(state)
         self._syncing = True
         try:
-            switch.set_active(bool(state))
+            switch.set_active(enabled)
         finally:
             self._syncing = False
+        self.gui.call_async(
+            "toggle_enabled", {"enabled": enabled},
+            on_done=lambda _r: self.show_info(
+                "Throttling " + ("on" if enabled else "off")),
+            on_error=lambda message: self._revert_toggle(not enabled, message),
+        )
         return True
+
+    def _revert_toggle(self, active: bool, message: str) -> None:
+        self._syncing = True
+        try:
+            self.toggle_switch.set_active(active)
+        finally:
+            self._syncing = False
+        self.show_error(message)
 
     def _on_unit(self, dd, *_args):
         if self._syncing:
@@ -351,11 +359,11 @@ class ThrotlWindow(Adw.ApplicationWindow):
             except ValueError as error:
                 self.show_error(f"Invalid limit: {error}")
                 return False
-            try:
-                self.gui.call("set_global", {key: value})
-                self.show_info("Global limit updated")
-            except Exception as error:
-                self.show_error(str(error))
+            self.gui.call_async(
+                "set_global", {key: value},
+                on_done=lambda _r: self.show_info("Global limit updated"),
+                on_error=self.show_error,
+            )
             return False
 
         old = getattr(self, timer_attr, None)
@@ -367,12 +375,11 @@ class ThrotlWindow(Adw.ApplicationWindow):
         if self._syncing:
             return
         name = dd.get_priority_name()
-        try:
-            self.gui.call("set_global", {"download_priority": name,
-                                         "upload_priority": name})
-            self.show_info(f"Global priority: {name}")
-        except Exception as error:
-            self.show_error(str(error))
+        self.gui.call_async(
+            "set_global", {"download_priority": name, "upload_priority": name},
+            on_done=lambda _r: self.show_info(f"Global priority: {name}"),
+            on_error=self.show_error,
+        )
 
     def _on_destroy(self, *args):
         if hasattr(self, "gui"):

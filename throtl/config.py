@@ -1,4 +1,4 @@
-"""Konfiguration: TOML unter ~/.config/netlimiter-clone/config.toml.
+"""Konfiguration: TOML unter ~/.config/throtl/config.toml.
 
 Internes Schema (normalisierte Form, siehe ``default_config``):
 
@@ -55,7 +55,7 @@ from . import CONFIG_DIR_NAME
 
 CONFIG_FILE_NAME = "config.toml"
 
-# Prioritaeten (NetLimiter-artig). TrafficToll: kleinere Zahl = hoehere Prioritaet.
+# Prioritaeten. TrafficToll: kleinere Zahl = hoehere Prioritaet.
 PRIORITY_NAMES = ("kritisch", "hoch", "normal", "niedrig")
 PRIORITY_TO_INT = {"kritisch": 0, "hoch": 1, "normal": 2, "niedrig": 3}
 PRIORITY_INT_TO_NAME = {value: name for name, value in PRIORITY_TO_INT.items()}
@@ -189,7 +189,7 @@ def default_config() -> dict:
 
 
 def config_dir_default() -> str:
-    """Konfigurationsverzeichnis: $THROTL_CONFIG_DIR oder ~/.config/netlimiter-clone."""
+    """Konfigurationsverzeichnis: $THROTL_CONFIG_DIR oder ~/.config/throtl."""
     env = os.environ.get("THROTL_CONFIG_DIR")
     if env:
         return env

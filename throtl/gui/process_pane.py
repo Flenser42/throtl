@@ -1,4 +1,4 @@
-"""Network traffic table: one editable row per active process (NetLimiter-style).
+"""Network traffic table: one editable row per active application.
 
 Each row shows a process's live download/upload rates and lets the user set a
 per-process download/upload limit + priority. Setting a limit creates/updates a
@@ -450,11 +450,22 @@ class ProcessTable(Gtk.Box):
             rule["priority"] = "normal"
             rule["recursive"] = False
         rule[field] = value
-        try:
-            self.gui.client.call("set_process", rule)
-            self.gui.show_info(f"Rule saved ({rule.get('name')})")
-        except Exception as error:
-            self.gui.show_error(str(error))
+        client = self.gui.client
+        name = rule.get("name")
+        call_async = getattr(client, "call_async", None)
+        if call_async is not None:
+            # Nicht blockierend: der Engine-Neustart darf die UI nicht einfrieren.
+            call_async(
+                "set_process", rule,
+                on_done=lambda _r: self.gui.show_info(f"Rule saved ({name})"),
+                on_error=self.gui.show_error,
+            )
+        else:  # pragma: no cover - Test-Stub ohne Worker
+            try:
+                client.call("set_process", rule)
+                self.gui.show_info(f"Rule saved ({name})")
+            except Exception as error:
+                self.gui.show_error(str(error))
 
     # --- Accessors (tests) -------------------------------------------------
 

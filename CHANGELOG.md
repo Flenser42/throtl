@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- NetLimiter-style GTK4 + libadwaita GUI with a live bandwidth graph, global
+- GTK4 + libadwaita GUI with a live bandwidth graph, global
   limits, per-application download/upload limits and priority levels.
 - Privileged daemon (`throtl.daemon`) speaking JSON-over-Unix-socket, backed by
   [TrafficToll](https://github.com/cryzed/TrafficToll) (`tt`) for `tc`-based
@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI responsiveness: changing a limit, priority or the global switch no longer
+  freezes the window for ~2 s. Mutating RPCs run on a background worker, the
+  control updates optimistically and reverts on error.
 - IPC framing: bytes following a message's newline in the same `recv()` are now
   buffered instead of discarded, so coalesced responses/events and pipelined
   requests are no longer lost.
@@ -41,6 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Performance: TrafficToll restarts happen on a background worker and are
+  coalesced, identical configs are skipped entirely, and shutdown waits are
+  bounded — so repeated edits no longer trigger needless `tt` restarts.
 - GUI styling overhaul: an explicit dark palette (readable regardless of the
   host theme), colour-coded download/upload rates, a framed table body, a
   status bar with an error state and a proper empty state with icon.

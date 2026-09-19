@@ -171,7 +171,7 @@ class InterfaceDetectionTest(unittest.TestCase):
 
 class ConfigPathTest(unittest.TestCase):
     def test_default_dir(self):
-        self.assertTrue(config.config_dir_default().endswith("netlimiter-clone"))
+        self.assertTrue(config.config_dir_default().endswith("throtl"))
 
     def test_env_override(self):
         import os

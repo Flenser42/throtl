@@ -1,11 +1,11 @@
 [Desktop Entry]
 Type=Application
 Name=Throtl
-Comment=NetLimiter-artige Bandbreiten-Limits und Traffic-Priorisierung
+Comment=Per-application bandwidth limits and traffic prioritisation
 GenericName=Network Bandwidth Manager
 Categories=Network;System;Utility;
-Keywords=bandwidth;limit;qos;network;traffic;netlimiter;
-Exec=/usr/bin/python3 /opt/netlimiter-clone/bin/throtl-gui
+Keywords=bandwidth;limit;qos;network;traffic;
+Exec=/usr/bin/python3 /opt/throtl/bin/throtl-gui
 Icon=throtl
 Terminal=false
 StartupNotify=true

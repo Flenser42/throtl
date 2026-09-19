@@ -38,7 +38,7 @@ Current suite (`tests/`):
 
 ```bash
 # real service (after installation)
-systemctl status netlimiter-clone
+systemctl status throtl
 throtl-cli status
 
 # alternative: run the daemon manually in simulation mode
@@ -53,7 +53,7 @@ The output should show `Shaping: ON` and an `Engine: …running…` line.
 ```bash
 throtl-cli set-process --name mydl --exe /usr/bin/curl \
     --download-limit 512kbps --priority hoch
-cat /etc/netlimiter-clone/config.toml    # process entry present?
+cat /etc/throtl/config.toml    # process entry present?
 ```
 
 ### 3) Actually throttle bandwidth (only with real TrafficToll + root)

@@ -1,13 +1,13 @@
 # Throtl
 
-**NetLimiter-style per-application bandwidth limits and traffic prioritisation for Linux.**
+**Per-application bandwidth limits and traffic prioritisation for Linux.**
 
 [![CI](https://github.com/Flenser42/throtl/actions/workflows/ci.yml/badge.svg)](https://github.com/Flenser42/throtl/actions/workflows/ci.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational.svg)](#requirements)
 
-Throtl brings NetLimiter-style control to Linux/Omarchy: set per-application
+Throtl brings fine-grained bandwidth control to Linux/Omarchy: set per-application
 download/upload limits and traffic priorities from a native GTK4 + libadwaita
 app, or from a scriptable CLI — without reinventing the shaping engine.
 
@@ -34,6 +34,8 @@ It is a thin, well-behaved layer on top of two proven tools:
 - **Live process table** — per-app rates, editable limits and priority, sortable
   columns, colour-coded up/down values.
 - **Global switch** — turn all shaping on/off without losing your rules.
+- **Responsive** — TrafficToll restarts are coalesced and happen off the UI
+  thread, so the window never freezes while a change is applied.
 - **Headless CLI** — everything the GUI can do, plus a live monitor and a
   simulation mode that needs neither root nor TrafficToll.
 - **Local only** — a Unix socket, no network port.
@@ -66,13 +68,13 @@ It is a thin, well-behaved layer on top of two proven tools:
 ```
 
 - The **privileged daemon** (`throtl-daemon`) runs as `root` via systemd
-  (`netlimiter-clone.service`) because `tc`, the IFB device and `nethogs` need
+  (`throtl.service`) because `tc`, the IFB device and `nethogs` need
   root.
 - The **IPC** is a local Unix socket
-  (`/run/netlimiter-clone/daemon.sock`) carrying newline-delimited JSON. No TCP
+  (`/run/throtl/daemon.sock`) carrying newline-delimited JSON. No TCP
   port is opened.
-- **Configuration** is persisted as TOML: `/etc/netlimiter-clone/config.toml`
-  under systemd, or `~/.config/netlimiter-clone/config.toml` for manual runs.
+- **Configuration** is persisted as TOML: `/etc/throtl/config.toml`
+  under systemd, or `~/.config/throtl/config.toml` for manual runs.
   The GUI reads it **only** through the daemon API, never from the file.
 
 ### How limits take effect
@@ -114,7 +116,7 @@ process is kept as a synthetic `(unattributed)` row instead of being dropped.
 - `nethogs`, `gtk4`, `libadwaita`, `python-gobject`, `python-cairo`
   (all in Arch `[extra]`)
 - [`traffictoll`](https://github.com/cryzed/TrafficToll) — installed by the setup
-  script into a venv under `/opt/netlimiter-clone`
+  script into a venv under `/opt/throtl`
 - `tc` and the `ifb` kernel module (for ingress shaping)
 
 The backend itself has **no third-party Python dependencies**; the GUI uses the
@@ -133,11 +135,11 @@ sudo ./setup/install.sh
 The script:
 
 1. installs the system packages listed above,
-2. creates `/opt/netlimiter-clone/venv` and installs `traffictoll`,
-3. copies the code and launchers to `/opt/netlimiter-clone` (and symlinks
+2. creates `/opt/throtl/venv` and installs `traffictoll`,
+3. copies the code and launchers to `/opt/throtl` (and symlinks
    `throtl-cli` / `throtl-gui` / `throtl-daemon` into `/usr/local/bin`),
-4. creates `/etc/netlimiter-clone/config.toml` and `/run/netlimiter-clone`,
-5. installs and starts the `netlimiter-clone` systemd service,
+4. creates `/etc/throtl/config.toml` and `/run/throtl`,
+5. installs and starts the `throtl` systemd service,
 6. installs the desktop entry, the icon and offers autostart.
 
 Uninstall with `sudo ./setup/uninstall.sh` (add `--purge` to also remove code
@@ -155,7 +157,7 @@ and configuration).
 Open **Throtl** from your launcher, or:
 
 ```bash
-/opt/netlimiter-clone/bin/throtl-gui
+/opt/throtl/bin/throtl-gui
 ```
 
 The window gives you a global on/off switch, the display unit, global limits and
@@ -205,8 +207,8 @@ throtl-cli --socket /tmp/throtl.sock set-global --download-limit 2mbps
 There are two layers:
 
 1. **Did the config reach TrafficToll?** `throtl-cli status` shows preflight
-   warnings and the engine state; `systemctl status netlimiter-clone` and the
-   files under `/etc/netlimiter-clone` show the details.
+   warnings and the engine state; `systemctl status throtl` and the
+   files under `/etc/throtl` show the details.
 2. **Is bandwidth actually throttled?** Add a rule for your test tool and measure
    the real rate:
 
@@ -229,7 +231,7 @@ limitations.
 ## Security
 
 - **Local Unix socket only** — no TCP port. The socket lives in
-  `/run/netlimiter-clone/` and is world-connectable (`0666`) so the user-facing
+  `/run/throtl/` and is world-connectable (`0666`) so the user-facing
   GUI/CLI can reach the root daemon; access is purely local.
 - The frontend can only set limits and priorities via the API; there is **no
   arbitrary shell access** over the socket.
@@ -284,14 +286,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/RELEASING.md`](docs/RELEASIN
 ## Troubleshooting
 
 - **No process list in the GUI** — the daemon could not start `nethogs`. Check
-  `throtl-cli status` (`Monitor error`) and `systemctl status netlimiter-clone`.
+  `throtl-cli status` (`Monitor error`) and `systemctl status throtl`.
 - **Limits don't seem to apply** — verify the interface. Throtl auto-detects the
   default-route interface; for VPN tunnels pin it explicitly:
   `throtl-daemon --interface tailscale0`.
 - **Prioritisation does nothing** — set global download/upload caps; see
   [How priorities behave](#how-priorities-behave).
 - **`tt` not found** — re-run `sudo ./setup/install.sh` (it installs TrafficToll
-  into `/opt/netlimiter-clone/venv`).
+  into `/opt/throtl/venv`).
 
 ---
 

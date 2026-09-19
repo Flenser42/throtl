@@ -1,6 +1,6 @@
 [Unit]
-Description=Throtl - NetLimiter-artige Bandbreiten-Limits und QoS (TrafficToll-Backend)
-Documentation=file:/opt/netlimiter-clone/README.md
+Description=Throtl - per-application Bandbreiten-Limits und QoS (TrafficToll-Backend)
+Documentation=file:/opt/throtl/README.md
 After=network-online.target
 Wants=network-online.target
 
@@ -8,16 +8,16 @@ Wants=network-online.target
 Type=simple
 # Root ist erforderlich: tc, cgroups, modprobe und nethogs brauchen privilegierte Rechte.
 User=root
-# WorkingDirectory=/opt/netlimiter-clone, damit `python -m throtl.*` das Paket
+# WorkingDirectory=/opt/throtl, damit `python -m throtl.*` das Paket
 # findet (systemd startet sonst in "/").
-WorkingDirectory=/opt/netlimiter-clone
-# systemd legt /run/netlimiter-clone an (Socket + generierte YAML + tt-Log).
-RuntimeDirectory=netlimiter-clone
+WorkingDirectory=/opt/throtl
+# systemd legt /run/throtl an (Socket + generierte YAML + tt-Log).
+RuntimeDirectory=throtl
 RuntimeDirectoryMode=0755
 # Config-Verzeichnis (daemon persistiert Limits/Prioritaeten hier).
-Environment=THROTL_CONFIG_DIR=/etc/netlimiter-clone
+Environment=THROTL_CONFIG_DIR=/etc/throtl
 # Laufzeitverzeichnis fuer generierte YAML + tt-Log (NICHT /tmp).
-Environment=THROTL_RUN_DIR=/run/netlimiter-clone
+Environment=THROTL_RUN_DIR=/run/throtl
 # PATH explizit setzen, damit nethogs/ip/tc auch bei minimalem Service-PATH
 # gefunden werden (Absicherung, zusaetzlich zur absoluten Pfadaufloesung).
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -25,9 +25,9 @@ Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStartPre=-/sbin/modprobe ifb numifbs=1
 # WICHTIG: `-u` => stdout/stderr unbuffered, sonst sind die Daemon-Meldungen
 # ("Monitor-Fehler: ...", "Engine-Fehler: ...") im Journal NICHT sichtbar.
-ExecStart=/opt/netlimiter-clone/venv/bin/python -u -m throtl.daemon --foreground \
-    --socket /run/netlimiter-clone/daemon.sock \
-    --tt-command /opt/netlimiter-clone/venv/bin/tt
+ExecStart=/opt/throtl/venv/bin/python -u -m throtl.daemon --foreground \
+    --socket /run/throtl/daemon.sock \
+    --tt-command /opt/throtl/venv/bin/tt
 ExecStop=/bin/kill -TERM $MAINPID
 Restart=on-failure
 RestartSec=2

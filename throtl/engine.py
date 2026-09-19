@@ -159,13 +159,22 @@ class TrafficTollEngine:
         self._last_error = None
 
     def apply(self, config: dict) -> None:
-        """Neue Config schreiben und tt neu starten."""
+        """Neue Config schreiben und tt nur bei echter Aenderung neu starten.
+
+        Ein Neustart kostet ~2 s (tt beenden + neu aufsetzen). Deshalb wird
+        bei identischer Config (z. B. das GUI schickt beim Editieren die ganze
+        Regel zurueck) nichts getan.
+        """
         yaml = render_tt_config(config)
+        enabled = config["global"].get("enabled", True)
         with self._lock:
+            running = self._proc is not None and self._proc.poll() is None
+            if self._active_config == yaml and (not enabled or running):
+                return
             self._generation += 1
             self._active_config = yaml
             self._stop_locked()
-            if not config["global"].get("enabled", True):
+            if not enabled:
                 # Shaping deaktiviert: kein tt-Prozess
                 if self.on_restart is not None:
                     self.on_restart(disabled=True, error=None)
@@ -267,11 +276,11 @@ class TrafficTollEngine:
             # blieben sie liegen -> naechster Start scheitert (siehe _tc_cleanup).
             try:
                 proc.send_signal(signal.SIGINT)
-                proc.wait(timeout=4.0)
+                proc.wait(timeout=2.0)
             except (subprocess.TimeoutExpired, OSError):
                 try:
                     proc.terminate()
-                    proc.wait(timeout=2.0)
+                    proc.wait(timeout=1.5)
                 except (subprocess.TimeoutExpired, OSError):
                     try:
                         proc.kill()
@@ -299,8 +308,8 @@ class TrafficTollEngine:
         """YAML im Laufzeitverzeichnis ablegen (NICHT /tmp).
 
         In /tmp kollidieren die Rechte verschiedener Nutzer (beobachtet:
-        EACCES auf /tmp/netlimiter-tt-config.yaml). Reihenfolge:
-        $THROTL_RUN_DIR -> /run/netlimiter-clone -> Temp-Verzeichnis.
+        EACCES auf /tmp/throtl-tt-config.yaml). Reihenfolge:
+        $THROTL_RUN_DIR -> /run/throtl -> Temp-Verzeichnis.
         """
         import tempfile
 
@@ -308,14 +317,14 @@ class TrafficTollEngine:
         env_dir = os.environ.get("THROTL_RUN_DIR")
         if env_dir:
             candidates.append(env_dir)
-        candidates.append("/run/netlimiter-clone")
+        candidates.append("/run/throtl")
         candidates.append(tempfile.gettempdir())
 
         last_error = None
         for directory in candidates:
             try:
                 os.makedirs(directory, exist_ok=True)
-                path = os.path.join(directory, "netlimiter-tt-config.yaml")
+                path = os.path.join(directory, "throtl-tt-config.yaml")
                 with open(path, "w", encoding="utf-8") as handle:
                     handle.write(yaml)
                 return path

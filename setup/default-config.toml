@@ -1,4 +1,4 @@
-# Standard-Konfiguration fuer den Throtl-Daemon (root, /etc/netlimiter-clone).
+# Standard-Konfiguration fuer den Throtl-Daemon (root, /etc/throtl).
 # Normalerweise wird sie ueber die GUI/CLI verwaltet und hier persistiert.
 version = 1
 # "interface" kann auf "auto" stehen; der Daemon ermittelt dann das

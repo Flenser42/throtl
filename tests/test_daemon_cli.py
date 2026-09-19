@@ -249,5 +249,45 @@ class DaemonCliEndToEnd(unittest.TestCase):
         self.assertGreater(firefox["download"], 0)
 
 
+class DaemonAsyncApplyTest(unittest.TestCase):
+    """Ein langsamer Engine-Apply darf die RPC-Antwort nicht blockieren."""
+
+    def test_set_process_returns_before_engine_finishes(self):
+        from throtl.daemon import Daemon
+
+        class SlowEngine:
+            simulated = True
+
+            def __init__(self):
+                self.device = "test0"
+                self.applied = 0
+
+            def apply(self, config):
+                time.sleep(1.5)
+                self.applied += 1
+
+            def is_running(self):
+                return True
+
+            def stop(self):
+                pass
+
+            def status(self):
+                return {"running": True, "device": "test0", "generation": self.applied}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Daemon(socket_path=os.path.join(tmp, "d.sock"), config_dir=tmp,
+                       engine=SlowEngine(), interval=0.5, monitor_factory=None)
+            d.start()  # initialer Apply synchron (dauert ~1.5 s)
+            try:
+                t0 = time.monotonic()
+                d._h_set_process({"name": "x", "match_type": "name",
+                                  "match_value": "x"})
+                elapsed = time.monotonic() - t0
+            finally:
+                d.shutdown()
+        self.assertLess(elapsed, 0.5)
+
+
 if __name__ == "__main__":
     unittest.main()

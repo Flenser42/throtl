@@ -52,6 +52,6 @@ Notes:
 Please include:
 
 - distribution and kernel version,
-- output of `throtl-cli status` (with `systemctl status netlimiter-clone`),
+- output of `throtl-cli status` (with `systemctl status throtl`),
 - whether the daemon runs in simulation or real mode,
 - the exact steps to reproduce.

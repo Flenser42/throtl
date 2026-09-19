@@ -7,10 +7,12 @@ restarting daemon cannot freeze the window. The client reconnects automatically.
 Public API:
     connect(timeout)            - initial (synchronous) connect
     start_polling(interval)     - start the background poller (+ reconnect)
-    call(method, params, ...)   - synchronous RPC for user actions
+    call(method, params, ...)   - synchronous RPC (reads/short calls)
+    call_async(method, ...)     - RPC on a worker thread; never blocks the UI
     shutdown()                  - stop polling and close the socket
 """
 
+import queue
 import threading
 
 import gi
@@ -38,6 +40,11 @@ class GuiClient:
         self.connected = False
         self.state = {"processes": [], "enabled": True, "rules": [], "interface": "?"}
         self.last_error = None
+        # Mutierende RPCs laufen in einem eigenen Worker, damit ein langsamer
+        # Engine-Neustart (~2 s) den GTK-Mainloop nicht einfriert.
+        self._jobs = queue.Queue()
+        self._worker = None
+        self._worker_stop = threading.Event()
 
     # --- Connection ------------------------------------------------------
 
@@ -58,7 +65,7 @@ class GuiClient:
             self.last_error = str(error)
             self._notify_error(
                 "Throtl daemon is not reachable.\n"
-                "  sudo systemctl start netlimiter-clone\n"
+                "  sudo systemctl start throtl\n"
                 f"({error})"
             )
             raise
@@ -131,7 +138,7 @@ class GuiClient:
         except Exception as error:
             raise ConnectionError(
                 "Not connected to the Throtl daemon. Start it with "
-                "`sudo systemctl start netlimiter-clone`."
+                "`sudo systemctl start throtl`."
             ) from error
 
     def call(self, method: str, params=None, timeout: float = 5.0):
@@ -149,10 +156,54 @@ class GuiClient:
                 pass
         return result
 
+    # --- Async mutations -------------------------------------------------
+
+    def _ensure_worker(self) -> None:
+        if self._worker is not None and self._worker.is_alive():
+            return
+        self._worker_stop.clear()
+        self._worker = threading.Thread(
+            target=self._worker_loop, name="throtl-gui-rpc", daemon=True
+        )
+        self._worker.start()
+
+    def _worker_loop(self) -> None:
+        while not self._worker_stop.is_set():
+            try:
+                job = self._jobs.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            if job is None:
+                break
+            method, params, on_done, on_error = job
+            try:
+                result = self.call(method, params)
+            except Exception as error:
+                callback = on_error or self.on_error
+                if callback is not None:
+                    GLib.idle_add(callback, str(error))
+            else:
+                if on_done is not None:
+                    GLib.idle_add(on_done, result)
+
+    def call_async(self, method: str, params=None, on_done=None, on_error=None) -> None:
+        """Fire a mutating RPC on the worker thread (non-blocking for the UI).
+
+        ``on_done(result)`` / ``on_error(message)`` are invoked in the GTK main
+        loop. If ``on_error`` is omitted, ``self.on_error`` is used.
+        """
+        self._ensure_worker()
+        self._jobs.put((method, params or {}, on_done, on_error))
+
     # --- Lifecycle -------------------------------------------------------
 
     def shutdown(self) -> None:
         self._stop.set()
+        self._worker_stop.set()
+        self._jobs.put(None)
+        if self._worker is not None:
+            self._worker.join(timeout=2.0)
+            self._worker = None
         if self._poll_thread is not None:
             self._poll_thread.join(timeout=2.0)
             self._poll_thread = None

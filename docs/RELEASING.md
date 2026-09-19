@@ -55,6 +55,6 @@ On a clean Arch/Omarchy machine:
 
 ```bash
 sudo ./setup/install.sh
-systemctl status netlimiter-clone
+systemctl status throtl
 throtl-cli status
 ```

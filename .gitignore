@@ -6,7 +6,7 @@ venv/
 dist/
 build/
 *.log
-.netlimiter-clone/
+.throtl/
 .reasonix/
 attic/
 

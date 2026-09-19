@@ -114,6 +114,15 @@ class EngineProcessTest(unittest.TestCase):
         self.assertGreater(engine_._generation, gen1)
         engine_.stop()
 
+    def test_identical_reapply_is_noop(self):
+        """Unveraenderte Config darf keinen teuren tt-Neustart ausloesen."""
+        engine_ = engine.TrafficTollEngine("enp34s0", command=self.fake)
+        engine_.apply(_cfg())
+        gen1 = engine_._generation
+        engine_.apply(_cfg())          # identisch -> kein Neustart
+        self.assertEqual(engine_._generation, gen1)
+        engine_.stop()
+
     def test_missing_command_raises(self):
         engine_ = engine.TrafficTollEngine("enp34s0", command="/nonexistent/tt")
         with self.assertRaises(RuntimeError):
