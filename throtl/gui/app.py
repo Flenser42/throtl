@@ -23,9 +23,8 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Gtk, Adw, GLib, Gio, Gdk
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
-from .. import __version__
 from ..units import format_rate, format_rate_for_entry, parse_rate_in_unit
 from .client import GuiClient
 from .graph import BandwidthGraph

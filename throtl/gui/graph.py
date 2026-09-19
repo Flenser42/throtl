@@ -178,7 +178,7 @@ class BandwidthGraph(Gtk.Box):
         # Hover marker
         if self._hover is not None and self._hover < len(self._samples):
             hx = x_of(self._hover)
-            t, down, up = self._samples[self._hover]
+            _t, down, up = self._samples[self._hover]
             cr.set_source_rgba(0.85, 0.89, 0.94, 0.55)
             cr.set_line_width(1.0)
             cr.move_to(hx, 4)

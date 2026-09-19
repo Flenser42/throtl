@@ -24,10 +24,10 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Pango", "1.0")
 
-from gi.repository import Gtk, GLib, Pango
+from gi.repository import GLib, Gtk, Pango
 
 from ..units import format_rate, format_rate_for_entry, parse_rate_in_unit
-from .widgets import RateEntry, PriorityDropdown, UNIT_LABELS
+from .widgets import UNIT_LABELS, PriorityDropdown, RateEntry
 
 # (sort key | None, title, width) — identische Breiten fuer Kopf und Zeilen
 _COLUMNS = (

@@ -20,6 +20,9 @@ sudo rm -f /usr/share/applications/throtl.desktop
 sudo rm -f /usr/share/icons/hicolor/scalable/apps/throtl.svg
 sudo gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
 
+echo "=== Entferne PATH-Launcher ==="
+sudo rm -f /usr/local/bin/throtl-cli /usr/local/bin/throtl-gui /usr/local/bin/throtl-daemon
+
 if [ "${1:-}" == "--purge" ]; then
   echo "=== Purge: entferne Code + Config ==="
   sudo rm -rf /opt/netlimiter-clone /etc/netlimiter-clone /run/netlimiter-clone

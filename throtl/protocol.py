@@ -12,6 +12,7 @@ import json
 import socket
 import threading
 import time
+import weakref
 
 MAX_MESSAGE_SIZE = 1 << 20  # 1 MiB pro Nachricht
 
@@ -41,6 +42,27 @@ class TimeoutError_(TimeoutError):
     """Keine Antwort innerhalb des Timeouts."""
 
 
+# Pro Socket gepufferte Restbytes zwischen zwei read_message()-Aufrufen.
+# WeakKeyDictionary, damit geschlossene Sockets keinen Speicher halten.
+_READ_BUFFERS: "weakref.WeakKeyDictionary[socket.socket, bytes]" = (
+    weakref.WeakKeyDictionary()
+)
+_READ_BUFFERS_LOCK = threading.Lock()
+
+
+def _take_buffer(sock: socket.socket) -> bytes:
+    with _READ_BUFFERS_LOCK:
+        return _READ_BUFFERS.get(sock, b"")
+
+
+def _store_buffer(sock: socket.socket, buf: bytes) -> None:
+    with _READ_BUFFERS_LOCK:
+        if buf:
+            _READ_BUFFERS[sock] = buf
+        else:
+            _READ_BUFFERS.pop(sock, None)
+
+
 def send_message(sock: socket.socket, obj) -> None:
     data = json.dumps(obj, ensure_ascii=False).encode("utf-8") + b"\n"
     if len(data) > MAX_MESSAGE_SIZE:
@@ -49,18 +71,27 @@ def send_message(sock: socket.socket, obj) -> None:
 
 
 def read_message(sock: socket.socket):
-    """Eine Nachricht blockierend lesen. Gibt None bei EOF zurueck."""
-    buf = bytearray()
+    """Eine Nachricht blockierend lesen. Gibt None bei EOF zurueck.
+
+    Ein evtl. in einem frueheren ``recv()`` mitgelesenes Reststueck wird pro
+    Socket gepuffert. Ohne diesen Puffer gingen Nachrichten verloren, die im
+    selben Paket eintreffen (z. B. Response + Event oder zwei gepipelined
+    Requests) — genau das verursachte sporadisch fehlende Events.
+    """
+    buf = _take_buffer(sock)
     while b"\n" not in buf:
         chunk = sock.recv(65536)
         if not chunk:
             if not buf:
                 return None
+            _store_buffer(sock, b"")
             raise ProtocolError("Verbindung mitten in Nachricht geschlossen")
-        buf.extend(chunk)
+        buf += chunk
         if len(buf) > MAX_MESSAGE_SIZE:
+            _store_buffer(sock, b"")
             raise ProtocolError("Nachricht zu gross")
-    line, _ = bytes(buf).split(b"\n", 1)
+    line, rest = buf.split(b"\n", 1)
+    _store_buffer(sock, rest)
     try:
         return json.loads(line.decode("utf-8"))
     except (ValueError, UnicodeDecodeError) as error:

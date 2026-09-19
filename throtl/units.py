@@ -53,7 +53,7 @@ def parse_rate(value) -> int:
     if isinstance(value, (int, float)):
         if value < 0:
             raise ValueError(f"negative Rate ungueltig: {value!r}")
-        return int(round(value))
+        return round(value)
     if not isinstance(value, str):
         raise ValueError(f"ungueltige Rate: {value!r}")
     text = value.strip().lower().replace(" ", "")
@@ -68,7 +68,7 @@ def parse_rate(value) -> int:
                 break
             if amount < 0:
                 raise ValueError(f"negative Rate ungueltig: {value!r}")
-            return int(round(amount * factor))
+            return round(amount * factor)
     # nackte Zahl -> kbit/s
     try:
         amount = float(text)
@@ -76,7 +76,7 @@ def parse_rate(value) -> int:
         raise ValueError(f"ungueltige Rate: {value!r}") from None
     if amount < 0:
         raise ValueError(f"negative Rate ungueltig: {value!r}")
-    return int(round(amount))
+    return round(amount)
 
 
 def format_rate(kbit_per_s, unit: str = "auto", precision: int = 1) -> str:
@@ -151,7 +151,7 @@ def parse_rate_in_unit(value, unit: str = "kbps"):
     if value is None:
         return None
     if isinstance(value, (int, float)):
-        return int(round(float(value) * _UNIT_TO_KBIT.get(unit, 1.0)))
+        return round(float(value) * _UNIT_TO_KBIT.get(unit, 1.0))
     text = (value or "").strip().replace(",", ".")
     if not text:
         return None
@@ -166,7 +166,7 @@ def parse_rate_in_unit(value, unit: str = "kbps"):
         raise ValueError(f"ungueltige Rate: {value!r}") from None
     if number < 0:
         raise ValueError(f"negative Rate ungueltig: {value!r}")
-    return int(round(number * _UNIT_TO_KBIT.get(unit, 1.0)))
+    return round(number * _UNIT_TO_KBIT.get(unit, 1.0))
 
 
 def format_rate_for_entry(kbit_per_s, unit: str = "kbps", precision: int = 3) -> str:

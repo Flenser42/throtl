@@ -57,6 +57,26 @@ class MessageFramingTest(unittest.TestCase):
         left.close()
         right.close()
 
+    def test_coalesced_messages_are_not_lost(self):
+        """Response + Event im selben recv() duerfen nicht verworfen werden."""
+        left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        first = {"id": 1, "result": {"ok": True}}
+        second = {"event": "stats", "data": {"x": 1}}
+        protocol.send_message(left, first)
+        protocol.send_message(left, second)
+        self.assertEqual(protocol.read_message(right), first)
+        self.assertEqual(protocol.read_message(right), second)
+        left.close()
+        right.close()
+
+    def test_iter_messages_handles_pipelined_requests(self):
+        left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        protocol.send_message(left, {"id": 1})
+        protocol.send_message(left, {"id": 2})
+        left.close()
+        self.assertEqual(list(protocol.iter_messages(right)), [{"id": 1}, {"id": 2}])
+        right.close()
+
 
 class ClientTest(unittest.TestCase):
     def setUp(self):

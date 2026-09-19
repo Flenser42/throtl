@@ -144,6 +144,7 @@ class EngineStatusDeadlockTest(unittest.TestCase):
 
     def test_status_returns_without_deadlock(self):
         import threading
+
         from throtl.engine import TrafficTollEngine
 
         eng = TrafficTollEngine("lo", command="/bin/true")

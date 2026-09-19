@@ -10,14 +10,13 @@ Beispiele:
     throtl-cli remove-process --key 'exe:/usr/lib/firefox/firefox'
     throtl-cli toggle --enabled false
     throtl-cli monitor           # Live-Ausgabe pro Sekunde
-    throtl-cli autocap            # Demo/Test: curl + dd in die Clouds
 """
 
 import argparse
 import sys
 import time
 
-from . import SOCKET_PATH, __version__
+from . import SOCKET_PATH
 from .protocol import Client, RpcError, TimeoutError_
 
 
@@ -208,16 +207,6 @@ def cmd_monitor(client, args):
         return 0
 
 
-def cmd_autocap(client, args):
-    """Demo-Workflow (Test, ob Limits greifen):
-
-    Erstellt eine Regel fuer 'iperf3' oder ruft sie ab, startet einen Uebertrag
-    und zeigt die gemessene Bandbreite. In echtem Setup mit root.
-    """
-    print("Demo: autocap is only a smoke test for now.")
-    return 0
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="throtl-cli", description="Throtl-Daemon CLI"
@@ -227,7 +216,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("status", help="Daemon-Status anzeigen")
 
-    sp = sub.add_parser("list-processes", help="Live-Prozess-Liste anzeigen")
+    sub.add_parser("list-processes", help="Live-Prozess-Liste anzeigen")
 
     g = sub.add_parser("set-global", help="Globale Limits/Prioritaeten setzen")
     g.add_argument("--download-limit", "-dl", default=None,
@@ -262,8 +251,6 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--enabled", choices=["true", "false"], default="true")
 
     sub.add_parser("monitor", help="Live-Bandbreiten pro Sekunde")
-
-    sub.add_parser("autocap", help="Demo: Limits greifen testen")
     return parser
 
 
@@ -279,7 +266,6 @@ def main(argv=None) -> int:
             "remove-process": cmd_remove,
             "toggle": cmd_toggle,
             "monitor": cmd_monitor,
-            "autocap": cmd_autocap,
         }
         return handlers[args.command](client, args)
     except RpcError as error:

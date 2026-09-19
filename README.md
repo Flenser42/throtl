@@ -1,5 +1,9 @@
 # Throtl — NetLimiter-artige Bandbreiten-Limits & QoS für Linux
 
+[![CI](https://github.com/Flenser42/throtl/actions/workflows/ci.yml/badge.svg)](https://github.com/Flenser42/throtl/actions/workflows/ci.yml)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+
 **Throtl** bringt NetLimiter-Funktionalität nach Linux/Omarchy: pro Anwendung
 Bandbreiten-Limits (Download/Upload) und Traffic-Priorisierung, verwaltet über
 eine native GTK4+libadwaita-GUI, steuerbar auch per CLI — ohne die Engine neu
@@ -81,7 +85,7 @@ Das Setup-Skript installiert alles Nötige.
 ## Installation
 
 ```bash
-git clone <this-repo> throtl && cd throtl
+git clone https://github.com/Flenser42/throtl.git throtl && cd throtl
 sudo ./setup/install.sh
 ```
 
@@ -230,11 +234,29 @@ LICENSE  GPL-3.0
 ## Entwickeln & Testen
 
 ```bash
-make test               # python3 -m unittest discover -s tests
-make lint               # py_compile aller Module
+make check              # Lint (ruff) + komplette unittest-Suite
+make test               # nur Tests: python3 -m unittest discover -s tests
+make lint               # nur Lint: ruff check .
+make lint-fix           # Lint-Autofixes (Imports/Formatierung)
+make build              # sdist + wheel in dist/ (benoetigt `build`)
 ```
 
-Siehe `docs/TESTING.md` für Test-Optik und bekannte Grenzen.
+Die volle GUI-Test-Suite (Widget-/Tabellen-Tests) laeuft nur mit
+verfuegbarem Display; headless werden diese Tests automatisch uebersprungen.
+Siehe `docs/TESTING.md` fuer Test-Optik und bekannte Grenzen.
+
+### Paket bauen / veroeffentlichen
+
+Das Projekt ist PEP-517-konform aufgesetzt (`pyproject.toml`, Setuptools):
+
+```bash
+python -m build          # dist/throtl-<version>.tar.gz + .whl
+```
+
+Die Installation auf einem Zielsystem erfolgt weiterhin ueber
+`setup/install.sh` (systemd-Dienst, Systempakete, venv fuer TrafficToll).
+Eine reine `pip install`-Installation liefert nur die Python-Module und
+CLI-/Daemon-/GUI-Entry-Points.
 
 ## Lizenzen
 

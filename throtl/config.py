@@ -109,7 +109,7 @@ def _build_rule(
     upload_limit=None,
     priority: str = "normal",
     recursive: bool = False,
-    key: str = None,
+    key: str | None = None,
     escape: bool = True,
 ) -> dict:
     """Neue Regel erzeugen (validiert).
@@ -144,7 +144,7 @@ def make_rule(
     upload_limit=None,
     priority: str = "normal",
     recursive: bool = False,
-    key: str = None,
+    key: str | None = None,
 ) -> dict:
     """Neue Regel aus Rohwerten (GUI/CLI): exe/name werden regex-escaped."""
     return _build_rule(
@@ -370,7 +370,7 @@ def detect_default_interface() -> str | None:
             for line in handle:
                 if ":" not in line:
                     continue
-                name, rest = line.split(":", 1)
+                name, _rest = line.split(":", 1)
                 name = name.strip()
                 if name == "lo":
                     continue
@@ -380,7 +380,8 @@ def detect_default_interface() -> str | None:
     return None
 
 
-def matching_rules(processes, exe: str = None, name: str = None, cmdline: str = None):
+def matching_rules(processes, exe: str | None = None, name: str | None = None,
+                   cmdline: str | None = None):
     """Regeln finden, die auf einen Prozess passen (regex, wie TrafficToll)."""
     result = []
     for rule in processes:

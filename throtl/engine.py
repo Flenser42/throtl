@@ -20,15 +20,12 @@ kann, wir aber einen einzelnen GUI-Wert haben, werden beide gleich gesetzt.
 """
 
 import collections
-import errno
 import os
 import signal
 import subprocess
 import threading
-import time
 
-from .config import PRIORITY_TO_INT, priority_to_int
-from . import units
+from .config import priority_to_int
 
 # Standardwerte (aus traffictoll/cli.py) in kbit/s
 GLOBAL_MINIMUM_DOWNLOAD = 100
@@ -41,7 +38,7 @@ def format_rate_kbps(kbit_per_s) -> str:
     """Rate (kbit/s) als TrafficToll-/tc-tauglichen String (z.B. '512kbps')."""
     if kbit_per_s is None:
         return None
-    return f"{int(round(kbit_per_s))}kbps"
+    return f"{round(kbit_per_s)}kbps"
 
 
 def yaml_quote(value: str) -> str:
@@ -138,7 +135,7 @@ class TrafficTollEngine:
     """
 
     def __init__(self, device: str, command="tt", delay=1.0, on_restart=None,
-                 log_path: str = None):
+                 log_path: str | None = None):
         self.device = device
         self.command = command
         self.delay = delay
@@ -166,7 +163,6 @@ class TrafficTollEngine:
         yaml = render_tt_config(config)
         with self._lock:
             self._generation += 1
-            generation = self._generation
             self._active_config = yaml
             self._stop_locked()
             if not config["global"].get("enabled", True):
@@ -206,7 +202,7 @@ class TrafficTollEngine:
                          ("qdisc", "del", "dev", device, "ingress")):
                 try:
                     subprocess.run(["tc", *args], stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.DEVNULL, timeout=5)
+                                   stderr=subprocess.DEVNULL, timeout=5, check=False)
                 except (OSError, subprocess.SubprocessError):
                     pass
 

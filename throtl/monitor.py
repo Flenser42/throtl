@@ -33,7 +33,7 @@ UNATTRIBUTED_PID = "-"
 UNATTRIBUTED_NAME = "(unattributed)"
 
 
-def resolve_nethogs_binary(cmd: str = None) -> str:
+def resolve_nethogs_binary(cmd: str | None = None) -> str:
     """Locate nethogs as an ABSOLUTE path.
 
     Matters for systemd services with a minimal/odd PATH: otherwise the daemon
@@ -80,8 +80,7 @@ def pretty_app_name(cmdline: str) -> str:
     base = _basename(tokens[0]) or tokens[0]
     looks_like_interpreter = (
         base in _INTERPRETERS
-        or base.startswith("python")
-        or base.startswith("node")
+        or base.startswith(("python", "node"))
     )
     if not looks_like_interpreter:
         return base
@@ -203,7 +202,7 @@ class NethogsMonitor:
     ``inject`` accepts a file-like object for tests.
     """
 
-    def __init__(self, device: str, interval: float = 1.0, cmd: str = None,
+    def __init__(self, device: str, interval: float = 1.0, cmd: str | None = None,
                  inject=None, capture_udp: bool = True):
         self.device = device
         self.interval = interval
@@ -277,13 +276,34 @@ class NethogsMonitor:
 
     def stop(self) -> None:
         self._running = False
-        if self._proc is not None and self._proc.poll() is None:
+        proc = self._proc
+        if proc is not None:
+            if proc.poll() is None:
+                try:
+                    proc.terminate()
+                except OSError:
+                    pass
+            # Auf das Ende warten — sonst bleibt der nethogs-Subprozess als
+            # Zombie zurueck (ResourceWarning). Der Prozess-Tod schliesst das
+            # Schreibende der Pipe, der Reader-Thread laeuft dadurch aus.
             try:
-                self._proc.terminate()
-            except OSError:
-                pass
+                proc.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:
+                try:
+                    proc.kill()
+                    proc.wait(timeout=1.0)
+                except (subprocess.TimeoutExpired, OSError):
+                    pass
         if self._reader_thread is not None:
             self._reader_thread.join(timeout=2.0)
+            self._reader_thread = None
+        # Pipe erst nach dem Reader schliessen (sonst ValueError im Reader).
+        if proc is not None and proc.stdout is not None:
+            try:
+                proc.stdout.close()
+            except OSError:
+                pass
+        self._proc = None
 
 
 def parse_trace_stream(stream) -> list:

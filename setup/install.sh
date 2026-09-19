@@ -15,15 +15,6 @@ OPT="/opt/netlimiter-clone"
 ETC="/etc/netlimiter-clone"
 RUN="/run/netlimiter-clone"
 
-# AUR-Helper auswaehlen
-AUR_HELPER=""
-for helper in paru yay; do
-  if command -v "$helper" >/dev/null 2>&1; then
-    AUR_HELPER="$helper"
-    break
-  fi
-done
-
 echo "=== [1/6] Systempakete installieren ==="
 # pacman-Pakete (alle in [extra])
 sudo pacman -S --needed --noconfirm \
@@ -42,7 +33,12 @@ sudo "$OPT/venv/bin/pip" install --upgrade pip
 sudo "$OPT/venv/bin/pip" install traffictoll
 
 echo "=== [3/6] Projektdateien kopieren ==="
-sudo cp -r "$PROJECT_DIR"/throtl "$OPT/"
+# Alte Kopie entfernen, damit keine veralteten Module/__pycache__ liegen bleiben.
+sudo rm -rf "$OPT/throtl"
+sudo cp -r "$PROJECT_DIR/throtl" "$OPT/"
+sudo find "$OPT/throtl" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+sudo install -m 0644 "$PROJECT_DIR/README.md" "$PROJECT_DIR/CHANGELOG.md" \
+  "$PROJECT_DIR/LICENSE" "$OPT/"
 sudo mkdir -p "$OPT/bin"
 sudo cp "$PROJECT_DIR"/bin/throtl-gui "$PROJECT_DIR"/bin/throtl-cli \
   "$PROJECT_DIR"/bin/throtl-daemon "$OPT/bin/"
@@ -80,8 +76,7 @@ sudo install -Dm 0644 "$PROJECT_DIR"/data/hicolor/scalable/apps/throtl.svg \
   /usr/share/icons/hicolor/scalable/apps/throtl.svg
 sudo gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
 
-# AUR-Helper notfalls installieren (falls keiner vorhanden): nicht erzwungen
-if [ -z "$AUR_HELPER" ]; then
+if ! command -v paru >/dev/null 2>&1 && ! command -v yay >/dev/null 2>&1; then
   echo "   Hinweis: Kein AUR-Helper (paru/yay) gefunden. TrafficToll wurde ueber pip "
   echo "   installiert, kein AUR-Paket noetig."
 fi

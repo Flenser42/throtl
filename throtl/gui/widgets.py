@@ -1,11 +1,10 @@
 """Reusable GTK4 widgets for the Throtl GUI."""
 
-import gi  # noqa: F401
+import gi
 
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Gtk, Gio
-
+from gi.repository import Gio, Gtk
 
 PRIORITY_NAMES = ("kritisch", "hoch", "normal", "niedrig")
 PRIORITY_LABELS = {

@@ -1,11 +1,9 @@
 import io
-import threading
 import time
 import unittest
 
 from throtl import monitor
-from throtl.monitor import NethogsMonitor, TraceParser, parse_trace
-
+from throtl.monitor import NethogsMonitor, TraceParser
 
 # Realistisches nethogs-`-t`-Trace (kB/s, Anzeige-Modus -v 1).
 # Format je Zeile: <name>[/<cmdline>]/<pid>/<uid>\t<sent>\t<recv>

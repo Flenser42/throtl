@@ -8,11 +8,12 @@ GUI prüfen kann, dass Limits greifen, und welche Grenzen es gibt.
 ## Automatisierte Tests
 
 ```bash
-make test            # python3 -m unittest discover -s tests
-make lint            # py_compile aller Module
+make check           # ruff-Lint + komplette unittest-Suite
+make test            # nur Tests (python3 -m unittest discover -s tests)
+make lint            # nur Lint (ruff check .)
 ```
 
-Aktuelle Suite (throtl/tests):
+Aktuelle Suite (`tests/`):
 
 | Modul | Was | Gemockt |
 |-------|-----|---------|

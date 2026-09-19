@@ -33,7 +33,6 @@ from . import RUN_DIR, SOCKET_PATH, __version__
 from .config import (
     config_dir_default,
     config_path_for,
-    default_config,
     detect_default_interface,
     load_config,
     make_rule,
@@ -55,6 +54,11 @@ from .protocol import (
     send_message,
 )
 from .units import parse_rate  # noqa: F401  (re-export, CLI/Protokoll-Kompatibilitaet)
+
+# Sentinel: "Argument nicht uebergeben" -> Default-Monitor verwenden.
+# Explizit ``monitor_factory=None`` bedeutet dagegen "Monitoring aus"
+# (Tests/Simulation), damit kein nethogs-Subprozess gestartet wird.
+_MONITOR_DEFAULT = object()
 
 
 class ConfigStore:
@@ -79,7 +83,7 @@ class ConfigStore:
             "download_minimum", "upload_minimum",
             "download_priority", "upload_priority",
         }
-        for key, value in changes.items():
+        for key in changes:
             if key not in allowed:
                 raise ValueError(f"unbekannter globaler Schluessel {key!r}")
         if "enabled" in changes:
@@ -174,7 +178,7 @@ def preflight(tt_command: str, interface: str) -> list:
 
     issues = []
     if os.geteuid() != 0:
-        issues.append("Daemon laeuft nicht als root (tc/cgroups/noethogs brauchen root)")
+        issues.append("Daemon laeuft nicht als root (tc/cgroups/nethogs brauchen root)")
     if not os.path.exists(tt_command):
         issues.append(f"tt nicht gefunden: {tt_command}")
     for tool in ("tc", "ip", "iptables"):
@@ -195,8 +199,8 @@ def preflight(tt_command: str, interface: str) -> list:
 
 
 class Daemon:
-    def __init__(self, socket_path: str = SOCKET_PATH, config_dir: str = None,
-                 engine=None, monitor_factory=None, interval: float = 1.0,
+    def __init__(self, socket_path: str = SOCKET_PATH, config_dir: str | None = None,
+                 engine=None, monitor_factory=_MONITOR_DEFAULT, interval: float = 1.0,
                  tt_command: str = "tt"):
         self.socket_path = socket_path
         self.config_dir = config_dir or config_dir_default()
@@ -211,16 +215,21 @@ class Daemon:
         self.engine = engine
         self._tt_command = tt_command
         if self.engine is None:
+            run_dir = os.environ.get("THROTL_RUN_DIR") or RUN_DIR
             self.engine = TrafficTollEngine(
                 self.interface, command=tt_command,
-                log_path=os.path.join(RUN_DIR, "tt.log"),
+                log_path=os.path.join(run_dir, "tt.log"),
             )
 
         self.monitor = None
         self.monitor_error = None
         self.engine_error = None
         self._monitor_retry_tick = 0
-        self._monitor_factory = monitor_factory or (lambda dev, i: NethogsMonitor(dev, interval=i))
+        self._monitor_factory = (
+            (lambda dev, i: NethogsMonitor(dev, interval=i))
+            if monitor_factory is _MONITOR_DEFAULT
+            else monitor_factory
+        )
 
         self._clients = set()
         self._server = None
@@ -408,6 +417,8 @@ class Daemon:
             self.engine_error = None
 
     def _start_monitor(self) -> None:
+        if self._monitor_factory is None:
+            return  # Monitoring bewusst deaktiviert (Tests/Simulation)
         if self.monitor is None:
             self.monitor = self._monitor_factory(self.interface, 1.0)
             try:
@@ -574,7 +585,9 @@ class Daemon:
         return self._collect_snapshot()
 
     def _emit_rules_changed(self) -> None:
-        state = self._collect_snapshot()
+        # Nach einer Aenderung sofort einen frischen Snapshot ziehen, damit die
+        # naechste Abfrage aktuelle Raten liefert und der /proc-Sample-Delta
+        # nicht veraltet.
         self._tick_monitor()
 
     # --- Shutdown ---
@@ -622,7 +635,7 @@ def _match_rules(rules, name=None, pid=None) -> dict:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Throtl-Daemon")
     parser.add_argument("--foreground", action="store_true",
-                        help="im Vordergrund laufen (fpr systemd/Testing)")
+                        help="im Vordergrund laufen (fuer systemd/Testing)")
     parser.add_argument("--socket", default=SOCKET_PATH, help="Unix-Socket-Pfad")
     parser.add_argument("--config-dir", default=None,
                         help="Config-Verzeichnis (Default: ~/.config/netlimiter-clone)")

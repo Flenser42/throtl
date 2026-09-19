@@ -10,12 +10,11 @@ import tempfile
 import threading
 import time
 import unittest
-from unittest import mock
 
-from throtl.units import format_rate, parse_rate
+from throtl import daemon
 from throtl.config import PRIORITY_NAMES, priority_to_int
-from throtl import daemon, protocol
 from throtl.engine import SimEngine
+from throtl.units import format_rate, parse_rate
 
 
 def _gi_available():
