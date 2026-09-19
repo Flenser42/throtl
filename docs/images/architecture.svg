@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1100" height="680" viewBox="0 0 1100 680" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5c646d"/>
+    </marker>
+    <linearGradient id="sock" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4c9aff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#4c9aff" stop-opacity="0.04"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1100" height="680" fill="#0e1217"/>
+
+  <g font-family="Noto Sans, DejaVu Sans, Liberation Sans, sans-serif">
+    <!-- Layer labels -->
+    <g font-size="15" letter-spacing="2.5" fill="#5c646d">
+      <text x="40" y="94">FRONTEND · USER</text>
+      <text x="40" y="316">DAEMON · ROOT</text>
+      <text x="40" y="572">BACKENDS / OS</text>
+    </g>
+
+    <!-- Frontend boxes -->
+    <g>
+      <rect x="310" y="56" width="230" height="64" rx="12"
+            fill="#171d24" stroke="#2b323b"/>
+      <text x="425" y="95" font-size="20" fill="#e6edf3" text-anchor="middle">GTK4 GUI</text>
+
+      <rect x="560" y="56" width="230" height="64" rx="12"
+            fill="#171d24" stroke="#2b323b"/>
+      <text x="675" y="95" font-size="20" fill="#e6edf3" text-anchor="middle">CLI · throtl-cli</text>
+    </g>
+
+    <!-- Frontend -> socket -->
+    <path d="M 425 120 L 425 168" fill="none" stroke="#5c646d" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M 675 120 L 675 168" fill="none" stroke="#5c646d" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <!-- Socket -->
+    <rect x="250" y="168" width="600" height="56" rx="12"
+          fill="url(#sock)" stroke="#3d6fb8"/>
+    <text x="550" y="193" font-size="19" fill="#cfe0f7" text-anchor="middle">Unix socket · newline-delimited JSON</text>
+    <text x="550" y="213" font-size="15" fill="#7f96b3" text-anchor="middle"
+          font-family="JetBrainsMono Nerd Font, monospace">/run/throtl/daemon.sock</text>
+
+    <!-- Socket -> daemon -->
+    <path d="M 550 224 L 550 282" fill="none" stroke="#5c646d" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <!-- Daemon -->
+    <rect x="250" y="282" width="600" height="64" rx="12"
+          fill="#171d24" stroke="#3a4653"/>
+    <text x="550" y="313" font-size="20" fill="#e6edf3" text-anchor="middle">throtl.daemon</text>
+    <text x="550" y="333" font-size="14" fill="#8b98a5" text-anchor="middle">root · systemd (throtl.service)</text>
+
+    <!-- Daemon -> modules (distribution) -->
+    <path d="M 550 346 L 550 372" fill="none" stroke="#5c646d" stroke-width="2"/>
+    <path d="M 350 372 L 750 372" fill="none" stroke="#5c646d" stroke-width="2"/>
+    <path d="M 350 372 L 350 404" fill="none" stroke="#5c646d" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M 550 372 L 550 404" fill="none" stroke="#5c646d" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M 750 372 L 750 404" fill="none" stroke="#5c646d" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <!-- Modules -->
+    <g>
+      <rect x="260" y="404" width="180" height="96" rx="12"
+            fill="#171d24" stroke="#2b323b"/>
+      <rect x="260" y="404" width="180" height="4" rx="2" fill="#4fd07f"/>
+      <text x="350" y="452" font-size="18" fill="#e6edf3" text-anchor="middle">TrafficToll</text>
+      <text x="350" y="474" font-size="18" fill="#e6edf3" text-anchor="middle">Engine</text>
+
+      <rect x="460" y="404" width="180" height="96" rx="12"
+            fill="#171d24" stroke="#2b323b"/>
+      <rect x="460" y="404" width="180" height="4" rx="2" fill="#f5a45a"/>
+      <text x="550" y="452" font-size="18" fill="#e6edf3" text-anchor="middle">Nethogs</text>
+      <text x="550" y="474" font-size="18" fill="#e6edf3" text-anchor="middle">Monitor</text>
+
+      <rect x="660" y="404" width="180" height="96" rx="12"
+            fill="#171d24" stroke="#2b323b"/>
+      <rect x="660" y="404" width="180" height="4" rx="2" fill="#4c9aff"/>
+      <text x="750" y="452" font-size="18" fill="#e6edf3" text-anchor="middle">ConfigStore</text>
+      <text x="750" y="474" font-size="18" fill="#e6edf3" text-anchor="middle">(TOML)</text>
+    </g>
+
+    <!-- Modules -> backends -->
+    <path d="M 350 500 L 350 540" fill="none" stroke="#5c646d" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M 550 500 L 550 540" fill="none" stroke="#5c646d" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M 750 500 L 750 540" fill="none" stroke="#5c646d" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <!-- Backends -->
+    <g>
+      <rect x="260" y="540" width="180" height="84" rx="12"
+            fill="#131920" stroke="#2b323b"/>
+      <text x="350" y="580" font-size="18" fill="#cdd6df" text-anchor="middle">TrafficToll (tt)</text>
+      <text x="350" y="602" font-size="14" fill="#8b98a5" text-anchor="middle">tc · cgroups · ifb</text>
+
+      <rect x="460" y="540" width="180" height="84" rx="12"
+            fill="#131920" stroke="#2b323b"/>
+      <text x="550" y="580" font-size="18" fill="#cdd6df" text-anchor="middle">nethogs</text>
+      <text x="550" y="602" font-size="14" fill="#8b98a5" text-anchor="middle">-t trace mode</text>
+
+      <rect x="660" y="540" width="180" height="84" rx="12"
+            fill="#131920" stroke="#2b323b"/>
+      <text x="750" y="580" font-size="18" fill="#cdd6df" text-anchor="middle">config.toml</text>
+      <text x="750" y="602" font-size="14" fill="#8b98a5" text-anchor="middle">/etc/throtl</text>
+    </g>
+  </g>
+</svg>

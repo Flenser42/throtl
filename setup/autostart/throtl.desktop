@@ -1,0 +1,34 @@
+# Autostart-Optionen fuer Throtl-GUI unter Omarchy/Hyprland
+# =========================================================
+#
+# Throtl-GUI unterstuetzt zwei Autostart-Wege. Der Daemon startet unabhängig
+# davon immer via systemd (throtl.service).
+
+# --- Variante A (empfohlen): XDG-Autostart ---
+# Legt eine Desktop-Datei unter ~/.config/autostart/ an. Hyprland und Wayland-
+# Sessions respektieren XDG-Autostart. Kopiere diese Datei dorthin:
+#
+#   mkdir -p ~/.config/autostart
+#   cp setup/autostart/throtl.desktop ~/.config/autostart/throtl.desktop
+#
+# Die GUI startet dann beim Login sichtbar (--autostart). Hinweis: Ein
+# unsichtbarer Tray-Modus existiert noch nicht; die GUI zeigt ihr Fenster
+# immer offen. Schliesse es ggf. ueber den Fenster-Button.
+
+# --- Variante B: Hyprland autostart.lua ---
+# Falls du den Autostart ueber ~/.config/hypr/autostart.lua wuenschtest, fuege
+# in der Funktion `hyprland.start` hinzu:
+#
+#   hl.exec_cmd(o.launch("/opt/throtl/bin/throtl-gui --autostart"))
+#
+# (Die GUI laeuft als User-Prozess und spricht mit dem root-Daemon ueber den
+# Unix-Socket /run/throtl/daemon.sock.)
+
+[Desktop Entry]
+Type=Application
+Name=Throtl
+X-GNOME-Autostart-enabled=true
+Comment=Startet die Throtl-GUI beim Login
+Exec=/usr/bin/python3 /opt/throtl/bin/throtl-gui --autostart
+Terminal=false
+Icon=throtl

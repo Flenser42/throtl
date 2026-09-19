@@ -1,0 +1,66 @@
+name: Bug report
+description: Something does not work as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! Please include as much detail as you can.
+        For security issues, use the **Security** tab instead (see SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Throtl version
+      description: First line of `throtl-cli status`, or the release tag.
+      placeholder: "Throtl-Daemon 0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Distribution, desktop and kernel
+      placeholder: "Omarchy (Arch), Hyprland/Wayland, kernel 6.16"
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - Real (root daemon + TrafficToll)
+        - Simulation (--simulate)
+    validations:
+      required: true
+  - type: input
+    id: interface
+    attributes:
+      label: Network interface
+      placeholder: "enp34s0 / tailscale0 / auto"
+    validations:
+      required: false
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / status output
+      description: "`throtl-cli status`, `systemctl status throtl`, `journalctl -u throtl`"
+      render: shell
+    validations:
+      required: false

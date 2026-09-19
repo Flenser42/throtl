@@ -1,0 +1,179 @@
+/* Throtl GUI — dark, quiet, tabular.
+ *
+ * A cohesive dark palette is defined up front and applied explicitly to every
+ * custom dark surface, so the table stays readable regardless of whether the
+ * host system theme is light or dark.
+ */
+
+@define-color throtl_bg #12161b;
+@define-color throtl_panel #1a1f26;
+@define-color throtl_panel_alt #161b21;
+@define-color throtl_hover #232a33;
+@define-color throtl_border #2b323b;
+@define-color throtl_fg #e6edf3;
+@define-color throtl_dim #8b98a5;
+@define-color throtl_accent #4c9aff;
+@define-color throtl_down #4fd07f;
+@define-color throtl_up #f5a45a;
+@define-color throtl_error #ff7b72;
+
+/* --- Root / chrome --------------------------------------------------- */
+
+.throtl-root {
+    background-color: @throtl_bg;
+    color: @throtl_fg;
+}
+
+/* --- Global limits card ---------------------------------------------- */
+
+.toolbar {
+    background-color: @throtl_panel;
+    border: 1px solid @throtl_border;
+    border-radius: 12px;
+    padding: 12px 16px;
+}
+
+.toolbar label {
+    color: @throtl_dim;
+}
+
+/* --- Totals ---------------------------------------------------------- */
+
+.total-label {
+    font-weight: 700;
+    font-size: 1.05em;
+    color: @throtl_fg;
+    padding: 2px 4px;
+}
+
+/* --- Table ----------------------------------------------------------- */
+
+/* Panel behind the whole list (header + rows) so the empty area below the
+   last row still reads as part of the table. */
+.table-scroll {
+    background-color: alpha(@throtl_panel, 0.45);
+    border: 1px solid @throtl_border;
+    border-radius: 10px;
+}
+
+.table-header-row {
+    background-color: @throtl_panel;
+    border-radius: 8px;
+    padding: 6px 8px;
+    margin-bottom: 4px;
+}
+
+.table-header {
+    font-weight: 700;
+    font-size: 0.86em;
+    color: @throtl_dim;
+}
+
+.row {
+    background-color: @throtl_panel_alt;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 3px 8px;
+    min-height: 30px;
+    color: @throtl_fg;
+}
+
+.row:hover {
+    background-color: @throtl_hover;
+    border-color: @throtl_border;
+}
+
+.row.unattributed label {
+    color: @throtl_dim;
+    font-style: italic;
+}
+
+/* Colour-code rates like the graph: download green, upload orange. */
+.rate-down { color: @throtl_down; }
+.rate-up { color: @throtl_up; }
+.legend-down { color: @throtl_down; font-size: 0.86em; }
+.legend-up { color: @throtl_up; font-size: 0.86em; }
+
+/* Tabular numbers keep the columns from jittering while rates change */
+.table-header,
+.row label,
+.throtl-rate-entry {
+    font-feature-settings: "tnum";
+}
+
+/* --- Graph ----------------------------------------------------------- */
+
+.throtl-graph {
+    border-radius: 10px;
+    border: 1px solid @throtl_border;
+    background-color: #0f1317;
+}
+
+/* --- Inputs ---------------------------------------------------------- */
+
+.throtl-rate-entry {
+    min-width: 0;
+    padding-left: 6px;
+    padding-right: 6px;
+}
+
+/* Header-Buttons sollen exakt die Spaltenbreite annehmen, nicht mehr:
+   Buttons bringen sonst Polster/Mindestbreite mit und verschieben die
+   Spalten gegenueber den Datenzeilen. */
+.table-header-row button,
+.table-header-row button.flat {
+    padding: 0 2px;
+    min-width: 0;
+    min-height: 0;
+    border-radius: 4px;
+}
+
+.throtl-unit {
+    margin-left: 4px;
+}
+
+.throtl-window {
+    font-size: 0.86em;
+    min-height: 24px;
+}
+
+.graph-scroll {
+    background: transparent;
+}
+
+/* --- Empty state ----------------------------------------------------- */
+
+.empty-title {
+    font-weight: 700;
+    color: @throtl_fg;
+}
+
+.empty-hint {
+    color: @throtl_dim;
+}
+
+/* --- Status bar ------------------------------------------------------ */
+
+.status-bar {
+    padding: 6px 12px;
+    background-color: @throtl_panel_alt;
+    color: @throtl_dim;
+    border-top: 1px solid @throtl_border;
+}
+
+.status-bar.error {
+    background-color: alpha(@throtl_error, 0.14);
+    color: @throtl_error;
+}
+
+.status-bar.error label {
+    color: @throtl_error;
+}
+
+.dim-label {
+    color: @throtl_dim;
+}
+
+.bold {
+    font-weight: 700;
+}

@@ -1,0 +1,34 @@
+# Standard-Konfiguration fuer den Throtl-Daemon (root, /etc/throtl).
+# Normalerweise wird sie ueber die GUI/CLI verwaltet und hier persistiert.
+version = 1
+# "interface" kann auf "auto" stehen; der Daemon ermittelt dann das
+# Standard-Routing-Interface automatisch.
+interface = "auto"
+unit = "kbps"
+
+[global]
+enabled = true
+
+# Globale Interface-Limits (kbit/s). Ein NICHT gesetzter Schluessel = unbegrenzt.
+# Wichtig: Wert 0 wird als echtes Limit von 0 kbit/s interpretiert (alles blockt);
+# fuer "kein Limit" den Schluessel weglassen bzw. auf "None" loeschen.
+# download_limit = 0
+# upload_limit = 0
+
+# Garantierte Mindestraten fuer nicht-gematchten Traffic (kbit/s)
+download_minimum = 100
+upload_minimum = 10
+
+# Globale Prioritaet fuer alles, das keine eigene Regel hat
+download_priority = "normal"
+upload_priority = "normal"
+
+# [[processes]]
+# key = "exe:/usr/lib/firefox/firefox"
+# name = "Firefox"
+# match_type = "exe"        # "exe" | "name" | "cmdline"
+# match_value = "/usr/lib/firefox/firefox"
+# download_limit = 0        # Schluessel weglassen = keine Begrenzung
+# upload_limit = 0
+# priority = "normal"
+# recursive = false

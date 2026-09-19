@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & ideas
+    url: https://github.com/Flenser42/throtl/discussions
+    about: Ask questions or discuss ideas (enable Discussions in the repository settings).
+  - name: Security report
+    url: https://github.com/Flenser42/throtl/security/advisories/new
+    about: Please report vulnerabilities privately — see SECURITY.md.

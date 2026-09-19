@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Throtl
+Comment=Per-application bandwidth limits and traffic prioritisation
+GenericName=Network Bandwidth Manager
+Categories=Network;System;Utility;
+Keywords=bandwidth;limit;qos;network;traffic;
+Exec=throtl-gui
+Icon=throtl
+Terminal=false
+StartupNotify=true
+X-GNOME-UsesNotifications=true

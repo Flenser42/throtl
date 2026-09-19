@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""Throtl-GUI (GTK4 + libadwaita)."""
+import os
+import sys
+
+# realpath loest Symlinks auf, damit das Projektverzeichnis (z.B. /opt/netlimiter-clone)
+# korrekt in sys.path landet, egal wie die GUI aufgerufen wird.
+_PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+if _PROJECT_DIR not in sys.path:
+    sys.path.insert(0, _PROJECT_DIR)
+
+from throtl.gui.app import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main())

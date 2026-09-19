@@ -1,0 +1,27 @@
+[Unit]
+Description=Throtl - per-application bandwidth limits and QoS
+Documentation=https://github.com/Flenser42/throtl
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Root is required: tc, cgroups, modprobe and nethogs need privileged access.
+User=root
+# Config + runtime directories.
+Environment=THROTL_CONFIG_DIR=/etc/throtl
+Environment=THROTL_RUN_DIR=/run/throtl
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+RuntimeDirectory=throtl
+RuntimeDirectoryMode=0755
+# Preload ifb, TrafficToll needs it for ingress shaping.
+ExecStartPre=-/sbin/modprobe ifb numifbs=1
+# `-u` keeps the daemon log lines visible in the journal.
+ExecStart=/usr/bin/python -u -m throtl.daemon --foreground \
+    --socket /run/throtl/daemon.sock
+ExecStop=/bin/kill -TERM $MAINPID
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
