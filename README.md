@@ -297,9 +297,36 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/RELEASING.md`](docs/RELEASIN
 
 ---
 
+## A small request
+
+Throtl is free software. The [GPL-3.0-or-later](LICENSE) explicitly permits
+commercial use, and you are **not** required to tell me anything. But if you do
+use Throtl commercially, I would honestly love to hear about it — where it ends
+up and how big it grows. That is pure curiosity, not a license condition.
+
+A short note to [flenser42@gmx.de](mailto:flenser42@gmx.de) or an issue on
+GitHub is more than enough.
+
+---
+
 ## License
 
 Throtl is licensed under **GPL-3.0-or-later** (see [`LICENSE`](LICENSE)).
+Commercial use is allowed — see [A small request](#a-small-request).
 
-Bundled/companion projects keep their own licenses: TrafficToll is GPL-3.0,
-nethogs is GPL-2.0.
+### Third-party components
+
+Throtl does not vendor or modify its backends; it installs and drives them as
+separate programs, so their licenses do not restrict Throtl's own licensing:
+
+| Component | License | How Throtl uses it |
+|-----------|---------|--------------------|
+| [TrafficToll](https://github.com/cryzed/TrafficToll) | GPL-3.0 | installed unmodified via `pip` into a venv (`/opt/throtl/venv`) and run as a subprocess through its CLI |
+| [nethogs](https://github.com/raboof/nethogs) | GPL-2.0 | system package, run as a subprocess; Throtl parses its `-t` output |
+
+Throtl is an independent frontend, **not a fork** of either project. Running a
+separate program and parsing its output is generally not considered creating a
+derivative work; even a real fork would be permitted by the GPL, but would carry
+the usual obligations (keep the license and notices, publish the source).
+
+> This is not legal advice.
