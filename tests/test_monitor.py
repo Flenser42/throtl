@@ -129,6 +129,26 @@ class NethogsMonitorTest(unittest.TestCase):
         mon.start()
         mon.stop()
 
+    def test_dead_process_is_detected_and_reaped(self):
+        """Stirbt nethogs, muss is_alive() False werden und der Prozess
+        gereapt werden (kein Zombie), inklusive Grund in last_error."""
+        mon = NethogsMonitor("lo", cmd="/bin/true", capture_udp=False)
+        mon.start()
+        deadline = time.monotonic() + 3
+        while mon.is_alive() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        self.assertFalse(mon.is_alive())
+        self.assertIsNotNone(mon.last_error)
+        mon.stop()  # darf nicht werfen
+        self.assertFalse(mon.is_alive())
+
+    def test_injected_stream_reports_alive_until_stopped(self):
+        mon = NethogsMonitor("lo", inject=io.StringIO(TRACE.decode()))
+        mon.start()
+        self.assertTrue(mon.is_alive())
+        mon.stop()
+        self.assertFalse(mon.is_alive())
+
 
 if __name__ == "__main__":
     unittest.main()

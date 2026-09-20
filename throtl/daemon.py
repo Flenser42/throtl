@@ -247,6 +247,7 @@ class Daemon:
 
         self.monitor = None
         self.monitor_error = None
+        self.monitor_last_crash = None
         self.engine_error = None
         self._monitor_retry_tick = 0
         self._monitor_factory = (
@@ -339,11 +340,27 @@ class Daemon:
             time.sleep(self.interval)
 
     def _tick_monitor(self) -> None:
-        # Monitor nachziehen, falls der Start zuvor fehlgeschlagen ist
-        # (z. B. nethogs war noch nicht bereit). Alle ~10 Ticks erneut versuchen.
+        # Toten Monitor erkennen (nethogs beendet/abgestuerzt): Fehler merken,
+        # aufraeumen; die Retry-Logik unten startet ihn dann neu. Monitor-Stubs
+        # ohne is_alive() werden konservativ als lebendig behandelt.
+        if self.monitor is not None:
+            checker = getattr(self.monitor, "is_alive", None)
+            alive = True
+            if checker is not None:
+                try:
+                    alive = bool(checker())
+                except Exception:
+                    alive = True
+            if not alive:
+                error = getattr(self.monitor, "last_error", None) or "nethogs process exited"
+                self.monitor_error = error
+                self.monitor_last_crash = error
+                print(f"Monitor-Fehler: {error}", flush=True)
+                self._stop_monitor()
+        # Monitor nachziehen, falls (noch) keiner laeuft. Alle ~3 Ticks erneut.
         if self.monitor is None:
             self._monitor_retry_tick += 1
-            if self._monitor_retry_tick >= 10:
+            if self._monitor_retry_tick >= 3:
                 self._monitor_retry_tick = 0
                 self._start_monitor()
         # Automatische Profilumschaltung (nur wenn ein Zeitplan existiert).
@@ -661,7 +678,10 @@ class Daemon:
             "interface": self.interface,
             "enabled": cfg["global"].get("enabled", True),
             "monitoring": self.monitor is not None,
+            "monitor_alive": bool(getattr(self.monitor, "is_alive", lambda: False)())
+            if self.monitor is not None else False,
             "monitor_error": self.monitor_error,
+            "monitor_last_crash": self.monitor_last_crash,
             "engine_error": self.engine_error,
             "engine_applying": self._engine_applying,
             "engine": engine_status,

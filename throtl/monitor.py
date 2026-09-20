@@ -20,6 +20,7 @@ We monitor exactly ONE device (the shaped interface): nethogs emits a line per
 several devices would add the same flow multiple times.
 """
 
+import collections
 import os
 import shutil
 import subprocess
@@ -213,6 +214,9 @@ class NethogsMonitor:
         self._running = False
         self._lock = threading.Lock()
         self._latest = {}
+        self._stderr_tail = collections.deque(maxlen=30)
+        self._stderr_thread = None
+        self.last_error = None
 
     def _build_argv(self) -> list:
         # -t trace mode, -d interval. No -v: nethogs' default 0 = kB/s (rate);
@@ -238,7 +242,7 @@ class NethogsMonitor:
                 self._proc = subprocess.Popen(
                     self._build_argv(),
                     stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
                     text=True,
                     bufsize=1,
                 )
@@ -253,6 +257,30 @@ class NethogsMonitor:
             target=self._read_stream, args=(source,), daemon=True
         )
         self._reader_thread.start()
+        if self._proc is not None:
+            self._stderr_thread = threading.Thread(
+                target=self._drain_stderr, args=(self._proc,), daemon=True
+            )
+            self._stderr_thread.start()
+
+    def _drain_stderr(self, proc) -> None:
+        """nethogs-stderr sammeln (Diagnose; geht sonst verloren)."""
+        stream = proc.stderr
+        if stream is None:
+            return
+        for line in iter(stream.readline, ""):
+            line = line.rstrip()
+            if line:
+                self._stderr_tail.append(line)
+
+    def is_alive(self) -> bool:
+        """Laeuft der nethogs-Prozess noch? (Injektionen: solange running.)"""
+        if self._inject is not None:
+            return self._running
+        return self._proc is not None and self._proc.poll() is None
+
+    def stderr_tail(self) -> list:
+        return list(self._stderr_tail)
 
     def _read_stream(self, stream) -> None:
         for line in iter(stream.readline, ""):
@@ -266,6 +294,19 @@ class NethogsMonitor:
                 continue
         with self._lock:
             self._latest = self._parser.finish()
+        # Stream zu Ende: wenn wir nicht selbst gestoppt haben, ist nethogs
+        # gestorben. Prozess reapen (kein Zombie) und Grund merken.
+        proc = self._proc
+        if self._running and proc is not None:
+            try:
+                code = proc.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:
+                code = None
+            if code is not None:
+                tail = " | ".join(list(self._stderr_tail)[-3:])
+                self.last_error = f"nethogs exited (code {code})"
+                if tail:
+                    self.last_error += f": {tail}"
 
     def snapshot(self) -> dict:
         """Latest tick: pid -> {name, uid, download (kbit/s), upload (kbit/s)}."""
@@ -295,10 +336,15 @@ class NethogsMonitor:
         if self._reader_thread is not None:
             self._reader_thread.join(timeout=2.0)
             self._reader_thread = None
-        # Pipe erst nach dem Reader schliessen (sonst ValueError im Reader).
-        if proc is not None and proc.stdout is not None:
-            try:
-                proc.stdout.close()
-            except OSError:
-                pass
+        if self._stderr_thread is not None:
+            self._stderr_thread.join(timeout=2.0)
+            self._stderr_thread = None
+        # Pipes erst nach den Readern schliessen (sonst ValueError im Reader).
+        if proc is not None:
+            for stream in (proc.stdout, proc.stderr):
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except OSError:
+                        pass
         self._proc = None

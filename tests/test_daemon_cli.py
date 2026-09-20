@@ -83,6 +83,9 @@ class FakeMonitor:
     def stop(self):
         self._running = False
 
+    def is_alive(self):
+        return self._running
+
 
 def _fake_monitor_factory(device, interval=1.0):
     return FakeMonitor(device, interval)
@@ -307,6 +310,49 @@ class DaemonAsyncApplyTest(unittest.TestCase):
             finally:
                 d.shutdown()
         self.assertLess(elapsed, 0.5)
+
+
+class DaemonMonitorRecoveryTest(unittest.TestCase):
+    """Ein gestorbener Monitor wird erkannt, gereapt und neu gestartet."""
+
+    def test_dead_monitor_is_replaced(self):
+        from throtl.daemon import Daemon
+
+        created = []
+
+        class DeadMonitor:
+            last_error = "boom"
+
+            def __init__(self, device, interval=1.0):
+                self.device = device
+                self.interval = interval
+                self.stopped = False
+                created.append(self)
+
+            def start(self):
+                pass
+
+            def snapshot(self):
+                return {}
+
+            def is_alive(self):
+                return False
+
+            def stop(self):
+                self.stopped = True
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Daemon(socket_path=os.path.join(tmp, "d.sock"), config_dir=tmp,
+                       engine=SimEngine("lo"), interval=0.5,
+                       monitor_factory=lambda dev, i: DeadMonitor(dev, i))
+            d.start()
+            try:
+                for _ in range(4):
+                    d._tick_monitor()
+            finally:
+                d.shutdown()
+        self.assertGreaterEqual(len(created), 2)          # neu gestartet
+        self.assertTrue(any(m.stopped for m in created))  # alten aufgeraeumt
 
 
 if __name__ == "__main__":

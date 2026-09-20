@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-09-20
+
+### Fixed
+
+- Monitoring no longer goes silently dark when the `nethogs` process dies: the
+  daemon now detects the dead process, reaps it (no more zombie), records the
+  exit code and the last stderr lines, and restarts the monitor automatically.
+  Previously a dead `nethogs` left the GUI/CLI showing no processes and no
+  bandwidth while `status` still claimed `Monitoring: yes`.
+- `nethogs` stderr is captured (it was discarded) so the reason is visible in
+  `status`/`doctor` instead of only vanishing.
+
 ## [0.2.0] - 2026-09-20
 
 ### Added
@@ -99,6 +111,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Flenser42/throtl/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Flenser42/throtl/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Flenser42/throtl/releases/tag/v0.1.0
