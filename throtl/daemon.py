@@ -303,6 +303,7 @@ class Daemon:
         self._running = True
         self._monitor_thread = None
         self._iface_sample = None
+        self._iface_rate = (None, None)
         # Engine-Neustarts laufen in einem eigenen Thread (ein tt-Apply dauert
         # ~2 s und darf weder die RPC-Antworten noch die GUI blockieren).
         self._apply_event = threading.Event()
@@ -458,20 +459,25 @@ class Daemon:
                     rx, tx = int(fields[0]), int(fields[8])
                     break
         except (OSError, ValueError, IndexError):
-            return None, None
+            return self._iface_rate
         if rx is None:
-            return None, None
+            return self._iface_rate
         now = _time.monotonic()
         previous = self._iface_sample
-        self._iface_sample = (now, rx, tx)
         if previous is None:
-            return None, None
+            self._iface_sample = (now, rx, tx)
+            return self._iface_rate
         elapsed = now - previous[0]
-        if elapsed < 0.2:                     # zu kurz fuer eine sinnvolle Rate
-            return None, None
-        down = max(0, rx - previous[1]) * 8.0 / 1000.0 / elapsed
-        up = max(0, tx - previous[2]) * 8.0 / 1000.0 / elapsed
-        return round(down, 1), round(up, 1)
+        # Sample nur aktualisieren, wenn genug Zeit vergangen ist. Mehrere
+        # Aufrufer (Monitor-Tick + GUI-Poll) teilen sich dieses Sample; frueher
+        # setzte jeder Aufruf das Sample zurueck und kurze Abstaende lieferten
+        # None -> die Global-Zeile flackerte auf "measuring...".
+        if elapsed >= 0.5:
+            down = max(0, rx - previous[1]) * 8.0 / 1000.0 / elapsed
+            up = max(0, tx - previous[2]) * 8.0 / 1000.0 / elapsed
+            self._iface_rate = (round(down, 1), round(up, 1))
+            self._iface_sample = (now, rx, tx)
+        return self._iface_rate
 
     def _collect_snapshot(self, record_stats: bool = False) -> dict:
         """Prozess-Stats + echte Interface-Rate + angewendete Regeln.

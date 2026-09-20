@@ -432,5 +432,42 @@ class StatsDialogTest(unittest.TestCase):
         dialog.destroy()
 
 
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class ProfileReloadTest(unittest.TestCase):
+    def test_reload_profiles_does_not_activate(self):
+        """Das Befuellen des Dropdowns darf kein activate_profile ausloesen."""
+        import gi
+
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        from throtl.gui.app import ThrotlWindow
+
+        calls = []
+
+        class _Gui:
+            connected = True
+
+            def call(self, method, params=None, timeout=10):
+                if method == "list_profiles":
+                    return {"profiles": ["Standard", "Uni"], "active": "Uni"}
+                return {}
+
+            def call_async(self, method, params=None, **kwargs):
+                calls.append(method)
+
+            def shutdown(self):
+                pass
+
+        app = Adw.Application(application_id="io.github.throtl.reloadtest")
+        app.register(None)
+        win = ThrotlWindow(app, _Gui())
+        try:
+            win._reload_profiles()
+            self.assertNotIn("activate_profile", calls)
+        finally:
+            win.destroy()
+
+
 if __name__ == "__main__":
     unittest.main()

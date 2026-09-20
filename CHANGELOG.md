@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-09-20
+
+### Fixed
+
+- **GUI busy-loop**: refilling the profile dropdown fired `notify::selected`
+  outside the guard, so `activate_profile -> reload -> _reload_profiles` looped
+  ~135×/s. Side effects: the bandwidth graph pushed ~135 samples/s and its
+  history got stuck at ~7 s, the global rate flickered to "measuring…", and the
+  GUI burned CPU. The dropdown is now filled under its own guard.
+- The global interface rate is cached between samples: short-interval callers
+  (monitor tick + GUI poll share one sample) no longer get `None`.
+
 ## [0.4.1] - 2026-09-20
 
 ### Fixed
@@ -174,7 +186,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/Flenser42/throtl/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Flenser42/throtl/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Flenser42/throtl/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Flenser42/throtl/compare/v0.3.0...v0.3.1

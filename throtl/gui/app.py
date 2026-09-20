@@ -54,6 +54,10 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self.set_default_size(1060, 780)
         self.unit = "mBs"
         self._syncing = False
+        # Eigener Guard: das Befuellen des Profil-Dropdowns feuert
+        # notify::selected. Ohne diesen Guard ruft das activate_profile ->
+        # reload() -> _reload_profiles() -> ... in einer Endlosschleife.
+        self._loading_profiles = False
         # Budget-Ueberwachung (gedrosselt gepollt) + Dedupe fuer Notifications.
         self._budget_counter = 0
         self._budget_notified = set()
@@ -235,15 +239,18 @@ class ThrotlWindow(Adw.ApplicationWindow):
         active = result.get("active")
         self._profile_names = names
         model = self.profile_dd.get_model()
-        model.remove_all()
-        for name in names:
-            model.append(Gtk.StringObject.new(name))
-        index = names.index(active) if active in names else 0
-        self._syncing = True
+        # model.remove_all()/append() aendern die Auswahl und feuern
+        # notify::selected — waehrend des Ladens darf das NICHT als Nutzeraktion
+        # gelten (sonst Endlosschleife ueber activate_profile -> reload).
+        self._loading_profiles = True
         try:
+            model.remove_all()
+            for name in names:
+                model.append(Gtk.StringObject.new(name))
+            index = names.index(active) if active in names else 0
             self.profile_dd.set_selected(index)
         finally:
-            self._syncing = False
+            self._loading_profiles = False
 
     def _current_profile(self) -> str | None:
         idx = self.profile_dd.get_selected()
@@ -252,7 +259,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
         return None
 
     def _on_profile_selected(self, dd, *_args):
-        if self._syncing:
+        if self._syncing or self._loading_profiles:
             return
         name = self._current_profile()
         if not name:
