@@ -28,6 +28,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 from ..units import format_rate, format_rate_for_entry, parse_rate_in_unit
 from .client import GuiClient
 from .graph import BandwidthGraph
+from .prefs import load_prefs, save_prefs
 from .process_pane import ProcessTable
 from .widgets import UNIT_CHOICES, UNIT_IDS, UNIT_LABELS
 
@@ -183,9 +184,20 @@ class ThrotlWindow(Adw.ApplicationWindow):
         view.append(self.graph)
 
         # --- Process table (fuellt den Rest bis zum unteren Rand) ---
-        self.table = ProcessTable(self, unit=self.unit)
+        self.table = ProcessTable(self, unit=self.unit,
+                                  on_sort_change=self._on_sort_change)
+        self._prefs = load_prefs()
+        saved_sort = self._prefs.get("sort_key")
+        if saved_sort in ("pid", "name", "download", "upload", "priority"):
+            self.table.set_sort(saved_sort, bool(self._prefs.get("sort_desc", True)))
         self.table.set_vexpand(True)
         view.append(self.table)
+
+    def _on_sort_change(self, key: str, desc: bool) -> None:
+        """Spalten-Sortierung der Prozessliste merken (User-Prefs)."""
+        self._prefs["sort_key"] = key
+        self._prefs["sort_desc"] = bool(desc)
+        save_prefs(self._prefs)
 
     def _caption(self, text: str) -> Gtk.Label:
         label = Gtk.Label(label=text, xalign=0.0)

@@ -26,6 +26,7 @@ import argparse
 import atexit
 import copy
 import os
+import signal
 import socket
 import threading
 import time
@@ -248,6 +249,7 @@ class Daemon:
         self.monitor = None
         self.monitor_error = None
         self.monitor_last_crash = None
+        self._monitor_starts = 0
         self.engine_error = None
         self._monitor_retry_tick = 0
         self._monitor_factory = (
@@ -588,6 +590,7 @@ class Daemon:
                 self.monitor = None
             else:
                 self.monitor_error = None
+                self._monitor_starts += 1
 
     def _stop_monitor(self) -> None:
         if self.monitor is not None:
@@ -682,6 +685,7 @@ class Daemon:
             if self.monitor is not None else False,
             "monitor_error": self.monitor_error,
             "monitor_last_crash": self.monitor_last_crash,
+            "monitor_starts": self._monitor_starts,
             "engine_error": self.engine_error,
             "engine_applying": self._engine_applying,
             "engine": engine_status,
@@ -994,11 +998,19 @@ def main(argv=None) -> int:
     if args.simulate:
         interface = args.interface or daemon.engine.device
         daemon.engine = SimEngine(device=interface)
+
+    # SIGTERM/SIGINT sauber behandeln: sonst laeuft das Cleanup (Monitor/Engine
+    # stoppen, Socket entfernen) bei 'systemctl stop' bzw. 'kill' nicht, und
+    # nethogs/tt bleiben als Waisen zurueck.
+    def _request_stop(_signum, _frame):
+        daemon._running = False
+
+    signal.signal(signal.SIGTERM, _request_stop)
+    signal.signal(signal.SIGINT, _request_stop)
+
     daemon.start()
     try:
         daemon.serve_forever()
-    except KeyboardInterrupt:
-        pass
     finally:
         daemon.shutdown()
     return 0

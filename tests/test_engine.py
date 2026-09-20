@@ -123,6 +123,20 @@ class EngineProcessTest(unittest.TestCase):
         self.assertEqual(engine_._generation, gen1)
         engine_.stop()
 
+    def test_apply_metrics(self):
+        """applies/restarts/failures + Dauer werden gezaehlt (fuer status)."""
+        engine_ = engine.TrafficTollEngine("enp34s0", command=self.fake)
+        engine_.apply(_cfg())
+        engine_.apply(_cfg())          # no-op
+        engine_.apply(_cfg(global_={"download_limit": 5000}))
+        status = engine_.status()
+        self.assertEqual(status["applies"], 2)
+        self.assertEqual(status["restarts"], 2)
+        self.assertEqual(status["apply_failures"], 0)
+        self.assertIsNotNone(status["last_apply_seconds"])
+        self.assertIsNotNone(status["avg_apply_seconds"])
+        engine_.stop()
+
     def test_missing_command_raises(self):
         engine_ = engine.TrafficTollEngine("enp34s0", command="/nonexistent/tt")
         with self.assertRaises(RuntimeError):

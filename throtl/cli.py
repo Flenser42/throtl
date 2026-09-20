@@ -10,6 +10,8 @@ Beispiele:
     throtl-cli remove-process --key 'exe:/usr/lib/firefox/firefox'
     throtl-cli toggle --enabled false
     throtl-cli monitor           # Live-Ausgabe pro Sekunde
+    throtl-cli top               # Vollbild-Ranking (htop-Stil)
+    throtl-cli selftest          # prueft end-to-end, ob Limits greifen
     throtl-cli profiles          # Profile verwalten
     throtl-cli stats --window day
     throtl-cli export --output throtl.toml
@@ -65,16 +67,30 @@ def cmd_status(client, args):
     print(f"Throtl-Daemon {status.get('daemon')} (PID {status.get('pid')})")
     print(f"  Interface:   {status.get('interface')}")
     print(f"  Shaping:     {'ON' if status.get('enabled') else 'OFF'}")
-    print(f"  Monitoring:  {'yes' if status.get('monitoring') else 'no'}")
+    monitoring = "yes" if status.get("monitoring") else "no"
+    if status.get("monitoring") and status.get("monitor_alive") is not None:
+        monitoring += f" (alive={status.get('monitor_alive')}"
+        monitoring += f", starts={status.get('monitor_starts')})"
+    print(f"  Monitoring:  {monitoring}")
     engine = status.get("engine") or {}
     print(f"  Engine:      running={engine.get('running')} "
           f"generation={engine.get('generation')}")
+    if engine.get("applies") is not None:
+        last = engine.get("last_apply_seconds")
+        avg = engine.get("avg_apply_seconds")
+        print(f"  Applies:     {engine.get('applies')} "
+              f"(restarts={engine.get('restarts')}, "
+              f"failures={engine.get('apply_failures')}, "
+              f"last={last if last is not None else '-'}s, "
+              f"avg={avg if avg is not None else '-'}s)")
     if status.get("engine_error"):
         print(f"  Engine error: {status['engine_error']}")
     if engine.get("last_error"):
         print(f"  Engine last error: {engine['last_error']}")
     if status.get("monitor_error"):
         print(f"  Monitor error: {status['monitor_error']}")
+    if status.get("monitor_last_crash"):
+        print(f"  Monitor last crash: {status['monitor_last_crash']}")
     if engine.get("exit_code") is not None:
         print(f"  Engine exit: {engine.get('exit_code')} "
               f"(latest tt crash; siehe stderr/unten)")
@@ -307,6 +323,210 @@ def cmd_monitor(client, args):
         return 0
 
 
+def _term_size(fallback_cols=100, fallback_lines=30):
+    import shutil
+
+    try:
+        size = shutil.get_terminal_size()
+        return size.columns, size.lines
+    except OSError:
+        return fallback_cols, fallback_lines
+
+
+def cmd_top(client, args):
+    """Vollbild-Live-Ranking der Apps (htop-Stil). Ctrl-C beendet."""
+    import os
+
+    if not sys.stdout.isatty():
+        sys.stderr.write("top braucht ein Terminal (TTY).\n")
+        return 2
+    colors = not os.environ.get("NO_COLOR")
+    green = "\033[32m" if colors else ""
+    orange = "\033[33m" if colors else ""
+    dim = "\033[2m" if colors else ""
+    bold = "\033[1m" if colors else ""
+    reset = "\033[0m" if colors else ""
+    sort_key = args.sort
+    interval = max(0.3, float(args.interval))
+
+    def sort_value(app):
+        if sort_key == "name":
+            return str(app.get("name", "")).lower()
+        return float(app.get(sort_key, 0.0) or 0.0)
+
+    try:
+        while True:
+            state = client.call("list_processes")
+            apps = list(state.get("apps") or state.get("processes") or [])
+            apps.sort(key=sort_value, reverse=(sort_key != "name"))
+            cols, lines = _term_size()
+            g = state.get("global") or {}
+            out = ["\033[H\033[2J"]
+            out.append(
+                f"{bold}Throtl top{reset}  {state.get('interface')}  "
+                f"shaping={'ON' if state.get('enabled') else 'OFF'}  "
+                f"↓ {_fmt_rate(g.get('download'))}  ↑ {_fmt_rate(g.get('upload'))}  "
+                f"[{time.strftime('%H:%M:%S')}]  "
+                f"{dim}sort={sort_key} q/ctrl-c=quit{reset}")
+            out.append("")
+            out.append(f"{'PID':<9}{'App':<26}{'▼ Download':>16}{'▲ Upload':>16}")
+            out.append("-" * min(cols, 70))
+            for app in apps[: max(1, lines - 6)]:
+                count = int(app.get("pid_count") or 1)
+                if count > 1:
+                    pid = f"{count} pids"
+                else:
+                    pids = app.get("pids") or []
+                    pid = str(pids[0]) if pids and pids[0] != "-" else "—"
+                name = _proc_display(str(app.get("name", "?")), 24)
+                down = _fmt_rate(app.get("download"), "auto")
+                up = _fmt_rate(app.get("upload"), "auto")
+                out.append(f"{pid:<9}{name:<26}"
+                           f"{green}{down:>16}{reset}{orange}{up:>16}{reset}")
+            if not apps:
+                out.append("  (no active traffic)")
+            sys.stdout.write("\n".join(out) + "\n")
+            sys.stdout.flush()
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        print()
+        return 0
+
+
+def _wait_engine(client, timeout: float = 15.0) -> None:
+    """Warten, bis ein laufender Engine-Apply fertig ist."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if not client.call("status").get("engine_applying"):
+                return
+        except Exception:
+            return
+        time.sleep(0.3)
+
+
+def _find_app(state, needle):
+    for app in state.get("apps") or []:
+        if needle in str(app.get("name", "")).lower():
+            return app
+    return None
+
+
+def cmd_selftest(client, args):
+    """End-to-End-Beweis: ein echter curl-Download muss durch das Limit gehen.
+
+    Misst bewusst die von nethogs gemeldete Rate *nach* einem Warmup, statt den
+    curl-Durchschnitt: TrafficToll setzt die tc-Filter erst ein paar Sekunden
+    nach Verbindungsaufbau, der ungedrosselte Start wuerde den Schnitt sonst
+    verfaelschen.
+    """
+    import shutil
+    import statistics
+    import subprocess
+
+    from .units import parse_rate
+
+    def fail(message, code=1):
+        print(f"❌ {message}")
+        return code
+
+    status = client.call("status")
+    if status.get("simulated"):
+        return fail("Simulationsmodus — der Selftest braucht den echten Daemon "
+                    "(root + TrafficToll).", 2)
+    curl = shutil.which("curl")
+    if not curl:
+        return fail("curl ist nicht installiert.", 2)
+    if not status.get("enabled"):
+        return fail("Shaping ist AUS. Erst 'throtl-cli toggle --enabled true'.", 2)
+    if not status.get("monitoring"):
+        return fail("Monitoring ist aus — der Selftest braucht nethogs-Raten.", 2)
+
+    limit_kbit = parse_rate(args.limit)
+    if not limit_kbit:
+        return fail(f"Ungueltiges Limit: {args.limit!r}", 2)
+    limit_bps = limit_kbit * 1000.0 / 8.0
+
+    def measure_curl(seconds):
+        proc = subprocess.run(
+            [curl, "-sL", "-o", "/dev/null", "-w", "%{speed_download}",
+             "--max-time", str(seconds), args.url],
+            capture_output=True, text=True)
+        try:
+            return float((proc.stdout or "").strip())
+        except ValueError:
+            return None
+
+    print(f"Throtl-Selftest — Limit {_fmt_rate(limit_kbit)} auf {curl}")
+    print(f"  URL: {args.url}")
+    print("  1) Basiswert ohne Limit …")
+    base_bps = measure_curl(args.time)
+    if base_bps is None:
+        return fail("Basismessung fehlgeschlagen (Netzwerk/URL?).", 2)
+
+    existing = None
+    for rule in client.call("get_config").get("processes", []):
+        if rule.get("match_type") == "exe" and "curl" in str(rule.get("match_value", "")):
+            existing = rule
+            break
+
+    rule = None
+    samples = []
+    try:
+        rule = client.call("set_process", {
+            "name": "throtl-selftest", "match_type": "exe",
+            "match_value": curl, "download_limit": limit_kbit,
+            "priority": "normal",
+        })
+        _wait_engine(client)
+        print(f"  2) Download mit Limit ({args.warmup}s Warmup, dann {args.measure}s messen) …")
+        proc = subprocess.Popen(
+            [curl, "-sL", "-o", "/dev/null", "--max-time",
+             str(int(args.warmup) + int(args.measure)), args.url],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            time.sleep(args.warmup)
+            for _ in range(int(args.measure)):
+                app = _find_app(client.call("list_processes"), "curl")
+                if app is not None:
+                    samples.append(float(app.get("download", 0.0) or 0.0))
+                time.sleep(1.0)
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+    finally:
+        if rule is not None:
+            if existing is not None:
+                client.call("set_process", existing)
+            else:
+                client.call("remove_process", {"key": rule.get("key")})
+        _wait_engine(client)
+
+    limit_kbit_measured = statistics.median(samples) if samples else None
+    if limit_kbit_measured is None:
+        return fail("Keine curl-Rate vom Daemon erhalten (nethogs/Attribution?). "
+                    "Bitte 'throtl-cli status' pruefen.", 2)
+
+    ratio = (limit_kbit_measured / limit_kbit) if limit_kbit else 0.0
+    print(f"  Basis:     {_fmt_rate(base_bps * 8 / 1000)}  ({base_bps / 1000:.0f} KB/s)")
+    print(f"  Limitiert: {_fmt_rate(limit_kbit_measured)}  "
+          f"(median)  = {ratio:.2f}× Limit")
+
+    if base_bps < limit_bps * 1.5:
+        print("⚠️  Die ungedrosselte Rate liegt nah am Limit — die Leitung ist zu "
+              "langsam fuer einen aussagekraeftigen Test.")
+        return 2
+    if limit_kbit_measured <= limit_kbit * 1.8:
+        print("✅ Bestanden: der Download wurde tatsaechlich gedrosselt.")
+        return 0
+    print("❌ Fehlgeschlagen: gemessene Rate liegt ueber dem Limit "
+          "(greift die Regel? richtiges Interface?).")
+    return 1
+
+
 def _is_fatal_issue(issue: str) -> bool:
     """Grobe Einordnung: fehlende Rechte/Tools sind echtes Problem, Rest Warnung."""
     text = (issue or "").lower()
@@ -465,6 +685,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("monitor", help="Live-Bandbreiten pro Sekunde")
 
+    tp = sub.add_parser("top", help="Vollbild-Live-Ranking (htop-Stil)")
+    tp.add_argument("--interval", default="1.0",
+                    help="Aktualisierungsintervall in Sekunden (Default: 1.0)")
+    tp.add_argument("--sort", choices=["download", "upload", "name"],
+                    default="download", help="Sortierspalte (Default: download)")
+
+    sft = sub.add_parser("selftest",
+                         help="End-to-End pruefen, ob Limits wirklich greifen")
+    sft.add_argument("--limit", default="2mbps",
+                     help="Testlimit fuer den curl-Download (Default: 2mbps)")
+    sft.add_argument("--url", default="https://speed.cloudflare.com/__down?bytes=100000000",
+                     help="Download-URL fuer den Test")
+    sft.add_argument("--time", type=float, default=6.0,
+                     help="Sekunden fuer die Basismessung (Default: 6)")
+    sft.add_argument("--warmup", type=float, default=4.0,
+                     help="Sekunden Warmup vor der Messung (Default: 4)")
+    sft.add_argument("--measure", type=float, default=5.0,
+                     help="Sekunden Messfenster (Default: 5)")
+
     sub.add_parser("profiles", help="Profile auflisten")
 
     pu = sub.add_parser("profile-use", help="Profil aktivieren")
@@ -510,6 +749,8 @@ def main(argv=None) -> int:
             "remove-process": cmd_remove,
             "toggle": cmd_toggle,
             "monitor": cmd_monitor,
+            "top": cmd_top,
+            "selftest": cmd_selftest,
             "profiles": cmd_profiles,
             "profile-use": cmd_profile_use,
             "profile-save": cmd_profile_save,

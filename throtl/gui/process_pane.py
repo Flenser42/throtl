@@ -75,11 +75,12 @@ def _unescape(pattern: str) -> str:
 class ProcessTable(Gtk.Box):
     """Editable, sortable table of processes + their throttling settings."""
 
-    def __init__(self, gui, unit: str = "mBs"):
+    def __init__(self, gui, unit: str = "mBs", on_sort_change=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.set_vexpand(True)
         self.gui = gui
         self.unit = unit
+        self._on_sort_change = on_sort_change
         self._rows = {}          # pid -> RowWidgets
         self._procs = {}         # pid -> current blob (for sorting)
         self._rules = []
@@ -153,6 +154,8 @@ class ProcessTable(Gtk.Box):
             self._sort_desc = _DEFAULT_DESC.get(key, False)
         self._update_sort_labels()
         self._apply_sort()
+        if self._on_sort_change is not None:
+            self._on_sort_change(self._sort_key, self._sort_desc)
 
     def _update_sort_labels(self) -> None:
         for key, (button, title) in self._sort_labels.items():

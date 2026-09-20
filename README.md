@@ -20,7 +20,9 @@ It is a thin, well-behaved layer on top of two proven tools:
 - **[nethogs](https://github.com/raboof/nethogs)** in trace mode provides live
   per-process bandwidth.
 
-![Throtl main window](docs/images/screenshot.png)
+![Throtl in action](docs/images/demo.gif)
+
+*Live view: per-app rates, editable limits and priority, auto-scrolling graph.*
 
 ---
 
@@ -186,6 +188,10 @@ throtl-cli remove-process --key 'exe:/usr/lib/firefox/firefox'
 
 throtl-cli toggle --enabled false      # pause all shaping
 throtl-cli monitor                     # live rates, once per second
+throtl-cli top                         # full-screen live ranking (htop-style)
+
+# End-to-end check that limits actually throttle (needs root + TrafficToll)
+throtl-cli selftest --limit 2mbps
 
 # Profiles
 throtl-cli profiles                    # list profiles (+ active)

@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-20
+
+### Added
+
+- `throtl-cli top`: full-screen live ranking of applications (htop-style),
+  sortable by download/upload/name.
+- `throtl-cli selftest`: end-to-end check that limits really throttle. Measures
+  a baseline download, applies a temporary `curl` rule, samples the *shaped*
+  rate from nethogs after a warm-up, then restores the previous rule. Exits
+  non-zero when the limit is not effective.
+- Observability: `status` now reports engine `applies` / `restarts` /
+  `apply_failures` / last+avg apply duration, plus monitor `starts` and the last
+  monitor crash reason.
+- The GUI remembers the process-table sort column and direction (stored in
+  `~/.config/throtl/gui.json`).
+- README: animated demo GIF.
+
+### Fixed
+
+- The daemon now handles `SIGTERM`/`SIGINT` cleanly: `systemctl stop` or a plain
+  `kill` stops the monitor (reaping `nethogs`) and removes the socket instead of
+  leaving orphaned processes behind.
+
 ## [0.2.1] - 2026-09-20
 
 ### Fixed
@@ -111,7 +134,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Flenser42/throtl/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Flenser42/throtl/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Flenser42/throtl/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Flenser42/throtl/releases/tag/v0.1.0

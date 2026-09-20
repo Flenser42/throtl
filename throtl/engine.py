@@ -24,6 +24,7 @@ import os
 import signal
 import subprocess
 import threading
+import time
 
 from .config import priority_to_int
 
@@ -150,6 +151,13 @@ class TrafficTollEngine:
         self._reader_thread = None
         self._watchdog = None
         self._last_error = None
+        # Metriken (fuer status/doctor): Apply-Haeufigkeit, Neustarts,
+        # Fehlschlaege und Dauer. Zeigt, ob das Apply-Coalescing greift.
+        self._applies = 0
+        self._restarts = 0
+        self._apply_failures = 0
+        self._last_apply_seconds = None
+        self._total_apply_seconds = 0.0
 
     def apply(self, config: dict) -> None:
         """Neue Config schreiben und tt nur bei echter Aenderung neu starten.
@@ -166,23 +174,35 @@ class TrafficTollEngine:
                 return
             self._generation += 1
             self._active_config = yaml
+            self._applies += 1
+            started = time.monotonic()
             self._stop_locked()
             if not enabled:
                 # Shaping deaktiviert: kein tt-Prozess
+                self._record_apply(started)
                 if self.on_restart is not None:
                     self.on_restart(disabled=True, error=None)
                 return
             try:
                 self._start_locked(yaml)
             except Exception as error:
+                self._apply_failures += 1
+                self._record_apply(started)
                 self._last_error = f"{type(error).__name__}: {error}"
                 if self.on_restart is not None:
                     self.on_restart(disabled=False, error=str(error))
                 raise
             else:
+                self._restarts += 1
+                self._record_apply(started)
                 self._last_error = None
         if self.on_restart is not None:
             self.on_restart(disabled=False, error=None)
+
+    def _record_apply(self, started: float) -> None:
+        elapsed = time.monotonic() - started
+        self._last_apply_seconds = round(elapsed, 3)
+        self._total_apply_seconds += elapsed
 
     def _tc_cleanup(self) -> None:
         """tc-Reste entfernen, damit tt seine QDiscs frisch aufbauen kann.
@@ -361,6 +381,14 @@ class TrafficTollEngine:
             "stderr_tail": tail,
             "stderr_path": self._stderr_path,
             "last_error": self._last_error,
+            "applies": self._applies,
+            "restarts": self._restarts,
+            "apply_failures": self._apply_failures,
+            "last_apply_seconds": self._last_apply_seconds,
+            "avg_apply_seconds": (
+                round(self._total_apply_seconds / self._applies, 3)
+                if self._applies else None
+            ),
         }
 
 
@@ -378,10 +406,16 @@ class SimEngine:
         self._enabled = False
         self._rules = []
         self._generation = 0
+        self._applies = 0
+        self._restarts = 0
+        self._apply_failures = 0
 
     def apply(self, config: dict) -> None:
         self._generation += 1
+        self._applies += 1
         self._enabled = bool(config["global"].get("enabled", True))
+        if self._enabled:
+            self._restarts += 1
         self._rules = list(config.get("processes", []))
 
     def is_running(self) -> bool:
@@ -397,4 +431,9 @@ class SimEngine:
             "device": self.device,
             "generation": self._generation,
             "simulated": True,
+            "applies": self._applies,
+            "restarts": self._restarts,
+            "apply_failures": self._apply_failures,
+            "last_apply_seconds": None,
+            "avg_apply_seconds": None,
         }
