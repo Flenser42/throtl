@@ -240,6 +240,23 @@ class ProcessTableSortTest(unittest.TestCase):
         t = self._table()
         self.assertTrue(t.get_vexpand())
 
+    def test_unit_change_does_not_clobber_edit_while_latched(self):
+        import time
+
+        t = self._table()
+        t.set_state({"rules": [{
+            "key": "name:x", "name": "x", "match_type": "name",
+            "match_value": "x", "download_limit": 5000, "upload_limit": None,
+            "priority": "normal", "recursive": False}],
+            "apps": [{"name": "x", "exe": "/x", "download": 1.0,
+                      "upload": 1.0, "pids": ["1"], "pid_count": 1,
+                      "unattributed": False}]})
+        row = t._rows["x"]
+        row.dl.set_text("7")
+        t._edit_latch_until = time.monotonic() + 30
+        t.set_unit("kbps")  # wuerde sonst den Regelwert eintragen
+        self.assertEqual(row.dl.get_text(), "7")
+
     def test_sort_change_callback_fires(self):
         from throtl.gui.process_pane import ProcessTable
 

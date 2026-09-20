@@ -18,6 +18,7 @@ Design notes:
 """
 
 import re
+import time
 
 import gi
 
@@ -89,6 +90,10 @@ class ProcessTable(Gtk.Box):
         self._sort_key = "download"
         self._sort_desc = True
         self._sort_labels = {}
+        # Einmal ein Limit-Feld fokussiert, pausieren wir Sortierung/Entfernen
+        # fuer ein paar Sekunden. Sonst kann das Umsortieren den Fokus klauen,
+        # bevor der Nutzer ueberhaupt tippen kann.
+        self._edit_latch_until = 0.0
 
         # --- header (clickable = sort) ---
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -223,7 +228,7 @@ class ProcessTable(Gtk.Box):
 
     def _sync_limit_entry(self, entry, kbit, unit) -> None:
         """Feldtext an Einheit/Regel anpassen — nie waehrend des Tippens."""
-        if entry.has_focus():
+        if entry.has_focus() or time.monotonic() < self._edit_latch_until:
             return
         self._syncing = True
         try:
@@ -247,7 +252,13 @@ class ProcessTable(Gtk.Box):
             key = str(blob.get("name") if grouped else blob.get("pid"))
             self._procs[key] = blob
 
+        # Waehrend der Nutzer in einem Limit-Feld tippt, NICHT umsortieren und
+        # keine Zeilen entfernen: das Reordering nimmt dem Feld sonst den Fokus
+        # und die Eingabe geht verloren.
+        editing = self._editing()
         if not items:
+            if editing:
+                return
             self._clear_rows()
             self._show_empty()
             return
@@ -263,11 +274,28 @@ class ProcessTable(Gtk.Box):
 
         for key in list(self._rows):
             if key not in self._procs:
-                roww = self._rows.pop(key)
+                roww = self._rows[key]
+                if editing and (roww.dl.has_focus() or roww.ul.has_focus()):
+                    continue  # Zeile behalten, in der gerade getippt wird
+                del self._rows[key]
                 if roww.box.get_parent() is not None:
                     self._list.remove(roww.box)
 
-        self._apply_sort()
+        if not editing:
+            self._apply_sort()
+
+    def _editing(self) -> bool:
+        """True, wenn der Nutzer gerade in einem Limit-Feld tippt (oder eben)."""
+        if time.monotonic() < self._edit_latch_until:
+            return True
+        for roww in self._rows.values():
+            if roww.dl.has_focus() or roww.ul.has_focus():
+                return True
+        return False
+
+    def _on_entry_focus(self, entry, _pspec=None) -> None:
+        if entry.has_focus():
+            self._edit_latch_until = time.monotonic() + 6.0
 
     # --- Empty state ------------------------------------------------------
 
@@ -377,11 +405,13 @@ class ProcessTable(Gtk.Box):
         dl.set_tooltip_text(
             f"Limit in {UNIT_LABELS.get(self.unit, self.unit)} — empty = unlimited")
         dl.connect("changed", self._on_limit, key, "download_limit")
+        dl.connect("notify::has-focus", self._on_entry_focus)
         box.append(self._cell(dl, _COLUMNS[4][2]))
 
         ul = RateEntry(self.unit)
         ul.set_text(format_rate_for_entry(rule.get("upload_limit"), self.unit))
         ul.connect("changed", self._on_limit, key, "upload_limit")
+        ul.connect("notify::has-focus", self._on_entry_focus)
         box.append(self._cell(ul, _COLUMNS[5][2]))
 
         prio = PriorityDropdown()

@@ -138,10 +138,12 @@ def parse_trace(line: str):
 
 
 def _kBs_to_kbit(kBs: float) -> float:
-    """nethogs reports kB/s; we use kbit/s internally."""
-    from .units import kBs_to_kbit
+    """nethogs rechnet in 1024er-Schritten (``#define KB (1UL << 10)``), also
+    KiB/s. Intern nutzen wir kbit/s (1000er): 1 KiB/s = 1024*8/1000 kbit/s.
 
-    return kBs_to_kbit(kBs)
+    Vorher wurde KiB/s wie kB/s behandelt -> Raten ~2,4 % zu niedrig.
+    """
+    return kBs * 1024.0 * 8.0 / 1000.0
 
 
 class TraceParser:

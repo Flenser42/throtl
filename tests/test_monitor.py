@@ -142,6 +142,10 @@ class NethogsMonitorTest(unittest.TestCase):
         mon.stop()  # darf nicht werfen
         self.assertFalse(mon.is_alive())
 
+    def test_kib_per_second_conversion(self):
+        # nethogs rechnet in 1024er-Schritten: 1 KiB/s = 8.192 kbit/s.
+        self.assertAlmostEqual(monitor._kBs_to_kbit(1000.0), 8192.0, places=3)
+
     def test_injected_stream_reports_alive_until_stopped(self):
         mon = NethogsMonitor("lo", inject=io.StringIO(TRACE.decode()))
         mon.start()

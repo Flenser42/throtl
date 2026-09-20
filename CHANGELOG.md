@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-09-20
+
+### Fixed
+
+- Per-app rates were ~2.4 % too low: nethogs reports **KiB/s** (it divides by
+  1024, `#define KB (1UL << 10)`), but Throtl treated the value as kB/s.
+- The per-process limit field lost focus while typing, so the text disappeared
+  and the limit never applied: the table re-sorted/removed rows on every poll.
+  Sorting and row removal are now paused while a limit field is focused (plus a
+  short latch after focusing), so the value can be typed and is sent.
+
 ## [0.4.0] - 2026-09-20
 
 ### Added
@@ -163,7 +174,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Flenser42/throtl/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Flenser42/throtl/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Flenser42/throtl/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Flenser42/throtl/compare/v0.2.1...v0.3.0
