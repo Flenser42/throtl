@@ -58,8 +58,11 @@ fi
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
   if ! id -nG "$SUDO_USER" 2>/dev/null | tr ' ' '\n' | grep -qx throtl; then
     sudo usermod -aG throtl "$SUDO_USER"
-    echo "   $SUDO_USER zur Gruppe 'throtl' hinzugefuegt (bitte neu anmelden)."
+    echo "   $SUDO_USER zur Gruppe 'throtl' hinzugefuegt."
   fi
+  echo "   Wichtig: Gruppen gelten erst in einer NEUEN Session. Meldet"
+  echo "   'throtl-cli' 'Permission denied', einmal neu einloggen oder im"
+  echo "   Terminal 'newgrp throtl' ausfuehren."
 fi
 sudo mkdir -p "$ETC" "$RUN"
 if [ ! -f "$ETC/config.toml" ]; then

@@ -21,7 +21,7 @@ gi.require_version("GLib", "2.0")
 
 from gi.repository import GLib
 
-from .. import SOCKET_PATH
+from .. import SOCKET_PATH, socket_access_hint
 from ..protocol import Client
 
 
@@ -63,10 +63,12 @@ class GuiClient:
         except ConnectionError as error:
             self.connected = False
             self.last_error = str(error)
+            hint = socket_access_hint(self.socket_path)
+            extra = f"\n  {hint}" if hint else ""
             self._notify_error(
                 "Throtl daemon is not reachable.\n"
                 "  sudo systemctl start throtl\n"
-                f"({error})"
+                f"({error}){extra}"
             )
             raise
 

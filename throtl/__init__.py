@@ -5,10 +5,11 @@ GTK4/libadwaita-Frontend, Unix-Socket-IPC. Konfiguration unter
 ~/.config/throtl/ (TOML).
 """
 
+import grp
 import os
 import tempfile
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 # Konfigurationsverzeichnis (~/.config/throtl)
 CONFIG_DIR_NAME = "throtl"
@@ -22,6 +23,37 @@ SOCKET_PATH = f"{RUN_DIR}/daemon.sock"
 # konnte JEDER lokale Nutzer Limits setzen und das Netz drosseln.
 SOCKET_GROUP = "throtl"
 SOCKET_MODE = 0o660
+
+
+def socket_access_hint(path: str | None = None) -> str | None:
+    """Erklaeren, warum der Socket nicht erreichbar ist — wenn wir es wissen.
+
+    Haeufigster Fall: ``install.sh`` hat den Nutzer zur Gruppe ``throtl``
+    hinzugefuegt, die *laufende* Session kennt die Gruppe aber noch nicht
+    (Gruppen werden beim Login zugewiesen). Gibt ``None`` zurueck, wenn es
+    nichts zu erklaeren gibt (Socket fehlt, wir sind root, oder Zugriff ok).
+    """
+    path = path or SOCKET_PATH
+    if os.geteuid() == 0:
+        return None
+    try:
+        info = os.stat(path)
+    except OSError:
+        return None
+    # connect() braucht Schreibrecht auf der Socket-Datei.
+    if os.access(path, os.W_OK):
+        return None
+    try:
+        group = grp.getgrgid(info.st_gid).gr_name
+    except KeyError:
+        group = str(info.st_gid)
+    if info.st_mode & 0o060 and info.st_gid not in set(os.getgroups()):
+        return (
+            f"Access denied: {path} belongs to group '{group}', which this "
+            f"session is not a member of. install.sh added you to the group, "
+            f"but a running session keeps its old groups — run 'newgrp {group}' "
+            f"here, or log out and back in.")
+    return None
 
 
 def write_text_atomic(path: str, text: str, mode: int | None = None) -> None:

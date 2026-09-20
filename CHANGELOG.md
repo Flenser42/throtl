@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-09-20
+
+### Fixed
+
+- "Daemon not reachable" was misleading when the real cause was a permission
+  problem on the socket. `throtl-cli` (status + doctor) and the GUI now detect
+  that the socket exists but the *running session* lacks the `throtl` group,
+  and tell you to run `newgrp throtl` or log out and back in. `install.sh`
+  prints that reminder on every run.
+
 ## [0.3.0] - 2026-09-20
 
 ### Added
@@ -134,7 +144,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Flenser42/throtl/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Flenser42/throtl/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Flenser42/throtl/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Flenser42/throtl/compare/v0.1.0...v0.2.0

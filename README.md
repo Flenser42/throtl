@@ -369,6 +369,10 @@ the project follows [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) and has a
   [How priorities behave](#how-priorities-behave).
 - **`tt` not found** — re-run `sudo ./setup/install.sh` (it installs TrafficToll
   into `/opt/throtl/venv`).
+- **`Permission denied` on the socket / "daemon not reachable"** — the daemon
+  socket belongs to the `throtl` group. `install.sh` added you to it, but a
+  *running* session keeps its old groups: run `newgrp throtl` in the terminal or
+  log out and back in. `throtl-cli doctor` detects exactly this.
 
 ---
 

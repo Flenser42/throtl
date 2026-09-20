@@ -22,7 +22,7 @@ import argparse
 import sys
 import time
 
-from . import SOCKET_PATH
+from . import SOCKET_PATH, socket_access_hint
 from .protocol import Client, RpcError, TimeoutError_
 
 
@@ -32,7 +32,11 @@ def _client(args) -> Client:
         client.connect()
     except ConnectionError as error:
         sys.stderr.write(f"Fehler: {error}\n")
-        sys.stderr.write("Laeuft der Daemon? (bin/throtl-daemon --foreground)\n")
+        hint = socket_access_hint(args.socket or SOCKET_PATH)
+        if hint:
+            sys.stderr.write(f"  {hint}\n")
+        else:
+            sys.stderr.write("Laeuft der Daemon? (systemctl status throtl)\n")
         sys.exit(2)
     return client
 
@@ -631,6 +635,12 @@ def cmd_doctor(args) -> int:
             warnings += 1
     else:
         print(f"❌ Socket {socket_info.get('path')} existiert nicht")
+        errors += 1
+
+    # Der klassische Fall: Socket da, aber die Session kennt die Gruppe nicht.
+    hint = socket_access_hint(socket_path)
+    if hint:
+        print(f"❌ {hint}")
         errors += 1
 
     if errors == 0 and warnings == 0:
