@@ -10,8 +10,8 @@ from throtl import config
 
 class NameValidationTest(unittest.TestCase):
     def test_valid_names(self):
-        self.assertEqual(config.validate_profile_name("  Uni  "), "Uni")
-        self.assertEqual(config.validate_profile_name("Mein Profil 2024"), "Mein Profil 2024")
+        self.assertEqual(config.validate_profile_name("  University  "), "University")
+        self.assertEqual(config.validate_profile_name("My profile 2024"), "My profile 2024")
 
     def test_invalid_names(self):
         for bad in ("", "   ", "x" * 65, "Bad/Name", "a!b", None, 42):
@@ -56,15 +56,15 @@ class ProfileCrudTest(unittest.TestCase):
 
     def test_capture_and_apply(self):
         cfg = self._cfg()
-        config.capture_profile(cfg, "Uni")
-        self.assertIn("Uni", config.profile_names(cfg))
-        self.assertEqual(cfg["active_profile"], "Uni")
+        config.capture_profile(cfg, "University")
+        self.assertIn("University", config.profile_names(cfg))
+        self.assertEqual(cfg["active_profile"], "University")
 
         # Top-Level aendern und ueber das Profil zuruecksetzen.
         cfg["global"]["download_limit"] = 9999
         cfg["processes"] = []
-        config.apply_profile(cfg, "Uni")
-        self.assertEqual(cfg["active_profile"], "Uni")
+        config.apply_profile(cfg, "University")
+        self.assertEqual(cfg["active_profile"], "University")
         self.assertEqual(cfg["global"]["download_limit"], 1000)
         self.assertEqual(len(cfg["processes"]), 1)
 
@@ -82,17 +82,17 @@ class ProfileCrudTest(unittest.TestCase):
 
     def test_delete_profile(self):
         cfg = self._cfg()
-        config.capture_profile(cfg, "Uni")
-        self.assertTrue(config.delete_profile(cfg, "Uni"))
-        self.assertFalse(config.delete_profile(cfg, "Uni"))
+        config.capture_profile(cfg, "University")
+        self.assertTrue(config.delete_profile(cfg, "University"))
+        self.assertFalse(config.delete_profile(cfg, "University"))
         self.assertEqual(cfg["active_profile"], "Standard")
-        self.assertNotIn("Uni", cfg["profiles"])
+        self.assertNotIn("University", cfg["profiles"])
 
     def test_profile_priority_roundtrip_via_dump(self):
         cfg = self._cfg()
-        config.capture_profile(cfg, "Uni")
+        config.capture_profile(cfg, "University")
         loaded = self._roundtrip(cfg)
-        self.assertEqual(loaded["profiles"]["Uni"]["global"]["download_limit"], 1000)
+        self.assertEqual(loaded["profiles"]["University"]["global"]["download_limit"], 1000)
 
     def _roundtrip(self, cfg):
         text = config.dump_config(cfg)
@@ -108,7 +108,7 @@ class ProfileCrudTest(unittest.TestCase):
 class ScheduleTest(unittest.TestCase):
     def _cfg(self, days, start, end):
         return config.normalize({
-            "schedule": [{"profile": "Uni", "days": days,
+            "schedule": [{"profile": "University", "days": days,
                           "start": start, "end": end}],
         })
 
@@ -117,7 +117,7 @@ class ScheduleTest(unittest.TestCase):
         # Mittwoch, 10:00
         self.assertEqual(
             config.active_scheduled_profile(cfg, datetime(2026, 1, 7, 10, 0)),
-            "Uni")
+            "University")
         # Mittwoch, 15:00 -> ausserhalb
         self.assertIsNone(
             config.active_scheduled_profile(cfg, datetime(2026, 1, 7, 15, 0)))
@@ -129,7 +129,7 @@ class ScheduleTest(unittest.TestCase):
         cfg = self._cfg(["mi"], "08:00", "14:00")
         self.assertEqual(
             config.active_scheduled_profile(cfg, datetime(2026, 1, 7, 8, 0)),
-            "Uni")
+            "University")
         self.assertIsNone(
             config.active_scheduled_profile(cfg, datetime(2026, 1, 7, 14, 0)))
 
@@ -138,11 +138,11 @@ class ScheduleTest(unittest.TestCase):
         # Montag 23:00 -> Abendteil
         self.assertEqual(
             config.active_scheduled_profile(cfg, datetime(2026, 1, 5, 23, 0)),
-            "Uni")
+            "University")
         # Dienstag 02:00 -> Morgenteil (Starttag Montag)
         self.assertEqual(
             config.active_scheduled_profile(cfg, datetime(2026, 1, 6, 2, 0)),
-            "Uni")
+            "University")
         # Dienstag 23:00 -> nicht mehr
         self.assertIsNone(
             config.active_scheduled_profile(cfg, datetime(2026, 1, 6, 23, 0)))
@@ -169,22 +169,22 @@ class TomlProfileRoundtripTest(unittest.TestCase):
         cfg["global"]["download_limit"] = 1000
         cfg["processes"] = [config.make_rule("Firefox", "exe",
                                              "/usr/lib/firefox/firefox")]
-        config.capture_profile(cfg, "Uni")
-        cfg["profiles"]["Uni"]["global"] = {
+        config.capture_profile(cfg, "University")
+        cfg["profiles"]["University"]["global"] = {
             "enabled": True,
             "download_limit": 2048,
             "upload_limit": 512,
             "download_priority": "hoch",
             "upload_priority": "hoch",
         }
-        cfg["profiles"]["Uni"]["processes"] = [
+        cfg["profiles"]["University"]["processes"] = [
             config.make_rule("Spotify", "exe", "spotify",
                              download_limit=512, priority="niedrig"),
         ]
-        config.capture_profile(cfg, "Mein Profil")
-        cfg["start_profile"] = "Uni"
+        config.capture_profile(cfg, "My profile")
+        cfg["start_profile"] = "University"
         cfg["schedule"] = config.normalize_schedule([
-            {"profile": "Uni", "days": ["mo", "di", "mi", "do", "fr"],
+            {"profile": "University", "days": ["mo", "di", "mi", "do", "fr"],
              "start": "08:00", "end": "14:00"},
         ])
 
@@ -197,18 +197,18 @@ class TomlProfileRoundtripTest(unittest.TestCase):
         finally:
             os.unlink(path)
 
-        self.assertEqual(set(loaded["profiles"]), {"Uni", "Mein Profil"})
-        uni = loaded["profiles"]["Uni"]
-        self.assertEqual(uni["global"]["download_limit"], 2048)
-        self.assertEqual(uni["global"]["upload_limit"], 512)
-        self.assertEqual(uni["global"]["download_priority"], "hoch")
-        self.assertEqual(len(uni["processes"]), 1)
-        self.assertEqual(uni["processes"][0]["name"], "Spotify")
-        self.assertEqual(uni["processes"][0]["download_limit"], 512)
-        self.assertEqual(loaded["schedule"][0]["profile"], "Uni")
+        self.assertEqual(set(loaded["profiles"]), {"University", "My profile"})
+        university = loaded["profiles"]["University"]
+        self.assertEqual(university["global"]["download_limit"], 2048)
+        self.assertEqual(university["global"]["upload_limit"], 512)
+        self.assertEqual(university["global"]["download_priority"], "hoch")
+        self.assertEqual(len(university["processes"]), 1)
+        self.assertEqual(university["processes"][0]["name"], "Spotify")
+        self.assertEqual(university["processes"][0]["download_limit"], 512)
+        self.assertEqual(loaded["schedule"][0]["profile"], "University")
         self.assertEqual(loaded["schedule"][0]["days"], [0, 1, 2, 3, 4])
         self.assertEqual(loaded["schedule"][0]["start"], "08:00")
-        self.assertEqual(loaded["start_profile"], "Uni")
+        self.assertEqual(loaded["start_profile"], "University")
 
     def test_start_profile_bad_name_is_ignored(self):
         cfg = config.normalize({"start_profile": "bad/name!"})
@@ -288,32 +288,32 @@ class DaemonProfileRpcTest(unittest.TestCase):
         self.assertEqual(listed["active"], "Standard")
 
         self.client.call("set_global", {"download_limit": "2mbps"})
-        saved = self.client.call("set_profile", {"name": "Uni", "activate": True})
-        self.assertEqual(saved["active"], "Uni")
-        self.assertIn("Uni", self.client.call("list_profiles")["profiles"])
+        saved = self.client.call("set_profile", {"name": "University", "activate": True})
+        self.assertEqual(saved["active"], "University")
+        self.assertIn("University", self.client.call("list_profiles")["profiles"])
 
         self.client.call("set_global", {"download_limit": "9mbps"})
-        self.client.call("activate_profile", {"name": "Uni"})
+        self.client.call("activate_profile", {"name": "University"})
         cfg = self.client.call("get_config")
         self.assertEqual(cfg["global"]["download_limit"], 2000)
-        self.assertEqual(cfg["active_profile"], "Uni")
+        self.assertEqual(cfg["active_profile"], "University")
 
         self.client.call("set_schedule", {"rules": [
-            {"profile": "Uni", "days": ["mi"], "start": "08:00", "end": "14:00"},
+            {"profile": "University", "days": ["mi"], "start": "08:00", "end": "14:00"},
         ]})
         self.assertEqual(len(self.client.call("get_config")["schedule"]), 1)
 
-        deleted = self.client.call("delete_profile", {"name": "Uni"})
+        deleted = self.client.call("delete_profile", {"name": "University"})
         self.assertTrue(deleted["deleted"])
 
     def test_start_profile_rpc(self):
         self.client.call("set_global", {"download_limit": "5mbps"})
-        self.client.call("set_profile", {"name": "Morgen", "activate": True})
+        self.client.call("set_profile", {"name": "Morning", "activate": True})
         # Vom Profil abweichen und Start-Profil setzen.
         self.client.call("set_global", {"download_limit": "9mbps"})
-        self.client.call("set_start_profile", {"name": "Morgen"})
+        self.client.call("set_start_profile", {"name": "Morning"})
         self.assertEqual(
-            self.client.call("get_config")["start_profile"], "Morgen")
+            self.client.call("get_config")["start_profile"], "Morning")
 
     def test_import_config_rpc(self):
         result = self.client.call("import_config", {"config": {
@@ -341,12 +341,12 @@ class StartProfileApplyTest(unittest.TestCase):
                 engine=SimEngine("lo"), monitor_factory=None)
             cfg = first.store.get()
             cfg["global"]["download_limit"] = 4321
-            config.capture_profile(cfg, "Morgen")
+            config.capture_profile(cfg, "Morning")
             # Danach abweichen und "Standard" aktiv lassen: der Neustart muss
             # das Start-Profil anwenden.
             cfg["global"]["download_limit"] = 9999
             cfg["active_profile"] = config.STANDARD_PROFILE
-            cfg["start_profile"] = "Morgen"
+            cfg["start_profile"] = "Morning"
             first.store._persist()
 
             second = daemon.Daemon(
@@ -354,7 +354,7 @@ class StartProfileApplyTest(unittest.TestCase):
                 engine=SimEngine("lo"), monitor_factory=None)
             second._apply_start_profile()
             loaded = second.store.get()
-            self.assertEqual(loaded["active_profile"], "Morgen")
+            self.assertEqual(loaded["active_profile"], "Morning")
             self.assertEqual(loaded["global"]["download_limit"], 4321)
 
 

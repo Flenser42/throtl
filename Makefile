@@ -2,7 +2,7 @@
 PYTHON ?= $(shell test -x /usr/bin/python3 && echo /usr/bin/python3 || echo python3)
 RUFF ?= ruff
 
-.PHONY: test lint lint-fix check build clean install uninstall deb
+.PHONY: test lint lint-fix check build clean install uninstall deb images
 
 test:
 	$(PYTHON) -m unittest discover -s tests -v
@@ -20,6 +20,10 @@ build:
 
 deb:
 	bash packaging/deb/build.sh
+
+# Regenerate docs/images/* (needs a display or xvfb-run)
+images:
+	$(PYTHON) tools/make_images.py
 
 clean:
 	rm -rf build dist *.egg-info .ruff_cache .mypy_cache

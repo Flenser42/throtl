@@ -24,7 +24,9 @@ compile. "Prebuilt" therefore means:
 
 Common runtime dependencies: `python-gobject`, `gtk4`, `libadwaita`,
 `python-cairo`, `nethogs`, `iproute2` (`tc`) and a TrafficToll backend that
-provides the `tt` binary (`traffictoll`).
+provides the `tt` binary (`traffictoll`). On Debian/Ubuntu the cairo foreign
+struct support for PyGObject is the separate `python3-gi-cairo` package —
+without it the GUI cannot draw the graph, so the `.deb` depends on it.
 
 ## Debian / Ubuntu (`.deb`)
 

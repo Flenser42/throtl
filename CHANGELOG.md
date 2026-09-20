@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-09-20
+
+### Fixed
+
+- **Debian package**: the `.deb` now depends on `python3-gi-cairo`. Without
+  that (separate) Debian package PyGObject cannot marshal a `cairo.Context`
+  into the graph's draw function, so the bandwidth graph stayed blank. Arch's
+  `python-gobject` bundles this already, which is why it only affected the
+  `.deb`.
+
+### Changed
+
+- Refreshed the README screenshots and the demo GIF to show the current UI
+  (filter box, per-row time-window button, startup-profile menu). They are now
+  reproducible via `make images` (see `tools/make_images.py`).
+- Example profile names in the docs are English now (`University`, `Evening`,
+  `Night`) instead of German.
+
 ## [0.5.0] - 2026-09-20
 
 ### Added
@@ -211,7 +229,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/Flenser42/throtl/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Flenser42/throtl/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/Flenser42/throtl/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Flenser42/throtl/compare/v0.4.0...v0.4.1

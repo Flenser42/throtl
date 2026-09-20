@@ -47,7 +47,7 @@ It is a thin, well-behaved layer on top of two proven tools:
 - **Statistics** — persistent per-app history over 1 h / 2 days / 30 days,
   shown as a table and a graph.
 - **Profiles, schedules & startup profile** — save the current limits as named
-  profiles ("Uni", "Abend", "Nacht"), switch between them automatically by
+  profiles ("University", "Evening", "Night"), switch between them automatically by
   weekday and time, and pick one to activate on daemon startup.
 - **Responsive** — TrafficToll restarts are coalesced and happen off the UI
   thread, so the window never freezes while a change is applied.
@@ -212,12 +212,12 @@ throtl-cli selftest --limit 2mbps
 
 # Profiles
 throtl-cli profiles                    # list profiles (+ active)
-throtl-cli profile-save Uni            # save current settings as "Uni"
-throtl-cli profile-use Uni             # activate "Uni"
-throtl-cli profile-delete Uni
+throtl-cli profile-save University            # save current settings as "University"
+throtl-cli profile-use University             # activate "University"
+throtl-cli profile-delete University
 
 # Activate a profile automatically when the daemon starts
-throtl-cli start-profile Uni
+throtl-cli start-profile University
 throtl-cli start-profile                # show the current startup profile
 throtl-cli start-profile --clear
 
@@ -247,12 +247,12 @@ additively next to them in `config.toml`:
 ```toml
 active_profile = "Standard"
 
-[profiles.Uni]
+[profiles.University]
 global_download_limit = 2048
 global_upload_limit = 512
 global_priority = "hoch"
 
-[[profiles.Uni.processes]]
+[[profiles.University.processes]]
 name = "Spotify"
 match_type = "exe"
 match_value = "spotify"
@@ -260,7 +260,7 @@ download_limit = 512
 priority = "niedrig"
 
 [[schedule]]
-profile = "Uni"
+profile = "University"
 days = ["mo", "di", "mi", "do", "fr"]
 start = "08:00"
 end = "14:00"
@@ -274,7 +274,7 @@ overnight rules (`end < start`) run until the next morning.
 A **startup profile** is the fallback for when no schedule matches:
 
 ```toml
-start_profile = "Uni"
+start_profile = "University"
 ```
 
 It is applied once when the daemon starts; a schedule that matches at that
@@ -406,15 +406,22 @@ docs/images/         banner, architecture diagram and screenshots
 
 ```bash
 make check          # ruff + full unittest suite
-make test           # python3 -m unittest discover -s tests
-make lint           # ruff check .
-make lint-fix       # ruff autofixes (imports/formatting)
-make build          # sdist + wheel into dist/ (needs `build`)
+make test            # python3 -m unittest discover -s tests (GUI tests skip headless)
+make lint            # ruff check .
+make lint-fix        # ruff autofixes (imports/formatting)
+make build           # sdist + wheel into dist/ (needs `build`)
+make deb             # Debian package into dist/ (needs `dpkg-deb`)
+
+# Run the GUI widget tests on a headless machine
+xvfb-run -a -s "-screen 0 1280x900x24" make test
+
+# Regenerate the README screenshots / demo GIF (uses the Xvfb trick above)
+make images
 ```
 
 - Prefer the **system Python** for GUI tests (`/usr/bin/python3`), since a
   virtualenv typically lacks PyGObject. The `Makefile` does this automatically.
-- GUI widget tests are skipped when no display is available.
+- GUI widget tests and `make images` are skipped when no display is available.
 - Run `make clean` to drop build artifacts and caches.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/RELEASING.md`](docs/RELEASING.md);
