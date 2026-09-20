@@ -193,6 +193,15 @@ def _rate_or_none(value):
     return value
 
 
+def _size_or_none(value):
+    """Volumen (Bytes) parsen; '20GB'/'5 GiB'/None -> int|None."""
+    if value is None:
+        return None
+    from .units import parse_size
+
+    return parse_size(value)
+
+
 def default_config() -> dict:
     return {
         "version": 1,
@@ -202,6 +211,8 @@ def default_config() -> dict:
         "active_profile": STANDARD_PROFILE,
         "profiles": {},
         "schedule": [],
+        # Verbrauchs-Budgets (Bytes, rollierend: day=letzte 24h, week=7 Tage).
+        "budgets": {"enabled": True, "day": None, "week": None, "rules": []},
         "global": {
             "enabled": True,
             "download_limit": None,
@@ -274,6 +285,32 @@ def normalize(data: dict) -> dict:
                 continue
     cfg["profiles"] = profiles
     cfg["schedule"] = normalize_schedule(data.get("schedule"))
+
+    # --- Budgets (additiv) -------------------------------------------------
+    raw_budgets = data.get("budgets") or {}
+    budgets = cfg["budgets"]
+    if isinstance(raw_budgets, dict):
+        budgets["enabled"] = bool(raw_budgets.get("enabled", True))
+        for key in ("day", "week"):
+            try:
+                budgets[key] = _size_or_none(raw_budgets.get(key))
+            except (ConfigError, ValueError):
+                budgets[key] = None
+    rules = []
+    for raw in data.get("budget_rules") or []:
+        if not isinstance(raw, dict):
+            continue
+        app = str(raw.get("app") or "").strip()
+        if not app:
+            continue
+        entry = {"app": app}
+        for key in ("day", "week"):
+            try:
+                entry[key] = _size_or_none(raw.get(key))
+            except (ConfigError, ValueError):
+                entry[key] = None
+        rules.append(entry)
+    budgets["rules"] = rules
     return cfg
 
 
@@ -756,6 +793,29 @@ def dump_config(config: dict) -> str:
         lines.append(f"start = {_quote(str(rule.get('start', '')))}")
         lines.append(f"end = {_quote(str(rule.get('end', '')))}")
         lines.append("")
+
+    # --- Verbrauchs-Budgets ------------------------------------------------
+    budgets = config.get("budgets") or {}
+    budgets_active = (budgets.get("day") or budgets.get("week")
+                      or budgets.get("rules") or budgets.get("enabled") is False)
+    if budgets_active:
+        lines.append("[budgets]")
+        lines.append(
+            f"enabled = {'true' if budgets.get('enabled', True) else 'false'}"
+        )
+        for key in ("day", "week"):
+            value = budgets.get(key)
+            if value is not None:
+                lines.append(f"{key} = {int(value)}")
+        lines.append("")
+        for rule in budgets.get("rules") or []:
+            lines.append("[[budget_rules]]")
+            lines.append(f"app = {_quote(str(rule.get('app', '')))}")
+            for key in ("day", "week"):
+                value = rule.get(key)
+                if value is not None:
+                    lines.append(f"{key} = {int(value)}")
+            lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
 

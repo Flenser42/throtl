@@ -38,6 +38,10 @@ It is a thin, well-behaved layer on top of two proven tools:
 - **Live process table** — per-app rates, editable limits and priority, sortable
   columns, colour-coded up/down values.
 - **Global switch** — turn all shaping on/off without losing your rules.
+- **Consumption budgets** — a rolling daily/weekly volume limit (global or per
+  app); the GUI warns and shows a desktop notification when it is exceeded.
+- **Statistics** — persistent per-app history over 1 h / 2 days / 30 days,
+  shown as a table and a graph.
 - **Profiles & schedules** — save the current limits as named profiles
   ("Uni", "Abend", "Nacht") and switch between them automatically by weekday
   and time.
@@ -202,6 +206,12 @@ throtl-cli profile-delete Uni
 # Statistics: last hour, last two days or last 30 days
 throtl-cli stats --window minute
 throtl-cli stats --window day
+
+# Consumption budgets (rolling last 24 h / last 7 days)
+throtl-cli budget-set --day 20gb --week 100gb
+throtl-cli budget-set --app firefox --day 5gb
+throtl-cli budgets
+throtl-cli budget-remove --app firefox
 
 # Export/import the whole configuration, and diagnose the host
 throtl-cli export --output throtl.toml

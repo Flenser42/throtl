@@ -5,6 +5,25 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-20
+
+### Added
+
+- **Consumption budgets**: rolling `day` (last 24 h) and `week` (last 7 days)
+  volume thresholds, global (`[budgets]`) or per app (`[[budget_rules]]`). The
+  GUI warns in the status bar and sends a desktop notification when a budget is
+  exceeded; the CLI gained `budgets`, `budget-set` and `budget-remove`.
+- **Statistics graph**: the statistics dialog now draws download/upload per
+  bucket for the selected range (hour / 2 days / 30 days) instead of only a
+  table.
+- `units.parse_size()` ("20GB", "5 GiB") for human-friendly budget values.
+
+### Fixed
+
+- The bandwidth graph looked broken right after startup: with less history than
+  the selected window it drew a narrow strip on the right. It now stretches the
+  available samples across the full width until the window is full, then scrolls.
+
 ## [0.3.1] - 2026-09-20
 
 ### Fixed
@@ -144,7 +163,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Flenser42/throtl/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Flenser42/throtl/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Flenser42/throtl/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Flenser42/throtl/compare/v0.2.0...v0.2.1

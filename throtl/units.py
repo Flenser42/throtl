@@ -181,3 +181,50 @@ def format_rate_for_entry(kbit_per_s, unit: str = "kbps", precision: int = 3) ->
     value = float(kbit_per_s) / factor
     text = f"{value:.{precision}f}".rstrip("0").rstrip(".")
     return text if text else "0"
+
+
+# Byte-/Volumen-Suffixe (SI, 1000er-Schritte — konsistent zu _fmt_bytes).
+_SIZE_UNITS = {
+    "b": 1,
+    "kb": 1000, "kib": 1024,
+    "mb": 1000 ** 2, "mib": 1024 ** 2,
+    "gb": 1000 ** 3, "gib": 1024 ** 3,
+    "tb": 1000 ** 4, "tib": 1024 ** 4,
+}
+
+
+def parse_size(value) -> int | None:
+    """Volumen wie '20GB', '5 GiB' oder '1500000' in Bytes parsen.
+
+    None/leer/'unlimited' -> None (kein Budget). Negative Werte sind ungueltig.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"ungueltiges Volumen: {value!r}")
+    if isinstance(value, (int, float)):
+        if value < 0:
+            raise ValueError(f"negatives Volumen ungueltig: {value!r}")
+        return int(value)
+    text = str(value).strip().lower().replace(" ", "").replace(",", ".")
+    if not text:
+        return None
+    if text in ("unlimited", "unbegrenzt", "none", "unendlich", "∞", "-"):
+        return None
+    for suffix in sorted(_SIZE_UNITS, key=len, reverse=True):
+        if text.endswith(suffix):
+            number = text[: -len(suffix)]
+            try:
+                amount = float(number)
+            except ValueError:
+                break
+            if amount < 0:
+                raise ValueError(f"negatives Volumen ungueltig: {value!r}")
+            return int(round(amount * _SIZE_UNITS[suffix]))
+    try:
+        amount = float(text)
+    except ValueError:
+        raise ValueError(f"ungueltiges Volumen: {value!r}") from None
+    if amount < 0:
+        raise ValueError(f"negatives Volumen ungueltig: {value!r}")
+    return int(round(amount))

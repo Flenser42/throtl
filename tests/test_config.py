@@ -185,3 +185,29 @@ class ConfigPathTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BudgetsTest(unittest.TestCase):
+    def test_roundtrip(self):
+        import tomllib
+
+        cfg = config.default_config()
+        cfg["budgets"] = {
+            "enabled": True,
+            "day": 20_000_000_000,
+            "week": None,
+            "rules": [{"app": "firefox", "day": 5_000_000_000, "week": None}],
+        }
+        loaded = config.normalize(tomllib.loads(config.dump_config(cfg)))
+        self.assertEqual(loaded["budgets"]["day"], 20_000_000_000)
+        self.assertEqual(loaded["budgets"]["rules"][0]["app"], "firefox")
+        self.assertEqual(loaded["budgets"]["rules"][0]["day"], 5_000_000_000)
+
+    def test_human_sizes_accepted(self):
+        import tomllib
+
+        cfg = config.normalize(tomllib.loads(
+            "[budgets]\nday = \"20GB\"\n\n[[budget_rules]]\n"
+            "app = \"x\"\nweek = \"1 GiB\"\n"))
+        self.assertEqual(cfg["budgets"]["day"], 20_000_000_000)
+        self.assertEqual(cfg["budgets"]["rules"][0]["week"], 1024 ** 3)

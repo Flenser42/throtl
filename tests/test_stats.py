@@ -135,3 +135,22 @@ class PersistenceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RecentAndSeriesTest(unittest.TestCase):
+    def test_recent_totals_respects_window(self):
+        store = StatsStore()
+        store.record("a", download_kbit=8, now=0.0, interval=3600.0)
+        store.record("b", download_kbit=8, now=50 * 3600.0, interval=3600.0)
+        recent = store.recent_totals("hour", 1, now=50 * 3600.0 + 10)
+        self.assertNotIn("a", recent)
+        self.assertIn("b", recent)
+
+    def test_series_has_all_buckets(self):
+        store = StatsStore()
+        store.record("a", download_kbit=8, now=100.0, interval=60.0)
+        series = store.series("minute", now=100.0)
+        self.assertEqual(len(series), 60)
+        self.assertTrue(any(item["download"] > 0 for item in series))
+        self.assertIn("download", series[0])
+        self.assertIn("upload", series[0])

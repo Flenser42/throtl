@@ -159,13 +159,15 @@ class BandwidthGraph(Gtk.Box):
         """Pixel-pro-Sekunde + Canvas-Breite an Fenster/Viewport anpassen."""
         viewport = self._viewport_width()
         span = self._time_span()
-        if self._window_seconds <= 0:
-            # Ganze Historie in den Viewport einpassen (kein Scrollen).
-            self._pps = (viewport - 2 * PAD) / max(span, 1e-6)
-            wanted = int(viewport)
-        else:
-            self._pps = max(0.05, viewport / float(self._window_seconds))
-            wanted = int(max(viewport, span * self._pps + 2 * PAD))
+        window = float(self._window_seconds)
+        if window <= 0 or span < window:
+            # Weniger Historie als das Fenster (z. B. direkt nach dem Start):
+            # die vorhandenen Samples auf die volle Breite ziehen, damit der
+            # Graph nicht als schmaler Strich am rechten Rand erscheint.
+            # Sobald die Historie das Fenster fuellt, wird normal gescrollt.
+            window = max(span, 1.0)
+        self._pps = max(0.05, (viewport - 2 * PAD) / window)
+        wanted = int(max(viewport, span * self._pps + 2 * PAD))
         if wanted != self._area.get_width():
             self._area.set_size_request(wanted, GRAPH_HEIGHT)
 

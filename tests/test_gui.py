@@ -370,6 +370,17 @@ class BandwidthGraphTest(unittest.TestCase):
         g._on_scrolled(self._adjustment(2000, 500, 1500))   # wieder am Ende
         self.assertTrue(g._autoscroll)
 
+    def test_short_history_auto_fits(self):
+        """Weniger Historie als das Fenster -> auf volle Breite ziehen."""
+        from throtl.gui.graph import MIN_CANVAS, PAD, BandwidthGraph
+
+        g = BandwidthGraph(window_seconds=60)
+        for i in range(4):
+            g.push(1000.0, 100.0, now=1000.0 + i)
+        # span = 3 s < window -> pps = (viewport - 2*PAD) / span
+        self.assertEqual(g._area.get_size_request()[0], int(MIN_CANVAS))
+        self.assertAlmostEqual(g._pps, (MIN_CANVAS - 2 * PAD) / 3.0, places=2)
+
     def test_hover_index_uses_timestamps(self):
         from throtl.gui.graph import BandwidthGraph
 
@@ -381,6 +392,27 @@ class BandwidthGraphTest(unittest.TestCase):
         index = g._index_at(0.0)
         self.assertIsNotNone(index)
         self.assertTrue(0 <= index < len(g._samples))
+
+
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class StatsDialogTest(unittest.TestCase):
+    def test_builds_and_draws_empty_series(self):
+        from throtl.gui.app import StatsDialog
+
+        class _Gui:
+            def call(self, method, params=None):
+                if method == "get_stats":
+                    return {"window": "minute", "apps": [], "totals": {}}
+                if method == "get_stats_history":
+                    return {"window": "minute", "series": []}
+                return {}
+
+            def call_async(self, *args, **kwargs):
+                return None
+
+        dialog = StatsDialog(None, _Gui())
+        self.assertIsNotNone(dialog.graph)
+        dialog.destroy()
 
 
 if __name__ == "__main__":

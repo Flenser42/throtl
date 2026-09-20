@@ -106,3 +106,21 @@ class UnitAwareEntryTest(unittest.TestCase):
                 text = units.format_rate_for_entry(kbit, unit)
                 self.assertAlmostEqual(
                     units.parse_rate_in_unit(text, unit), kbit, delta=max(1, kbit // 1000))
+
+
+class ParseSizeTest(unittest.TestCase):
+    def test_units(self):
+        self.assertEqual(units.parse_size("20GB"), 20_000_000_000)
+        self.assertEqual(units.parse_size("5 GiB"), 5 * 1024 ** 3)
+        self.assertEqual(units.parse_size("1.5mb"), 1_500_000)
+        self.assertEqual(units.parse_size("1500"), 1500)
+        self.assertEqual(units.parse_size(2048), 2048)
+
+    def test_none_and_errors(self):
+        self.assertIsNone(units.parse_size(None))
+        self.assertIsNone(units.parse_size(""))
+        self.assertIsNone(units.parse_size("unlimited"))
+        with self.assertRaises(ValueError):
+            units.parse_size("nope")
+        with self.assertRaises(ValueError):
+            units.parse_size("-5")

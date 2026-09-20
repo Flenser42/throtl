@@ -258,6 +258,55 @@ def cmd_profile_delete(client, args):
     return 3
 
 
+def cmd_budgets(client, args):
+    """Aktuelle Verbrauchs-Budgets und Auslastung anzeigen."""
+    result = client.call("get_budgets")
+    if not result.get("enabled", True):
+        print("Budgets sind deaktiviert.")
+        return 0
+    entries = result.get("entries") or []
+    if not entries:
+        print("(keine Budgets konfiguriert)")
+        print("  throtl-cli budget-set --day 20gb --week 100gb")
+        print("  throtl-cli budget-set --app firefox --day 5gb")
+        return 0
+    for entry in entries:
+        scope = "global" if entry.get("scope") == "global" else entry.get("app")
+        mark = "⚠" if entry.get("exceeded") else " "
+        percent = (entry.get("ratio") or 0.0) * 100
+        print(f"{mark} {scope:<22}{entry.get('window'):>5}  "
+              f"{_fmt_bytes(entry.get('used')):>12} / "
+              f"{_fmt_bytes(entry.get('limit')):>12}  ({percent:.0f}%)")
+    return 0
+
+
+def cmd_budget_set(client, args):
+    params = {}
+    if args.app:
+        params["app"] = args.app
+    if args.day is not None:
+        params["day"] = args.day
+    if args.week is not None:
+        params["week"] = args.week
+    if args.enable:
+        params["enabled"] = True
+    if args.disable:
+        params["enabled"] = False
+    if not params:
+        sys.stderr.write("Nichts zu setzen (--day/--week/--enable/--disable).\n")
+        return 1
+    client.call("set_budget", params)
+    target = args.app or "global"
+    print(f"Budget gespeichert ({target}).")
+    return 0
+
+
+def cmd_budget_remove(client, args):
+    result = client.call("remove_budget", {"app": args.app})
+    print("Budget geloescht." if result.get("removed") else "Budget nicht gefunden.")
+    return 0 if result.get("removed") else 3
+
+
 def cmd_stats(client, args):
     result = client.call("get_stats", {"window": args.window})
     apps = result.get("apps") or []
@@ -732,6 +781,21 @@ def build_parser() -> argparse.ArgumentParser:
     st.add_argument("--window", choices=["minute", "hour", "day"],
                     default="minute", help="Zeitfenster (Default: minute)")
 
+    sub.add_parser("budgets", help="Verbrauchs-Budgets und Auslastung anzeigen")
+
+    bs = sub.add_parser("budget-set",
+                        help="Budget setzen (global oder pro App)")
+    bs.add_argument("--app", default=None, help="App-Name (Default: global)")
+    bs.add_argument("--day", default=None,
+                    help="Budget der letzten 24 h, z.B. 20gb")
+    bs.add_argument("--week", default=None,
+                    help="Budget der letzten 7 Tage, z.B. 100gb")
+    bs.add_argument("--enable", action="store_true", help="Budgets aktivieren")
+    bs.add_argument("--disable", action="store_true", help="Budgets deaktivieren")
+
+    br = sub.add_parser("budget-remove", help="App-Budget loeschen")
+    br.add_argument("--app", required=True)
+
     ex = sub.add_parser("export", help="Config als TOML ausgeben")
     ex.add_argument("--output", "-o", default=None,
                     help="Zieldatei (Default: stdout)")
@@ -766,6 +830,9 @@ def main(argv=None) -> int:
             "profile-save": cmd_profile_save,
             "profile-delete": cmd_profile_delete,
             "stats": cmd_stats,
+            "budgets": cmd_budgets,
+            "budget-set": cmd_budget_set,
+            "budget-remove": cmd_budget_remove,
             "export": cmd_export,
             "import": cmd_import,
         }

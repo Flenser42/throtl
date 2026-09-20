@@ -151,6 +151,47 @@ class ConfigStore:
         self._persist()
         return unit
 
+    def set_budget(self, app: str | None = None, **fields) -> dict:
+        """Budget setzen/aktualisieren. ``app=None`` = globales Budget.
+
+        Nur uebergebene Felder (``day``/``week``/``enabled``) werden geaendert.
+        """
+        budgets = self._config.setdefault(
+            "budgets", {"enabled": True, "day": None, "week": None, "rules": []}
+        )
+        allowed = {"day", "week", "enabled"}
+        for key, value in fields.items():
+            if key not in allowed:
+                raise ValueError(f"unbekanntes Budget-Feld {key!r}")
+        if app:
+            rules = budgets.setdefault("rules", [])
+            target = None
+            for rule in rules:
+                if rule.get("app") == app:
+                    target = rule
+                    break
+            if target is None:
+                target = {"app": app, "day": None, "week": None}
+                rules.append(target)
+            for key, value in fields.items():
+                if key != "enabled":
+                    target[key] = value
+        else:
+            for key, value in fields.items():
+                budgets[key] = value
+        self._persist()
+        return budgets
+
+    def remove_budget(self, app: str) -> bool:
+        budgets = self._config.get("budgets") or {}
+        rules = budgets.get("rules") or []
+        before = len(rules)
+        budgets["rules"] = [r for r in rules if r.get("app") != app]
+        removed = len(budgets["rules"]) != before
+        if removed:
+            self._persist()
+        return removed
+
     def replace(self, config: dict) -> dict:
         """Komplette Config ersetzen (Import/Profile) und persistieren."""
         self._config = config
@@ -657,6 +698,10 @@ class Daemon:
             "list_processes": self._h_list_processes,
             "get_stats": self._h_get_stats,
             "reset_stats": self._h_reset_stats,
+            "get_stats_history": self._h_get_stats_history,
+            "get_budgets": self._h_get_budgets,
+            "set_budget": self._h_set_budget,
+            "remove_budget": self._h_remove_budget,
             "list_profiles": self._h_list_profiles,
             "set_profile": self._h_set_profile,
             "delete_profile": self._h_delete_profile,
@@ -836,6 +881,42 @@ class Daemon:
     def _h_reset_stats(self, params):
         self.stats.reset()
         return {"ok": True}
+
+    def _h_get_stats_history(self, params):
+        window = str(params.get("window") or "minute")
+        if window not in VALID_WINDOWS:
+            raise ValueError(
+                f"window muss eines von {', '.join(VALID_WINDOWS)} sein"
+            )
+        return {"window": window, "series": self.stats.series(window)}
+
+    def _h_get_budgets(self, params):
+        from .budgets import budget_status
+
+        cfg = self.store.get()
+        return {
+            "enabled": (cfg.get("budgets") or {}).get("enabled", True),
+            "entries": budget_status(cfg, self.stats),
+        }
+
+    def _h_set_budget(self, params):
+        from .units import parse_size
+
+        app = str(params.get("app") or "").strip() or None
+        fields = {}
+        for key in ("day", "week"):
+            if key in params:
+                fields[key] = parse_size(params.get(key))
+        if "enabled" in params:
+            fields["enabled"] = bool(params.get("enabled"))
+        budgets = self.store.set_budget(app=app, **fields)
+        return {"ok": True, "budgets": budgets}
+
+    def _h_remove_budget(self, params):
+        app = str(params.get("app") or "").strip()
+        if not app:
+            raise ValueError("app fehlt")
+        return {"removed": self.store.remove_budget(app)}
 
     # --- Profile / Zeitplaene ---------------------------------------------
 

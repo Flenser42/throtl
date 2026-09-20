@@ -355,5 +355,37 @@ class DaemonMonitorRecoveryTest(unittest.TestCase):
         self.assertTrue(any(m.stopped for m in created))  # alten aufgeraeumt
 
 
+class BudgetsRpcTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.harness = DaemonHarness(self._tmp.name)
+        self.harness.start()
+        self.client = _client(self.harness.socket_path)
+
+    def tearDown(self):
+        self.client.close()
+        self.harness.stop()
+
+    def test_set_get_remove_budget(self):
+        self.client.call("set_budget", {"day": "1gb", "week": "10gb"})
+        budgets = self.client.call("get_config")["budgets"]
+        self.assertEqual(budgets["day"], 1_000_000_000)
+        self.assertEqual(budgets["week"], 10_000_000_000)
+        self.client.call("set_budget", {"app": "firefox", "day": "5mb"})
+        budgets = self.client.call("get_config")["budgets"]
+        self.assertEqual(budgets["rules"][0]["app"], "firefox")
+        self.assertEqual(budgets["rules"][0]["day"], 5_000_000)
+        status = self.client.call("get_budgets")
+        self.assertIn("entries", status)
+        self.assertTrue(any(e["scope"] == "global" for e in status["entries"]))
+        removed = self.client.call("remove_budget", {"app": "firefox"})
+        self.assertTrue(removed["removed"])
+
+    def test_stats_history_series(self):
+        result = self.client.call("get_stats_history", {"window": "minute"})
+        self.assertEqual(result["window"], "minute")
+        self.assertEqual(len(result["series"]), 60)
+
+
 if __name__ == "__main__":
     unittest.main()

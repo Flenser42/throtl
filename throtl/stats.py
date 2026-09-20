@@ -263,6 +263,43 @@ class StatsStore:
             upload += item["upload"]
         return {"download": download, "upload": upload}
 
+    def recent_totals(self, window: str, buckets: int,
+                      now: float | None = None) -> dict:
+        """Bytes pro App ueber die letzten ``buckets`` Buckets (rollierend).
+
+        Fuer Budgets: "letzte 24 h" = 24 Stundenbuckets, "letzte 7 Tage" = 7
+        Tagesbuckets — passend zu den vorhandenen Aufloesungen.
+        """
+        ring = self._ring(window)
+        timestamp = int(now if now is not None else time.time())
+        now_id = timestamp // ring["size"]
+        lower = now_id - max(1, int(buckets)) + 1
+        totals: dict = {}
+        for slot_id, bucket in zip(ring["ids"], ring["buckets"]):
+            if slot_id is None or slot_id < lower:
+                continue
+            for app, values in bucket.items():
+                entry = totals.setdefault(app, {"download": 0.0, "upload": 0.0})
+                entry["download"] += values.get("download", 0.0)
+                entry["upload"] += values.get("upload", 0.0)
+        return totals
+
+    def series(self, window: str, now: float | None = None) -> list:
+        """Bucket-Zeitreihe (aelteste zuerst) fuer den Statistik-Graph."""
+        ring = self._ring(window)
+        timestamp = int(now if now is not None else time.time())
+        count = ring["count"]
+        current_index = (timestamp // ring["size"]) % count
+        result = []
+        for offset in range(count - 1, -1, -1):
+            index = (current_index - offset) % count
+            slot_id = ring["ids"][index]
+            bucket = ring["buckets"][index] if slot_id is not None else {}
+            download = sum(v.get("download", 0.0) for v in bucket.values())
+            upload = sum(v.get("upload", 0.0) for v in bucket.values())
+            result.append({"id": slot_id, "download": download, "upload": upload})
+        return result
+
     def reset(self, persist: bool = True) -> None:
         """Alle Buckets leeren. Standardmaessig wird der leere Stand geschrieben."""
         self._reset_rings()

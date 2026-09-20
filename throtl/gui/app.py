@@ -54,6 +54,9 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self.set_default_size(1060, 780)
         self.unit = "mBs"
         self._syncing = False
+        # Budget-Ueberwachung (gedrosselt gepollt) + Dedupe fuer Notifications.
+        self._budget_counter = 0
+        self._budget_notified = set()
         self._profile_names = []
 
         self._build_actions()
@@ -431,6 +434,44 @@ class ThrotlWindow(Adw.ApplicationWindow):
                 finally:
                     self._syncing = False
 
+        self._budget_counter += 1
+        if self._budget_counter % 15 == 0:
+            self.gui.call_async("get_budgets", {}, on_done=self._on_budgets)
+
+    def _on_budgets(self, result: dict) -> None:
+        """Ueberschrittene Budgets melden (Statusleiste + Desktop-Notification)."""
+        exceeded = [e for e in (result.get("entries") or []) if e.get("exceeded")]
+        current = {
+            f"{e.get('scope')}:{e.get('app')}:{e.get('window')}" for e in exceeded
+        }
+        # Verlaesst ein Budget das Ueberschreiten, darf spaeter wieder gemeldet werden.
+        self._budget_notified &= current
+        if not exceeded:
+            return
+        parts = []
+        for entry in exceeded:
+            scope = "global" if entry.get("scope") == "global" else entry.get("app")
+            parts.append(
+                f"{scope} {entry.get('window')} "
+                f"{_format_bytes(entry.get('used'))}/{_format_bytes(entry.get('limit'))}"
+            )
+        self.show_error("Budget exceeded — " + "; ".join(parts))
+        for entry in exceeded:
+            scope = "global" if entry.get("scope") == "global" else entry.get("app")
+            key = f"{entry.get('scope')}:{entry.get('app')}:{entry.get('window')}"
+            if key in self._budget_notified:
+                continue
+            self._budget_notified.add(key)
+            note = Gio.Notification.new(f"Throtl: {scope} budget exceeded")
+            note.set_body(
+                f"{entry.get('window')}: {_format_bytes(entry.get('used'))} of "
+                f"{_format_bytes(entry.get('limit'))}"
+            )
+            try:
+                self.app.send_notification(f"throtl-budget-{key}", note)
+            except Exception:
+                pass
+
     def on_state(self, state: dict) -> None:
         self._apply_state(state)
 
@@ -613,6 +654,14 @@ class StatsDialog(Adw.Window):
         self.totals_label.add_css_class("dim-label")
         body.append(self.totals_label)
 
+        # Verlaufsgraph: Download (gruen) + Upload (orange) je Bucket.
+        self._series = []
+        self.graph = Gtk.DrawingArea()
+        self.graph.set_content_height(150)
+        self.graph.set_draw_func(self._draw_graph)
+        self.graph.add_css_class("throtl-graph")
+        body.append(self.graph)
+
         self.listbox = Gtk.ListBox()
         self.listbox.add_css_class("boxed-list")
         self.listbox.set_selection_mode(Gtk.SelectionMode.NONE)
@@ -639,9 +688,13 @@ class StatsDialog(Adw.Window):
     def _refresh(self) -> None:
         try:
             data = self.gui.call("get_stats", {"window": self._window_key()})
+            history = self.gui.call("get_stats_history",
+                                    {"window": self._window_key()})
         except Exception as error:
             self.totals_label.set_text(f"⚠  {error}")
             return
+        self._series = history.get("series") or []
+        self.graph.queue_draw()
         apps = data.get("apps") or []
         totals = data.get("totals") or {}
         self.totals_label.set_text(
@@ -663,6 +716,48 @@ class StatsDialog(Adw.Window):
             total.add_css_class("dim-label")
             row.add_suffix(total)
             self.listbox.append(row)
+
+    def _draw_graph(self, _area, cr, width, height, _data):
+        """Balken je Bucket: unten Download (gruen), darueber Upload (orange)."""
+        cr.set_source_rgba(0.06, 0.08, 0.10, 1.0)
+        cr.rectangle(0, 0, width, height)
+        cr.fill()
+        series = self._series
+        if not series:
+            cr.set_source_rgba(0.5, 0.55, 0.6, 1.0)
+            cr.set_font_size(11)
+            cr.move_to(8, height / 2)
+            cr.show_text("No data yet")
+            return
+        peak = max((s.get("download", 0.0) + s.get("upload", 0.0))
+                   for s in series) or 1.0
+        count = len(series)
+        slot = width / count
+        bar = max(1.0, slot * 0.72)
+        base = height - 18.0
+        for index, sample in enumerate(series):
+            total = sample.get("download", 0.0) + sample.get("upload", 0.0)
+            if total <= 0:
+                continue
+            bar_h = (total / peak) * (base - 8.0)
+            down_h = (sample.get("download", 0.0) / total) * bar_h
+            x = index * slot + (slot - bar) / 2.0
+            cr.set_source_rgba(0.31, 0.82, 0.50, 1.0)
+            cr.rectangle(x, base - down_h, bar, down_h)
+            cr.fill()
+            cr.set_source_rgba(0.96, 0.64, 0.35, 1.0)
+            cr.rectangle(x, base - bar_h, bar, bar_h - down_h)
+            cr.fill()
+        # Grundlinie + Maximalwert
+        cr.set_source_rgba(0.35, 0.40, 0.45, 0.8)
+        cr.set_line_width(1.0)
+        cr.move_to(0, base)
+        cr.line_to(width, base)
+        cr.stroke()
+        cr.set_source_rgba(0.55, 0.61, 0.67, 0.95)
+        cr.set_font_size(10)
+        cr.move_to(6, 12)
+        cr.show_text(_format_bytes(peak))
 
     def _on_reset(self, *_args):
         self.gui.call_async(
