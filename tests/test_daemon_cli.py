@@ -248,6 +248,26 @@ class DaemonCliEndToEnd(unittest.TestCase):
         self.assertEqual(firefox["name"], "/usr/bin/firefox")
         self.assertGreater(firefox["download"], 0)
 
+    def test_stats_rpc_records_and_resets(self):
+        """Der Monitor-Tick fuettert den StatsStore; get_stats liefert Bytes."""
+        time.sleep(0.5)  # mindestens einen Tick (interval=0.3) abwarten
+        stats = self.client.call("get_stats", {"window": "minute"})
+        self.assertEqual(stats["window"], "minute")
+        apps = {item["app"]: item for item in stats["apps"]}
+        self.assertIn("firefox", apps)
+        self.assertGreater(apps["firefox"]["download"], 0)
+        self.assertGreater(stats["totals"]["download"], 0)
+
+        reset = self.client.call("reset_stats")
+        self.assertTrue(reset["ok"])
+        # Kein Crash; ein Tick kann bereits wieder Daten gebucht haben.
+        self.assertIsInstance(
+            self.client.call("get_stats", {"window": "minute"})["apps"], list)
+
+    def test_get_stats_invalid_window(self):
+        with self.assertRaises(protocol.RpcError):
+            self.client.call("get_stats", {"window": "week"})
+
 
 class DaemonAsyncApplyTest(unittest.TestCase):
     """Ein langsamer Engine-Apply darf die RPC-Antwort nicht blockieren."""
