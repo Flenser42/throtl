@@ -30,16 +30,25 @@ import socket
 import threading
 import time
 
-from . import RUN_DIR, SOCKET_PATH, __version__
+from . import RUN_DIR, SOCKET_GROUP, SOCKET_MODE, SOCKET_PATH, __version__
 from .config import (
+    active_scheduled_profile,
+    apply_profile,
+    capture_profile,
     config_dir_default,
     config_path_for,
+    delete_profile,
     detect_default_interface,
+    last_config_warning,
     load_config,
     make_rule,
+    normalize,
+    normalize_schedule,
     priority_to_int,
     priority_to_name,
+    profile_names,
     save_config,
+    validate_profile_name,
 )
 from .engine import SimEngine, TrafficTollEngine
 from .monitor import (
@@ -55,6 +64,7 @@ from .protocol import (
     make_error,
     send_message,
 )
+from .stats import VALID_WINDOWS, StatsStore
 from .units import parse_rate  # noqa: F401  (re-export, CLI/Protokoll-Kompatibilitaet)
 
 # Sentinel: "Argument nicht uebergeben" -> Default-Monitor verwenden.
@@ -70,6 +80,9 @@ class ConfigStore:
         self.config_dir = config_dir
         self.path = config_path_for(config_dir)
         self._config = load_config(self.path)
+        # Warnung aus dem Laden festhalten (kaputte TOML -> Defaults). Der
+        # Daemon startet dann trotzdem, aber status() macht das Problem sichtbar.
+        self.load_warning = last_config_warning()
 
     def get(self):
         return self._config
@@ -136,6 +149,12 @@ class ConfigStore:
         self._config["unit"] = unit
         self._persist()
         return unit
+
+    def replace(self, config: dict) -> dict:
+        """Komplette Config ersetzen (Import/Profile) und persistieren."""
+        self._config = config
+        self._persist()
+        return self._config
 
 
 def parse_limit_param(value):
@@ -209,6 +228,9 @@ class Daemon:
         self.store = ConfigStore(self.config_dir)
         self._state_lock = threading.RLock()
         self.interval = interval
+        # Persistente Bandbreiten-Statistik (Punkt 5): Ringpuffer neben der
+        # config.toml, wird im Monitor-Tick gefuettert.
+        self.stats = StatsStore(self.config_dir, interval=interval)
 
         cfg = self.store.get()
         self.interface = _resolve_interface(cfg.get("interface"))
@@ -262,20 +284,54 @@ class Daemon:
         self._server.bind(self.socket_path)
         self._server.listen(8)
         self._server.settimeout(0.25)
-        # Als root erzeugt der Socket-Pfad rw-------. Ohne Schreibrecht auf der
-        # Socket-Datei schlaegt der Unix-Connect des User-Prozesses (GUI/CLI)
-        # mit "Permission denied" fehl. Wir setzen 0666; Zugriff bleibt trotzdem
-        # rein lokal (kein Netzwerk-Port).
-        try:
-            os.chmod(self.socket_path, 0o666)
-        except OSError as error:
-            print(f"Warnung: Socket-Rechte nicht setzbar: {error}")
+        self._secure_socket()
         # Monitoring-Ticker starten
         self._monitor_thread = threading.Thread(
             target=self._monitor_loop, daemon=True, name="throtl-monitor-ticker"
         )
         self._monitor_thread.start()
         print(f"Throtl-Daemon {__version__} läuft auf {self.socket_path}")
+
+    def _secure_socket(self) -> None:
+        """Zugriff auf den Daemon-Socket auf die Gruppe ``throtl`` begrenzen.
+
+        Als root erzeugt der Socket-Pfad rw-------; ohne Schreibrecht schlaegt
+        der Connect des User-Prozesses (GUI/CLI) mit "Permission denied" fehl.
+        Der frueher gesetzte Modus 0666 loeste das, gab aber JEDEM lokalen
+        Konto vollen Zugriff: ein unprivilegierter Nutzer konnte damit globale
+        Limits setzen, die Netzgeschwindigkeit drosseln oder Regeln loeschen.
+
+        Jetzt: ``chown root:throtl`` + Modus 0660. Nur Mitglieder der Gruppe
+        (per ``usermod -aG throtl $USER``) erreichen den Daemon.
+
+        Fehlt die Gruppe (z. B. manueller Start ohne install.sh), bleiben wir
+        funktionsfaehig und weichen auf 0666 aus — aber mit deutlicher Warnung,
+        damit die Abschwaechung nicht unbemerkt bleibt.
+        """
+        import grp
+
+        gid = None
+        if os.geteuid() == 0:
+            try:
+                gid = grp.getgrnam(SOCKET_GROUP).gr_gid
+            except KeyError:
+                print(
+                    f"Warnung: Gruppe '{SOCKET_GROUP}' existiert nicht — der "
+                    "Daemon-Socket ist fuer alle lokalen Nutzer zugaenglich. "
+                    f"Abhilfe: 'groupadd {SOCKET_GROUP}' und "
+                    f"'usermod -aG {SOCKET_GROUP} $USER' (install.sh macht das).",
+                    flush=True,
+                )
+        try:
+            if gid is not None:
+                os.chown(self.socket_path, 0, gid)
+                os.chmod(self.socket_path, SOCKET_MODE)
+            else:
+                # Kein root oder keine Gruppe: Zugriff ermoeglichen, aber
+                # sichtbar machen, dass das nicht der sichere Modus ist.
+                os.chmod(self.socket_path, 0o666)
+        except OSError as error:
+            print(f"Warnung: Socket-Rechte nicht setzbar: {error}", flush=True)
 
     def _monitor_loop(self) -> None:
         while self._running:
@@ -290,7 +346,35 @@ class Daemon:
             if self._monitor_retry_tick >= 10:
                 self._monitor_retry_tick = 0
                 self._start_monitor()
-        self._collect_snapshot()
+        # Automatische Profilumschaltung (nur wenn ein Zeitplan existiert).
+        self._apply_schedule()
+        # Echter Monitoring-Tick: Statistik fortschreiben. RPC-Snapshots
+        # (list_processes) duerfen NICHT zusaetzlich zaehlen, sonst wuerde der
+        # GUI-Poll die Raten doppelt verbuchen.
+        self._collect_snapshot(record_stats=True)
+
+    def _apply_schedule(self) -> None:
+        """Passendes Zeitplan-Profil aktivieren (im Monitor-Tick).
+
+        Nur wenn ueberhaupt Regeln vorhanden sind UND eine Regel JETZT passt.
+        Ausserhalb aller Fenster wird bewusst NICHT zurueckgeschaltet, sondern
+        die letzte Wahl beibehalten (konservativ: ein manuell gewaehltes Profil
+        soll nicht mitten am Tag ueberschrieben werden).
+        """
+        with self._state_lock:
+            cfg = self.store.get()
+            if not cfg.get("schedule"):
+                return
+            target = active_scheduled_profile(cfg)
+            if not target or target == cfg.get("active_profile"):
+                return
+            try:
+                apply_profile(cfg, target)
+            except Exception as error:
+                print(f"Warnung: Zeitplan-Profil {target!r}: {error}", flush=True)
+                return
+            self.store._persist()
+        self._schedule_engine_apply()
 
     def _iface_throughput(self):
         """Echte Interface-Rate (kbit/s) aus /proc/net/dev-Deltas.
@@ -329,8 +413,12 @@ class Daemon:
         up = max(0, tx - previous[2]) * 8.0 / 1000.0 / elapsed
         return round(down, 1), round(up, 1)
 
-    def _collect_snapshot(self) -> dict:
-        """Prozess-Stats + echte Interface-Rate + angewendete Regeln."""
+    def _collect_snapshot(self, record_stats: bool = False) -> dict:
+        """Prozess-Stats + echte Interface-Rate + angewendete Regeln.
+
+        ``record_stats=True`` (nur aus :meth:`_tick_monitor`) schreibt die
+        pro-App-Summen zusaetzlich in den persistenten :class:`StatsStore`.
+        """
         raw = {}
         if self.monitor is not None:
             try:
@@ -395,6 +483,9 @@ class Daemon:
                 entry["rule_name"] = matches.get("name")
             app_list.append(entry)
 
+        if record_stats:
+            self._record_stats(app_list)
+
         global_down, global_up = self._iface_throughput()
         return {
             "interface": self.interface,
@@ -408,6 +499,15 @@ class Daemon:
             "attributed": {"download": round(attributed_down, 1),
                            "upload": round(attributed_up, 1)},
         }
+
+    def _record_stats(self, app_list: list) -> None:
+        """Pro-App-Raten (kbit/s) in den Statistik-Speicher verbuchen."""
+        for entry in app_list:
+            self.stats.record(
+                entry.get("name", "?"),
+                entry.get("download", 0.0),
+                entry.get("upload", 0.0),
+            )
 
     # --- Engine ---
 
@@ -535,6 +635,14 @@ class Daemon:
             "toggle_enabled": self._h_toggle_enabled,
             "set_unit": self._h_set_unit,
             "list_processes": self._h_list_processes,
+            "get_stats": self._h_get_stats,
+            "reset_stats": self._h_reset_stats,
+            "list_profiles": self._h_list_profiles,
+            "set_profile": self._h_set_profile,
+            "delete_profile": self._h_delete_profile,
+            "activate_profile": self._h_activate_profile,
+            "set_schedule": self._h_set_schedule,
+            "import_config": self._h_import_config,
         }
 
     # --- Handler ---
@@ -559,6 +667,37 @@ class Daemon:
             "engine": engine_status,
             "simulated": getattr(self.engine, "simulated", False),
             "preflight": preflight(tt_cmd, self.interface),
+            # Kaputte/ungueltige config.toml: Daemon laeuft mit Defaults weiter,
+            # der Grund ist aber abfragbar statt nur im Journal zu stehen.
+            "config_warning": self.store.load_warning,
+            "socket": self._socket_permissions(),
+        }
+
+    def _socket_permissions(self) -> dict:
+        """Effektive Rechte des Daemon-Sockets (fuer status()/doctor)."""
+        try:
+            info = os.stat(self.socket_path)
+        except OSError:
+            return {"path": self.socket_path, "exists": False}
+        uid = info.st_uid
+        gid = info.st_gid
+        group = None
+        try:
+            import grp
+
+            group = grp.getgrgid(gid).gr_name
+        except (KeyError, ImportError):
+            pass
+        mode = info.st_mode & 0o777
+        return {
+            "path": self.socket_path,
+            "exists": True,
+            "mode": oct(mode),
+            "uid": uid,
+            "gid": gid,
+            "group": group,
+            # 0666 = jeder lokale Nutzer darf Limits setzen -> unsicher.
+            "restricted": mode != 0o666,
         }
 
     def _h_get_config(self, params):
@@ -658,6 +797,85 @@ class Daemon:
     def _h_list_processes(self, params):
         return self._collect_snapshot()
 
+    def _h_get_stats(self, params):
+        window = str(params.get("window") or "minute")
+        if window not in VALID_WINDOWS:
+            raise ValueError(
+                f"window muss eines von {', '.join(VALID_WINDOWS)} sein"
+            )
+        return {
+            "window": window,
+            "apps": self.stats.snapshot(window),
+            "totals": self.stats.totals(window),
+        }
+
+    def _h_reset_stats(self, params):
+        self.stats.reset()
+        return {"ok": True}
+
+    # --- Profile / Zeitplaene ---------------------------------------------
+
+    def _h_list_profiles(self, params):
+        cfg = self.store.get()
+        return {
+            "profiles": profile_names(cfg),
+            "active": cfg.get("active_profile"),
+        }
+
+    def _h_set_profile(self, params):
+        """Aktuellen Zustand als benanntes Profil sichern (optional aktivieren)."""
+        name = validate_profile_name(params.get("name"))
+        activate = bool(params.get("activate", True))
+        with self._state_lock:
+            cfg = self.store.get()
+            previous = cfg.get("active_profile")
+            capture_profile(cfg, name)
+            if activate:
+                apply_profile(cfg, name)
+            elif previous is not None:
+                cfg["active_profile"] = previous
+            self.store._persist()
+        if activate:
+            self._schedule_engine_apply()
+        self._emit_rules_changed()
+        return {"name": name, "active": self.store.get().get("active_profile")}
+
+    def _h_delete_profile(self, params):
+        name = validate_profile_name(params.get("name"))
+        with self._state_lock:
+            deleted = delete_profile(self.store.get(), name)
+            if deleted:
+                self.store._persist()
+        return {"deleted": deleted, "name": name}
+
+    def _h_activate_profile(self, params):
+        name = validate_profile_name(params.get("name"))
+        with self._state_lock:
+            apply_profile(self.store.get(), name)
+            self.store._persist()
+        self._schedule_engine_apply()
+        self._emit_rules_changed()
+        return {"active": name}
+
+    def _h_set_schedule(self, params):
+        rules = normalize_schedule(params.get("rules") or [])
+        with self._state_lock:
+            self.store.get()["schedule"] = rules
+            self.store._persist()
+        return {"schedule": rules}
+
+    def _h_import_config(self, params):
+        """Rohe (TOML-)Config validieren und komplett uebernehmen."""
+        data = params.get("config")
+        if not isinstance(data, dict):
+            raise ValueError("config fehlt oder ist keine Tabelle")
+        config = normalize(data)
+        with self._state_lock:
+            self.store.replace(config)
+        self._schedule_engine_apply()
+        self._emit_rules_changed()
+        return config
+
     def _emit_rules_changed(self) -> None:
         # Nach einer Aenderung sofort einen frischen Snapshot ziehen, damit die
         # naechste Abfrage aktuelle Raten liefert und der /proc-Sample-Delta
@@ -673,6 +891,12 @@ class Daemon:
             self._apply_thread.join(timeout=5.0)
             self._apply_thread = None
         self._stop_monitor()
+        # Statistik beim Herunterfahren sichern (sonst gingen die letzten
+        # <save_every Ticks verloren).
+        try:
+            self.stats.flush()
+        except Exception:
+            pass
         if self.engine is not None:
             try:
                 self.engine.stop()

@@ -156,6 +156,26 @@ class GuiClient:
                 pass
         return result
 
+    # --- Convenience-Wrapper (Profile + Statistik) -----------------------
+
+    def list_profiles(self):
+        return self.call("list_profiles")
+
+    def activate_profile(self, name: str):
+        return self.call("activate_profile", {"name": name})
+
+    def save_profile(self, name: str, activate: bool = True):
+        return self.call("set_profile", {"name": name, "activate": activate})
+
+    def delete_profile(self, name: str):
+        return self.call("delete_profile", {"name": name})
+
+    def set_schedule(self, rules):
+        return self.call("set_schedule", {"rules": rules})
+
+    def get_stats(self, window: str = "minute"):
+        return self.call("get_stats", {"window": window})
+
     # --- Async mutations -------------------------------------------------
 
     def _ensure_worker(self) -> None:

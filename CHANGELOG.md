@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Profiles**: save the current global limits and process rules under a name
+  (`[profiles.*]`) and switch between them. The top-level `global`/`processes`
+  remain the active view, so v0.1.0 configs stay loadable.
+- **Schedules**: activate a profile by weekday and time (`[[schedule]]`),
+  including overnight windows. `parse_days()` understands `mo`…`so`, ranges
+  like `"mo-fr"` and English weekday names.
+- **Statistics**: the daemon persists per-app download/upload volume to
+  `stats.json` in three rolling windows (1 h of minute buckets, 2 days of hour
+  buckets, 30 days of day buckets). New RPC methods `get_stats` and
+  `reset_stats`.
+- GUI: profile dropdown and refresh button in the header bar, a menu with
+  "Save settings as profile…" / "Delete profile", and a **Statistics** dialog
+  with a window switcher and a per-app list.
+- CLI: `profiles`, `profile-use`, `profile-save`, `profile-delete`, `stats`,
+  `export`, `import` and `doctor`.
+- Daemon RPC: `list_profiles`, `set_profile`, `delete_profile`,
+  `activate_profile`, `set_schedule` and `import_config`.
+- Tests: `tests/test_stats.py` and `tests/test_profiles.py`.
+
+### Changed
+
+- Daemon persists `config.toml`, the generated TrafficToll YAML and
+  `stats.json` atomically (temp file + `fsync` + `os.replace`).
+- The monitor tick applies a scheduled profile automatically when it differs
+  from the active one (only when a schedule exists).
+
+### Fixed
+
+- A syntactically broken `config.toml` no longer prevents the daemon from
+  starting: it falls back to defaults and exposes the reason via `status()`
+  (`config_warning`).
+
+### Security
+
+- The daemon socket is now owned by `root:throtl` with mode `0660` instead of
+  the world-accessible `0666`. `install.sh` creates the `throtl` group and adds
+  the invoking user.
+- The generated TrafficToll YAML is written with mode `0600`.
+
 ## [0.1.0] - 2026-09-17
 
 ### Added

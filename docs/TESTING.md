@@ -21,6 +21,8 @@ Current suite (`tests/`):
 | `test_units` | parse/format kbps/kBs | pure logic |
 | `test_protocol` | JSON-over-Unix-socket framing, buffering, client timeout/events/errors | in-process socketpair |
 | `test_config` | TOML persistence round-trip, priorities, rule escaping, matching | temp file |
+| `test_stats` | rolling minute/hour/day byte buckets, unit conversion, persistence, corrupt-file fallback, reset | temp file |
+| `test_profiles` | profile CRUD, TOML round-trip, `parse_days`, schedule matching, v0.1.0 compatibility | temp file / sim daemon |
 | `test_monitor` | nethogs `-t` parser (Refreshing ticks, recv=download/sent=upload, different processes), NethogsMonitor | injected fake stream |
 | `test_engine` | TrafficToll YAML rendering, `tt` subprocess (start/restart/disabled), SimEngine | fake `tt` shell script |
 | `test_daemon_cli` | end-to-end daemon (sim) + CLI: status, set_global + persistence, set_process round-trip/update, toggle, set_unit, list | real Unix socket, SimEngine + fake monitor |
@@ -117,3 +119,13 @@ throtl-cli toggle --enabled true    # back
   For VPN tunnels (e.g. `tailscale0`/`tun0`) pin it with `--interface`.
 - **GUI instantiation**: headless environments cannot run the widget tests (a
   display is required). On Omarchy/Hyprland they run.
+- **Statistics are sampled, not captured**: volume is accumulated per monitoring
+  tick from the rates nethogs reports (`bytes += rate_kbit/s * 1000 / 8 *
+  interval_s`). There is no per-connection accounting, so missed/duplicated
+  ticks or nethogs' own sampling skew the numbers. Values are useful as an
+  order of magnitude, not as a billing-grade measurement.
+- **Schedule granularity = one tick**: a profile switch happens on the next
+  monitoring tick (about 1 s), not exactly at the configured second. Outside
+  all schedule windows no profile is forced, the last active profile stays.
+- **Applying a profile replaces the process rules** with the profile's list;
+  global keys not present in the profile keep their current values.

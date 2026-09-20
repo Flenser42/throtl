@@ -32,6 +32,14 @@ Throtl's daemon runs as **root** and exposes a **local** Unix socket
 - unsafe rendering of the TrafficToll YAML or of the `tt` command arguments,
 - path/symlink attacks around `/run/throtl` or `/etc/throtl`.
 
-The socket is intentionally world-connectable (`0666`) so that any local user
-can manage bandwidth limits; that alone is **not** considered a vulnerability.
-No network port is ever opened.
+The socket is owned by `root:throtl` and has mode `0660`, so only members of
+the `throtl` group (created by `setup/install.sh`, which also adds the invoking
+user) can manage bandwidth limits. The daemon falls back to `0666` with a clear
+warning only if the `throtl` group does not exist and the daemon was started
+manually without `install.sh`. No network port is ever opened.
+
+If the socket is world-writable (`0666`), any local account can set global
+limits (including `0`, which blocks all traffic) and can delete rules — treat
+that as a misconfiguration rather than the intended mode. `throtl-cli doctor`
+reports the effective socket permissions and `throtl-cli status` exposes them
+as `socket.restricted`.

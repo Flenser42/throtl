@@ -8,6 +8,9 @@ Wants=network-online.target
 Type=simple
 # Root ist erforderlich: tc, cgroups, modprobe und nethogs brauchen privilegierte Rechte.
 User=root
+# Bewusst KEIN Group=: Der Dienst laeuft als root, der Socket wird zur Laufzeit
+# auf root:throtl mit Modus 0660 gesetzt (Daemon._secure_socket). install.sh
+# legt die Gruppe 'throtl' an und fuegt den aufrufenden Nutzer hinzu.
 # WorkingDirectory=/opt/throtl, damit `python -m throtl.*` das Paket
 # findet (systemd startet sonst in "/").
 WorkingDirectory=/opt/throtl

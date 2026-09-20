@@ -36,6 +36,11 @@ It is a thin, well-behaved layer on top of two proven tools:
 - **Live process table** — per-app rates, editable limits and priority, sortable
   columns, colour-coded up/down values.
 - **Global switch** — turn all shaping on/off without losing your rules.
+- **Profiles & schedules** — save the current limits as named profiles
+  ("Uni", "Abend", "Nacht") and switch between them automatically by weekday
+  and time.
+- **Statistics** — per-app download/upload volume for the last hour, two days
+  and 30 days, persisted by the daemon across restarts.
 - **Responsive** — TrafficToll restarts are coalesced and happen off the UI
   thread, so the window never freezes while a change is applied.
 - **Headless CLI** — everything the GUI can do, plus a live monitor and a
@@ -181,7 +186,73 @@ throtl-cli remove-process --key 'exe:/usr/lib/firefox/firefox'
 
 throtl-cli toggle --enabled false      # pause all shaping
 throtl-cli monitor                     # live rates, once per second
+
+# Profiles
+throtl-cli profiles                    # list profiles (+ active)
+throtl-cli profile-save Uni            # save current settings as "Uni"
+throtl-cli profile-use Uni             # activate "Uni"
+throtl-cli profile-delete Uni
+
+# Statistics: last hour, last two days or last 30 days
+throtl-cli stats --window minute
+throtl-cli stats --window day
+
+# Export/import the whole configuration, and diagnose the host
+throtl-cli export --output throtl.toml
+throtl-cli import throtl.toml
+throtl-cli doctor
 ```
+
+### Profiles & schedules
+
+A **profile** is a named snapshot of the global limits and all process rules.
+The top-level `global`/`processes` are always the *active view* (v0.1.0
+compatibility), so the GUI and CLI keep working unchanged. Profiles live
+additively next to them in `config.toml`:
+
+```toml
+active_profile = "Standard"
+
+[profiles.Uni]
+global_download_limit = 2048
+global_upload_limit = 512
+global_priority = "hoch"
+
+[[profiles.Uni.processes]]
+name = "Spotify"
+match_type = "exe"
+match_value = "spotify"
+download_limit = 512
+priority = "niedrig"
+
+[[schedule]]
+profile = "Uni"
+days = ["mo", "di", "mi", "do", "fr"]
+start = "08:00"
+end = "14:00"
+```
+
+The daemon checks the schedule once per monitoring tick and activates the
+first matching profile automatically (only when `schedule` is non-empty).
+`days` accepts `mo`…`so` (Mo = 0), ranges like `"mo-fr"`, and English names;
+overnight rules (`end < start`) run until the next morning.
+
+### Statistics
+
+The daemon accumulates, per monitoring tick, the download/upload volume of
+every application into three rolling windows and stores them as
+`<config_dir>/stats.json`:
+
+| Window | Bucket | Kept |
+|--------|--------|------|
+| `minute` | 1 minute | 1 hour |
+| `hour` | 1 hour | 2 days |
+| `day` | 1 day | 30 days |
+
+The GUI exposes this under **Statistics…** (window switcher + per-app list);
+the CLI prints it with `throtl-cli stats`. Stored values are **bytes**, derived
+from the sampled rates — see [`docs/TESTING.md`](docs/TESTING.md) for the
+accuracy limits.
 
 ### Simulation mode
 
@@ -224,8 +295,9 @@ limitations.
 ## Security
 
 - **Local Unix socket only** — no TCP port. The socket lives in
-  `/run/throtl/` and is world-connectable (`0666`) so the user-facing
-  GUI/CLI can reach the root daemon; access is purely local.
+  `/run/throtl/` and is owned by `root:throtl` with mode `0660`, so only
+  members of the `throtl` group (added by `install.sh`) can reach the root
+  daemon. Access is purely local; there is no network listener.
 - The frontend can only set limits and priorities via the API; there is **no
   arbitrary shell access** over the socket.
 - The TrafficToll YAML is rendered deterministically; `exe`/`name` match values

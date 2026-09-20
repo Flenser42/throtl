@@ -10,6 +10,10 @@ Beispiele:
     throtl-cli remove-process --key 'exe:/usr/lib/firefox/firefox'
     throtl-cli toggle --enabled false
     throtl-cli monitor           # Live-Ausgabe pro Sekunde
+    throtl-cli profiles          # Profile verwalten
+    throtl-cli stats --window day
+    throtl-cli export --output throtl.toml
+    throtl-cli doctor
 """
 
 import argparse
@@ -35,6 +39,19 @@ def _fmt_rate(value, unit="auto"):
     from .units import format_rate
 
     return format_rate(value, unit)
+
+
+def _fmt_bytes(value) -> str:
+    """Byte-Volumen menschenlesbar formatieren (SI, 1000er-Schritte)."""
+    try:
+        amount = float(value or 0.0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if amount < 1000 or unit == "TB":
+            return f"{amount:.1f} {unit}"
+        amount /= 1000.0
+    return f"{amount:.1f} TB"
 
 
 def _priority_int(name):
@@ -183,6 +200,89 @@ def cmd_toggle(client, args):
     return 0
 
 
+def cmd_profiles(client, args):
+    result = client.call("list_profiles")
+    active = result.get("active")
+    names = result.get("profiles") or []
+    if not names:
+        print("(keine Profile)")
+        return 0
+    for name in names:
+        marker = "*" if name == active else " "
+        print(f"{marker} {name}")
+    return 0
+
+
+def cmd_profile_use(client, args):
+    client.call("activate_profile", {"name": args.name})
+    print(f"Profil aktiv: {args.name}")
+    return 0
+
+
+def cmd_profile_save(client, args):
+    result = client.call("set_profile", {
+        "name": args.name,
+        "activate": not args.no_activate,
+    })
+    print(f"Profil gespeichert: {result.get('name')} "
+          f"(aktiv: {result.get('active')})")
+    return 0
+
+
+def cmd_profile_delete(client, args):
+    result = client.call("delete_profile", {"name": args.name})
+    if result.get("deleted"):
+        print("Profil geloescht.")
+        return 0
+    print("Profil nicht gefunden.")
+    return 3
+
+
+def cmd_stats(client, args):
+    result = client.call("get_stats", {"window": args.window})
+    apps = result.get("apps") or []
+    totals = result.get("totals") or {}
+    print(f"Statistik ({result.get('window')}):  "
+          f"runter={_fmt_bytes(totals.get('download'))}  "
+          f"rauf={_fmt_bytes(totals.get('upload'))}")
+    if not apps:
+        print("  (noch keine Daten aufgezeichnet)")
+        return 0
+    print(f"  {'App':<32}{'Download':>14}{'Upload':>14}")
+    for item in apps:
+        name = _proc_display(str(item.get("app", "?")), 32)
+        print(f"  {name:<32}{_fmt_bytes(item.get('download')):>14}"
+              f"{_fmt_bytes(item.get('upload')):>14}")
+    return 0
+
+
+def cmd_export(client, args):
+    from . import write_text_atomic
+    from .config import dump_config
+
+    text = dump_config(client.call("get_config"))
+    if args.output:
+        write_text_atomic(args.output, text)
+        print(f"Config exportiert: {args.output}")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def cmd_import(client, args):
+    import tomllib
+
+    try:
+        with open(args.file, "rb") as handle:
+            data = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        sys.stderr.write(f"Fehler beim Lesen von {args.file}: {error}\n")
+        return 1
+    client.call("import_config", {"config": data})
+    print(f"Config importiert: {args.file}")
+    return 0
+
+
 def cmd_monitor(client, args):
     """Live-Ausgabe der Bandbreiten pro Sekunde (aus dem Daemon)."""
     try:
@@ -205,6 +305,119 @@ def cmd_monitor(client, args):
             time.sleep(1.0)
     except KeyboardInterrupt:
         return 0
+
+
+def _is_fatal_issue(issue: str) -> bool:
+    """Grobe Einordnung: fehlende Rechte/Tools sind echtes Problem, Rest Warnung."""
+    text = (issue or "").lower()
+    return ("nicht als root" in text or "nicht gefunden" in text
+            or "kommando fehlt" in text)
+
+
+def _socket_permissions_local(path: str) -> dict:
+    """Socket-Rechte ohne laufenden Daemon aus dem Dateisystem lesen."""
+    import grp
+    import os
+
+    try:
+        info = os.stat(path)
+    except OSError:
+        return {"path": path, "exists": False}
+    group = None
+    try:
+        group = grp.getgrgid(info.st_gid).gr_name
+    except (KeyError, ImportError):
+        pass
+    mode = info.st_mode & 0o777
+    return {
+        "path": path,
+        "exists": True,
+        "mode": oct(mode),
+        "uid": info.st_uid,
+        "gid": info.st_gid,
+        "group": group,
+        "restricted": mode != 0o666,
+    }
+
+
+def cmd_doctor(args) -> int:
+    """Umgebung/Preflight + effektive Socket-Rechte pruefen.
+
+    Laeuft bewusst AUCH ohne erreichbaren Daemon (lokaler Preflight-Fallback),
+    damit eine kaputte Installation diagnostizierbar bleibt. Exit-Code 1,
+    sobald mindestens ein echtes Problem gefunden wurde.
+    """
+    from . import SOCKET_PATH
+    from .daemon import _resolve_interface, _resolve_tt_command, preflight
+    from .protocol import Client
+
+    socket_path = args.socket or SOCKET_PATH
+    status = None
+    client = None
+    try:
+        client = Client(socket_path, connect_timeout=1.5)
+        client.connect()
+        status = client.call("status", timeout=3.0)
+    except Exception:
+        status = None
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+    errors = 0
+    warnings = 0
+    print("Throtl doctor")
+
+    if status is None:
+        print("❌ Daemon nicht erreichbar — 'systemctl status throtl' pruefen.")
+        errors += 1
+        interface = _resolve_interface(None)
+        issues = preflight(_resolve_tt_command(None), interface)
+        socket_info = _socket_permissions_local(socket_path)
+    else:
+        print(f"✅ Daemon erreichbar (PID {status.get('pid')}, "
+              f"Interface {status.get('interface')})")
+        issues = status.get("preflight") or []
+        socket_info = status.get("socket") or {"path": socket_path, "exists": False}
+        if status.get("config_warning"):
+            print(f"⚠️  Config: {status['config_warning']}")
+            warnings += 1
+        if status.get("monitor_error"):
+            print(f"⚠️  Monitor: {status['monitor_error']}")
+            warnings += 1
+        if status.get("engine_error"):
+            print(f"⚠️  Engine: {status['engine_error']}")
+            warnings += 1
+
+    for issue in issues:
+        if _is_fatal_issue(issue):
+            print(f"❌ {issue}")
+            errors += 1
+        else:
+            print(f"⚠️  {issue}")
+            warnings += 1
+
+    if socket_info.get("exists"):
+        line = (f"Socket {socket_info.get('path')} "
+                f"mode={socket_info.get('mode')} "
+                f"group={socket_info.get('group')}")
+        if socket_info.get("restricted"):
+            print(f"✅ {line}")
+        else:
+            print(f"⚠️  {line} (fuer alle lokalen Nutzer zugaenglich)")
+            warnings += 1
+    else:
+        print(f"❌ Socket {socket_info.get('path')} existiert nicht")
+        errors += 1
+
+    if errors == 0 and warnings == 0:
+        print("✅ Keine Probleme gefunden.")
+
+    print(f"\n{errors} Fehler, {warnings} Warnungen")
+    return 1 if errors else 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -251,11 +464,42 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--enabled", choices=["true", "false"], default="true")
 
     sub.add_parser("monitor", help="Live-Bandbreiten pro Sekunde")
+
+    sub.add_parser("profiles", help="Profile auflisten")
+
+    pu = sub.add_parser("profile-use", help="Profil aktivieren")
+    pu.add_argument("name")
+
+    ps = sub.add_parser("profile-save",
+                        help="Aktuelle Einstellungen als Profil speichern")
+    ps.add_argument("name")
+    ps.add_argument("--no-activate", action="store_true",
+                    help="Profil speichern, aber nicht aktivieren")
+
+    pd = sub.add_parser("profile-delete", help="Profil loeschen")
+    pd.add_argument("name")
+
+    st = sub.add_parser("stats", help="Bandbreiten-Statistik anzeigen")
+    st.add_argument("--window", choices=["minute", "hour", "day"],
+                    default="minute", help="Zeitfenster (Default: minute)")
+
+    ex = sub.add_parser("export", help="Config als TOML ausgeben")
+    ex.add_argument("--output", "-o", default=None,
+                    help="Zieldatei (Default: stdout)")
+
+    im = sub.add_parser("import", help="Config aus TOML-Datei anwenden")
+    im.add_argument("file")
+
+    sub.add_parser("doctor", help="Umgebung, Preflight und Socket-Rechte pruefen")
     return parser
 
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    # doctor muss auch ohne laufenden Daemon funktionieren (sonst koennte man
+    # eine fehlende Installation nie diagnostizieren).
+    if args.command == "doctor":
+        return cmd_doctor(args)
     client = _client(args)
     try:
         handlers = {
@@ -266,6 +510,13 @@ def main(argv=None) -> int:
             "remove-process": cmd_remove,
             "toggle": cmd_toggle,
             "monitor": cmd_monitor,
+            "profiles": cmd_profiles,
+            "profile-use": cmd_profile_use,
+            "profile-save": cmd_profile_save,
+            "profile-delete": cmd_profile_delete,
+            "stats": cmd_stats,
+            "export": cmd_export,
+            "import": cmd_import,
         }
         return handlers[args.command](client, args)
     except RpcError as error:

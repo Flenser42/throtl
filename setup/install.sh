@@ -48,7 +48,19 @@ sudo ln -sf "$OPT/bin/throtl-cli"    /usr/local/bin/throtl-cli
 sudo ln -sf "$OPT/bin/throtl-gui"    /usr/local/bin/throtl-gui
 sudo ln -sf "$OPT/bin/throtl-daemon" /usr/local/bin/throtl-daemon
 
-echo "=== [4/6] Konfiguration + Runtime-Verzeichnisse ==="
+echo "=== [4/6] Gruppe, Konfiguration + Runtime-Verzeichnisse ==="
+# Gruppe 'throtl': nur ihre Mitglieder duerfen den Daemon-Socket ansprechen
+# (0660, siehe Daemon._secure_socket). Idempotent: existiert die Gruppe schon,
+# bleiben bestehende Mitglieder erhalten.
+if ! getent group throtl >/dev/null 2>&1; then
+  sudo groupadd --system throtl
+fi
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+  if ! id -nG "$SUDO_USER" 2>/dev/null | tr ' ' '\n' | grep -qx throtl; then
+    sudo usermod -aG throtl "$SUDO_USER"
+    echo "   $SUDO_USER zur Gruppe 'throtl' hinzugefuegt (bitte neu anmelden)."
+  fi
+fi
 sudo mkdir -p "$ETC" "$RUN"
 if [ ! -f "$ETC/config.toml" ]; then
   sudo install -o root -g root -m 0644 "$SELF_DIR"/default-config.toml "$ETC/config.toml"
