@@ -469,5 +469,259 @@ class ProfileReloadTest(unittest.TestCase):
             win.destroy()
 
 
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class ProcessTableFilterTest(unittest.TestCase):
+    """Das Suchfeld filtert die Prozessliste (Name/exe, case-insensitiv)."""
+
+    class _Gui:
+        client = None
+
+        def show_error(self, m): pass
+        def show_info(self, m): pass
+
+    @staticmethod
+    def _state():
+        return {"rules": [], "apps": [
+            {"name": "firefox", "exe": "/usr/lib/firefox/firefox",
+             "download": 100.0, "upload": 10.0, "pids": ["1"],
+             "pid_count": 1, "unattributed": False},
+            {"name": "steam", "exe": "/usr/bin/steam",
+             "download": 50.0, "upload": 5.0, "pids": ["2"],
+             "pid_count": 1, "unattributed": False},
+        ]}
+
+    def _table(self):
+        from throtl.gui.process_pane import ProcessTable
+        return ProcessTable(self._Gui(), unit="mBs")
+
+    def test_filter_shows_only_matching(self):
+        table = self._table()
+        table.set_state(self._state())
+        table.set_filter("fire")
+        self.assertEqual(set(table._rows.keys()), {"firefox"})
+
+    def test_filter_matches_exe(self):
+        table = self._table()
+        table.set_state(self._state())
+        table.set_filter("steam")
+        self.assertEqual(set(table._rows.keys()), {"steam"})
+
+    def test_clearing_filter_restores_all(self):
+        table = self._table()
+        table.set_state(self._state())
+        table.set_filter("fire")
+        table.set_filter("")
+        self.assertEqual(set(table._rows.keys()), {"firefox", "steam"})
+
+    def test_no_match_shows_placeholder(self):
+        table = self._table()
+        table.set_state(self._state())
+        table.set_filter("zzzz")
+        self.assertEqual(table.row_count(), 0)
+        self.assertIsNotNone(table._no_match)
+
+
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class WindowButtonTest(unittest.TestCase):
+    """Zeitfenster-Button pro Zeile markiert gesetzte Fenster (armed)."""
+
+    class _Gui:
+        client = None
+
+        def show_error(self, m): pass
+        def show_info(self, m): pass
+
+    def _table(self, window):
+        from throtl.gui.process_pane import ProcessTable
+        table = ProcessTable(self._Gui(), unit="mBs")
+        rule = {"key": "name:x", "name": "x", "match_type": "name",
+                "match_value": "x", "download_limit": None,
+                "upload_limit": None, "priority": "normal",
+                "recursive": False, "window": window}
+        table.set_state({"rules": [rule], "apps": [
+            {"name": "x", "exe": "/x", "download": 1.0, "upload": 1.0,
+             "pids": ["1"], "pid_count": 1, "unattributed": False}]})
+        return table
+
+    @staticmethod
+    def _button(roww):
+        # Zelle 1 ist die Process-Spalte (Box: Label + Zeitfenster-Button)
+        name_box = roww.box.get_first_child().get_next_sibling()
+        return name_box.get_last_child()
+
+    def test_not_armed_without_window(self):
+        table = self._table(None)
+        self.assertNotIn("armed", self._button(table._rows["x"]).get_css_classes())
+
+    def test_armed_with_window(self):
+        table = self._table({"days": [0], "start": "08:00", "end": "12:00"})
+        self.assertIn("armed", self._button(table._rows["x"]).get_css_classes())
+
+
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class RuleWindowDialogTest(unittest.TestCase):
+    """Logik des Zeitfenster-Dialogs (Speichern/Validierung/Loeschen)."""
+
+    def _dialog(self, window=None):
+        from throtl.gui.process_pane import RuleWindowDialog
+        saved = []
+        dialog = RuleWindowDialog(
+            None, window, "app", lambda key, win: saved.append((key, win)))
+        return dialog, saved
+
+    def test_save_with_default_all_days(self):
+        dialog, saved = self._dialog()
+        dialog._start.set_text("20:00")
+        dialog._end.set_text("00:00")
+        dialog._on_response(None, "save")
+        self.assertEqual(saved[0][0], "app")
+        self.assertEqual(saved[0][1]["days"], list(range(7)))
+        self.assertEqual(saved[0][1]["start"], "20:00")
+        self.assertEqual(saved[0][1]["end"], "00:00")
+
+    def test_selected_days_only(self):
+        dialog, saved = self._dialog()
+        for index, button in dialog._day_buttons.items():
+            button.set_active(index == 2)
+        dialog._start.set_text("08:00")
+        dialog._end.set_text("09:00")
+        dialog._on_response(None, "save")
+        self.assertEqual(saved[0][1]["days"], [2])
+
+    def test_invalid_time_is_not_saved(self):
+        dialog, saved = self._dialog()
+        dialog._start.set_text("kaputt")
+        dialog._end.set_text("09:00")
+        self.assertIsNone(dialog._current_window())
+        dialog._on_response(None, "save")
+        self.assertEqual(saved, [])
+
+    def test_clear_removes_window(self):
+        dialog, saved = self._dialog(
+            {"days": [0], "start": "08:00", "end": "09:00"})
+        dialog._on_response(None, "clear")
+        self.assertEqual(saved, [("app", None)])
+
+    def test_prefilled_from_existing_window(self):
+        dialog, _ = self._dialog(
+            {"days": [5, 6], "start": "10:00", "end": "23:00"})
+        self.assertEqual(dialog._start.get_text(), "10:00")
+        self.assertTrue(dialog._day_buttons[5].get_active())
+        self.assertFalse(dialog._day_buttons[0].get_active())
+
+
+class _FakeWindowGui:
+    """Fake GuiClient fuer komplette Fenster-Smoke-Tests."""
+
+    connected = True
+
+    def __init__(self):
+        self.calls = []
+
+    def call(self, method, params=None, timeout=10):
+        self.calls.append((method, params))
+        if method == "get_config":
+            return {"unit": "mBs", "start_profile": None,
+                    "global": {"enabled": True, "download_limit": None,
+                               "upload_limit": None,
+                               "download_priority": "normal"}}
+        if method == "list_processes":
+            return {"interface": "eth0", "enabled": True, "processes": [],
+                    "apps": [], "rules": [],
+                    "global": {"download": 1000.0, "upload": 100.0},
+                    "attributed": {"download": 900.0, "upload": 90.0}}
+        if method == "status":
+            return {"monitoring": True, "daemon": "0.5.0"}
+        if method == "list_profiles":
+            return {"profiles": ["Standard"], "active": "Standard"}
+        if method == "get_budgets":
+            return {"enabled": True, "entries": []}
+        return {}
+
+    def call_async(self, method, params=None, **kwargs):
+        self.calls.append((method, params))
+
+    def start_polling(self, *args, **kwargs):
+        pass
+
+    def shutdown(self):
+        pass
+
+
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class WindowSmokeTest(unittest.TestCase):
+    """Baut das komplette Fenster und ruft die wichtigsten Handler auf."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._old_xdg = os.environ.get("XDG_CONFIG_HOME")
+        os.environ["XDG_CONFIG_HOME"] = self._tmp.name
+
+    def tearDown(self):
+        if self._old_xdg is None:
+            os.environ.pop("XDG_CONFIG_HOME", None)
+        else:
+            os.environ["XDG_CONFIG_HOME"] = self._old_xdg
+        self._tmp.cleanup()
+
+    def _window(self, gui):
+        import gi
+
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        from throtl.gui.app import ThrotlWindow
+
+        app = Adw.Application(application_id=f"io.github.throtl.smoke{id(self)}")
+        app.register(None)
+        return ThrotlWindow(app, gui)
+
+    def test_handlers_do_not_crash(self):
+        gui = _FakeWindowGui()
+        win = self._window(gui)
+        try:
+            win.reload()
+            win.search_entry.set_text("fire")
+            win._on_search(win.search_entry)
+            win.search_entry.set_text("")
+            win._on_search(win.search_entry)
+            win._on_toggle(win.toggle_switch, False)
+            win._on_unit(win.unit_dd)
+            win._on_global_prio(win.global_prio)
+            win._on_budgets({"enabled": True, "entries": []})
+            win.on_state({"interface": "eth0", "enabled": True,
+                          "processes": [], "apps": [], "rules": [],
+                          "global": {"download": 500.0, "upload": 50.0},
+                          "attributed": {"download": 400.0, "upload": 40.0}})
+            win._on_sort_change("name", False)
+            self.assertIn("toggle_enabled", [c[0] for c in gui.calls])
+            self.assertIn("set_unit", [c[0] for c in gui.calls])
+        finally:
+            win.destroy()
+
+    def test_start_profile_response(self):
+        gui = _FakeWindowGui()
+        win = self._window(gui)
+
+        class _Dropdown:
+            def __init__(self, index):
+                self._index = index
+
+            def get_selected(self):
+                return self._index
+
+        try:
+            win._on_start_profile_response(
+                None, "save", _Dropdown(1), ["(none)", "Uni"])
+            self.assertIn(("set_start_profile", {"name": "Uni"}), gui.calls)
+            win._on_start_profile_response(
+                None, "save", _Dropdown(0), ["(none)", "Uni"])
+            self.assertIn(("set_start_profile", {}), gui.calls)
+            win._on_start_profile_response(
+                None, "cancel", _Dropdown(1), ["(none)", "Uni"])
+        finally:
+            win.destroy()
+
+
 if __name__ == "__main__":
     unittest.main()

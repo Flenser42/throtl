@@ -24,9 +24,11 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Pango", "1.0")
+gi.require_version("Adw", "1")
 
-from gi.repository import GLib, Gtk, Pango
+from gi.repository import Adw, GLib, Gtk, Pango
 
+from ..config import format_window, normalize_window
 from ..units import format_rate, format_rate_for_entry, parse_rate_in_unit
 from .widgets import UNIT_LABELS, PriorityDropdown, RateEntry
 
@@ -84,9 +86,12 @@ class ProcessTable(Gtk.Box):
         self._on_sort_change = on_sort_change
         self._rows = {}          # pid -> RowWidgets
         self._procs = {}         # pid -> current blob (for sorting)
+        self._last_state = None  # letzter Zustand (fuer Filter-Redraw)
+        self._filter = ""        # Suchtext (App-Name/exe, case-insensitiv)
         self._rules = []
         self._syncing = False
         self._empty = None
+        self._no_match = None
         self._sort_key = "download"
         self._sort_desc = True
         self._sort_labels = {}
@@ -236,6 +241,23 @@ class ProcessTable(Gtk.Box):
         finally:
             self._syncing = False
 
+    # --- Filter -----------------------------------------------------------
+
+    def set_filter(self, text: str) -> None:
+        """Nur Apps anzeigen, deren Name/exe den Text enthaelt (case-insensitiv)."""
+        text = (text or "").strip().lower()
+        if text == self._filter:
+            return
+        self._filter = text
+        if self._last_state is not None:
+            self.set_state(self._last_state)
+
+    def _matches(self, blob: dict) -> bool:
+        if not self._filter:
+            return True
+        haystack = f"{blob.get('name', '')} {blob.get('exe', '')}".lower()
+        return self._filter in haystack
+
     # --- State application ------------------------------------------------
 
     def set_state(self, state: dict) -> None:
@@ -244,6 +266,7 @@ class ProcessTable(Gtk.Box):
         Bevorzugt ``apps`` (pro Anwendung gruppiert, Summe aller PIDs) — sonst
         sieht man z. B. acht Zeilen "python3" statt einmal "legendary".
         """
+        self._last_state = state
         self._rules = state.get("rules", [])
         grouped = "apps" in state
         items = (state.get("apps") if grouped else state.get("processes")) or []
@@ -256,15 +279,23 @@ class ProcessTable(Gtk.Box):
         # keine Zeilen entfernen: das Reordering nimmt dem Feld sonst den Fokus
         # und die Eingabe geht verloren.
         editing = self._editing()
-        if not items:
+        if not self._procs:
             if editing:
                 return
             self._clear_rows()
             self._show_empty()
             return
+        visible = {key: blob for key, blob in self._procs.items()
+                   if self._matches(blob)}
+        if not visible:
+            if editing:
+                return
+            self._clear_rows()
+            self._show_no_match()
+            return
         self._hide_empty()
 
-        for key, blob in self._procs.items():
+        for key, blob in visible.items():
             if key in self._rows:
                 self._update_row(self._rows[key], blob)
             else:
@@ -273,7 +304,7 @@ class ProcessTable(Gtk.Box):
                 self._list.append(roww.box)
 
         for key in list(self._rows):
-            if key not in self._procs:
+            if key not in visible:
                 roww = self._rows[key]
                 if editing and (roww.dl.has_focus() or roww.ul.has_focus()):
                     continue  # Zeile behalten, in der gerade getippt wird
@@ -301,28 +332,43 @@ class ProcessTable(Gtk.Box):
 
     def _show_empty(self) -> None:
         if self._empty is None:
-            self._empty = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6,
-                                  halign=Gtk.Align.CENTER)
-            self._empty.set_margin_top(32)
-            self._empty.set_margin_bottom(24)
-            icon = Gtk.Image.new_from_icon_name("network-offline-symbolic")
-            icon.set_pixel_size(48)
-            icon.add_css_class("dim-label")
-            title = Gtk.Label(label="No active traffic yet")
-            title.add_css_class("empty-title")
-            hint = Gtk.Label(
-                label="Applications appear here as soon as they use the network.",
-                justify=Gtk.Justification.CENTER, wrap=True)
-            hint.add_css_class("empty-hint")
-            self._empty.append(icon)
-            self._empty.append(title)
-            self._empty.append(hint)
+            self._empty = self._placeholder(
+                "network-offline-symbolic", "No active traffic yet",
+                "Applications appear here as soon as they use the network.")
         if self._empty.get_parent() is None:
             self._list.append(self._empty)
 
+    def _show_no_match(self) -> None:
+        if self._no_match is None:
+            self._no_match = self._placeholder(
+                "system-search-symbolic", "No matching applications",
+                "Clear the filter to see all traffic again.")
+        if self._no_match.get_parent() is None:
+            self._list.append(self._no_match)
+
+    @staticmethod
+    def _placeholder(icon_name: str, title_text: str, hint_text: str) -> Gtk.Box:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6,
+                      halign=Gtk.Align.CENTER)
+        box.set_margin_top(32)
+        box.set_margin_bottom(24)
+        icon = Gtk.Image.new_from_icon_name(icon_name)
+        icon.set_pixel_size(48)
+        icon.add_css_class("dim-label")
+        title = Gtk.Label(label=title_text)
+        title.add_css_class("empty-title")
+        hint = Gtk.Label(label=hint_text, justify=Gtk.Justification.CENTER,
+                         wrap=True)
+        hint.add_css_class("empty-hint")
+        box.append(icon)
+        box.append(title)
+        box.append(hint)
+        return box
+
     def _hide_empty(self) -> None:
-        if self._empty is not None and self._empty.get_parent() is not None:
-            self._list.remove(self._empty)
+        for box in (self._empty, self._no_match):
+            if box is not None and box.get_parent() is not None:
+                self._list.remove(box)
 
     def _clear_rows(self) -> None:
         for pid in list(self._rows):
@@ -384,11 +430,30 @@ class ProcessTable(Gtk.Box):
         app_name = _short_name(blob.get("name", "?"), 40)
         name_l = Gtk.Label(label=app_name, xalign=0.0)
         name_l.set_ellipsize(Pango.EllipsizeMode.END)
+        name_l.set_hexpand(True)
         tip = blob.get("exe") or blob.get("name", "")
         if count > 1:
             tip = f"{tip}\n({count} processes: {', '.join(blob.get('pids', [])[:8])})"
         name_l.set_tooltip_text((tip or "")[:500])
-        box.append(self._cell(name_l, _COLUMNS[1][2], True))
+
+        # Zeitfenster-Button: klein, mit dem App-Namen in einer Zelle.
+        window = rule.get("window")
+        sched = Gtk.Button()
+        sched.add_css_class("flat")
+        sched.add_css_class("row-window")
+        sched.set_icon_name("alarm-symbolic")
+        if window:
+            sched.add_css_class("armed")
+            sched.set_tooltip_text(
+                f"Time window: {format_window(window)}\nClick to edit")
+        else:
+            sched.set_tooltip_text("No time window (always active) — click to add")
+        sched.connect("clicked", self._on_edit_window, key)
+        name_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        name_box.set_size_request(_COLUMNS[1][2], -1)
+        name_box.append(name_l)
+        name_box.append(sched)
+        box.append(name_box)
 
         down = Gtk.Label(label=format_rate(blob.get("download", 0.0), self.unit, 2),
                          xalign=0.0)
@@ -421,9 +486,10 @@ class ProcessTable(Gtk.Box):
 
         if unattributed:
             # Kein Prozess -> keine Regel moeglich. Felder nur anzeigen.
-            for widget in (dl, ul, prio):
+            for widget in (dl, ul, prio, sched):
                 widget.set_sensitive(False)
             dl.set_tooltip_text("Traffic that nethogs could not map to a process")
+            sched.set_tooltip_text("Time windows need an application rule")
             name_l.set_tooltip_text("Traffic nethogs could not attribute "
                                     "(VPN, UDP, other users, short-lived sockets)")
 
@@ -464,9 +530,23 @@ class ProcessTable(Gtk.Box):
         if blob is None:
             # Prozess ist inzwischen weg — Eingabe verwerfen (kein Fehler-Popup).
             return
+        rule = self._base_rule(blob)
+        rule[field] = value
+        self._send_rule(rule)
+
+    def _set_rule_window(self, row_key: str, window) -> None:
+        blob = self._procs.get(row_key)
+        if blob is None:
+            return
+        rule = self._base_rule(blob)
+        rule["window"] = window
+        self._send_rule(rule)
+
+    def _base_rule(self, blob: dict) -> dict:
+        """Gespeicherte Regel oder neue Regel aus dem Live-Prozess bauen."""
         rule = dict(self._rule_for(blob))
-        match_type = _match_type_for(blob)
         if not rule.get("key"):
+            match_type = _match_type_for(blob)
             rule["name"] = _short_name(blob.get("name", "Process"), 24)
             rule["match_type"] = match_type
             rule["match_value"] = _match_value_for(blob, match_type)
@@ -474,7 +554,9 @@ class ProcessTable(Gtk.Box):
             rule["upload_limit"] = None
             rule["priority"] = "normal"
             rule["recursive"] = False
-        rule[field] = value
+        return rule
+
+    def _send_rule(self, rule: dict) -> None:
         client = self.gui.client
         name = rule.get("name")
         call_async = getattr(client, "call_async", None)
@@ -491,6 +573,18 @@ class ProcessTable(Gtk.Box):
                 self.gui.show_info(f"Rule saved ({name})")
             except Exception as error:
                 self.gui.show_error(str(error))
+
+    def _on_edit_window(self, _button, row_key: str) -> None:
+        blob = self._procs.get(row_key)
+        if blob is None:
+            return
+        rule = self._rule_for(blob)
+        dialog = RuleWindowDialog(self, rule.get("window"), row_key,
+                                  self._on_window_saved)
+        dialog.present()
+
+    def _on_window_saved(self, row_key: str, window) -> None:
+        self._set_rule_window(row_key, window)
 
     # --- Accessors (tests) -------------------------------------------------
 
@@ -509,6 +603,92 @@ class RowWidgets:
         self.dl = dl
         self.ul = ul
         self.prio = prio
+
+
+class RuleWindowDialog:
+    """Kleiner Dialog zum Setzen/Entfernen eines Zeitfensters einer Regel."""
+
+    _DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+    def __init__(self, parent, window, row_key, on_save):
+        self._row_key = row_key
+        self._on_save = on_save
+        root = parent.get_root() if parent is not None else None
+        self.dialog = Adw.MessageDialog(
+            transient_for=root,
+            heading="Time window",
+            body=("The rule applies only inside this window. Pick days and "
+                  "times, then Save. 'Clear' removes the window."))
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+
+        days_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        days_box.set_halign(Gtk.Align.CENTER)
+        selected = set(window.get("days", range(7))) if window else set(range(7))
+        self._day_buttons = {}
+        for index, label in enumerate(self._DAYS):
+            button = Gtk.ToggleButton(label=label)
+            button.set_active(index in selected)
+            button.connect("toggled", self._update_sensitivity)
+            self._day_buttons[index] = button
+            days_box.append(button)
+        box.append(days_box)
+
+        time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        time_box.set_halign(Gtk.Align.CENTER)
+        self._start = Gtk.Entry()
+        self._start.set_placeholder_text("20:00")
+        self._start.set_width_chars(6)
+        self._start.set_text(window.get("start", "") if window else "")
+        self._start.connect("changed", self._update_sensitivity)
+        self._end = Gtk.Entry()
+        self._end.set_placeholder_text("00:00")
+        self._end.set_width_chars(6)
+        self._end.set_text(window.get("end", "") if window else "")
+        self._end.connect("changed", self._update_sensitivity)
+        time_box.append(Gtk.Label(label="From"))
+        time_box.append(self._start)
+        time_box.append(Gtk.Label(label="To"))
+        time_box.append(self._end)
+        box.append(time_box)
+        self.dialog.set_extra_child(box)
+
+        self.dialog.add_response("cancel", "Cancel")
+        self.dialog.add_response("clear", "Clear")
+        self.dialog.add_response("save", "Save")
+        self.dialog.set_response_appearance("save",
+                                            Adw.ResponseAppearance.SUGGESTED)
+        self.dialog.set_response_appearance("clear",
+                                            Adw.ResponseAppearance.DESTRUCTIVE)
+        self.dialog.set_default_response("save")
+        self.dialog.set_close_response("cancel")
+        self.dialog.connect("response", self._on_response)
+        self._update_sensitivity()
+
+    def present(self):
+        self.dialog.present()
+
+    def _selected_days(self):
+        return [index for index, button in self._day_buttons.items()
+                if button.get_active()]
+
+    def _current_window(self):
+        return normalize_window({
+            "days": self._selected_days(),
+            "start": self._start.get_text(),
+            "end": self._end.get_text(),
+        })
+
+    def _update_sensitivity(self, *_args):
+        self.dialog.set_response_enabled(
+            "save", self._current_window() is not None)
+
+    def _on_response(self, _dialog, response):
+        if response == "clear":
+            self._on_save(self._row_key, None)
+        elif response == "save":
+            window = self._current_window()
+            if window is not None:
+                self._on_save(self._row_key, window)
 
 
 def _match_type_for(blob: dict) -> str:

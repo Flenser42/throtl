@@ -12,6 +12,9 @@ limitations are.
 make check           # ruff + full unittest suite
 make test            # tests only (python3 -m unittest discover -s tests)
 make lint            # ruff check .
+
+# Headless machines: run the GUI widget tests under a virtual display
+xvfb-run -a -s "-screen 0 1280x900x24" make test
 ```
 
 Current suite (`tests/`):
@@ -20,17 +23,19 @@ Current suite (`tests/`):
 |--------|----------------|--------|
 | `test_units` | parse/format kbps/kBs | pure logic |
 | `test_protocol` | JSON-over-Unix-socket framing, buffering, client timeout/events/errors | in-process socketpair |
-| `test_config` | TOML persistence round-trip, priorities, rule escaping, matching | temp file |
+| `test_config` | TOML persistence round-trip, priorities, rule escaping, matching, **time windows** (normalize/active/overnight/round-trip) | temp file |
 | `test_stats` | rolling minute/hour/day byte buckets, unit conversion, persistence, corrupt-file fallback, reset | temp file |
-| `test_profiles` | profile CRUD, TOML round-trip, `parse_days`, schedule matching, v0.1.0 compatibility | temp file / sim daemon |
+| `test_profiles` | profile CRUD, TOML round-trip, `parse_days`, schedule matching, v0.1.0 compatibility, **startup profile applied on daemon start** | temp file / sim daemon |
 | `test_monitor` | nethogs `-t` parser (Refreshing ticks, recv=download/sent=upload, different processes), NethogsMonitor | injected fake stream |
-| `test_engine` | TrafficToll YAML rendering, `tt` subprocess (start/restart/disabled), SimEngine | fake `tt` shell script |
-| `test_daemon_cli` | end-to-end daemon (sim) + CLI: status, set_global + persistence, set_process round-trip/update, toggle, set_unit, list | real Unix socket, SimEngine + fake monitor |
-| `test_gui` | rate formatting, priority mapping, GuiClient RPC against a real daemon, process table (grouping/sorting/in-place updates), bandwidth graph (window/auto-scroll) | widget tests skipped without a display |
+| `test_engine` | TrafficToll YAML rendering (incl. inactive-window rules), `tt` subprocess (start/restart/disabled), SimEngine | fake `tt` shell script |
+| `test_daemon_cli` | end-to-end daemon (sim) + CLI: status, set_global + persistence, set_process round-trip/update/**window**, toggle, set_unit, list | real Unix socket, SimEngine + fake monitor |
+| `test_cli` | byte/name formatting, selftest guards, **`watch` report + alert exit codes + JSON** | fake client |
+| `test_gui` | rate formatting, priority mapping, GuiClient RPC against a real daemon, process table (grouping/sorting/in-place updates/**filter**), **time-window dialog**, **full-window handler smoke test**, bandwidth graph (window/auto-scroll) | widget tests skipped without a display |
 
-> GUI widget instantiation (`PriorityDropdown`, `RuleEditor`, `ProcessTable`,
-> `BandwidthGraph`) is automatically **skipped** in a headless environment (no
-> Wayland/X11 display). On a running Wayland session the full GUI suite runs.
+> GUI widget instantiation (`PriorityDropdown`, `ProcessTable`, `RuleWindowDialog`,
+> `BandwidthGraph`, the full `ThrotlWindow`) is automatically **skipped** in a
+> headless environment (no Wayland/X11 display). Use `xvfb-run` (above) to run
+> the complete suite on a headless machine.
 
 ---
 

@@ -5,6 +5,31 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-09-20
+
+### Added
+
+- **Per-rule time windows**: limit a rule to weekdays and a time range (e.g.
+  Firefox Mon–Fri 20:00–00:00). Windows across midnight are supported, and the
+  daemon re-applies the engine automatically when a window opens or closes. In
+  the GUI the clock button in each row opens the editor; the CLI accepts
+  `--window-days` / `--window-start` / `--window-end` and `--clear-window`.
+- **Startup profile** (`start_profile`): activate a named profile whenever the
+  daemon starts (a matching schedule still takes priority). GUI: *Startup
+  profile…* menu; CLI: `throtl-cli start-profile`.
+- **Application filter** in the process table; the last filter is remembered.
+- **`throtl-cli watch`**: watch processes for N seconds and print a report.
+  `--alert <rate>` exits with code 4 when an app exceeds the threshold, `--json`
+  prints machine-readable output.
+- **Debian package**: `make deb` builds `dist/throtl_<version>_all.deb`, which
+  CI attaches to releases. It bundles the TrafficToll wheel for an offline
+  install when the build machine has network access.
+
+### Changed
+
+- README and TESTING document time windows, the startup profile, `watch`, the
+  filter and the `.deb` package.
+
 ## [0.4.2] - 2026-09-20
 
 ### Fixed
@@ -186,7 +211,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Flenser42/throtl/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/Flenser42/throtl/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Flenser42/throtl/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Flenser42/throtl/compare/v0.3.1...v0.4.0

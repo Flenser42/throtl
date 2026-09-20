@@ -1,0 +1,18 @@
+Package: throtl
+Version: @VERSION@
+Section: net
+Priority: optional
+Architecture: all
+Depends: python3 (>= 3.11), python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1,
+ python3-cairo, python3-venv, nethogs, iproute2
+Recommends: rfkill
+Maintainer: Flenser42 <105233392+Flenser42@users.noreply.github.com>
+Homepage: https://github.com/Flenser42/throtl
+Description: Per-application bandwidth limits and traffic prioritisation
+ Throtl brings fine-grained bandwidth control to Linux: per-application
+ download/upload limits and traffic priorities from a native GTK4 +
+ libadwaita app or a scriptable CLI.
+ .
+ It is a thin layer on top of TrafficToll (tc/cgroups shaping) and nethogs
+ (live per-process bandwidth). The privileged daemon runs as root via systemd
+ and talks to the GUI/CLI over a local Unix socket (no network port).

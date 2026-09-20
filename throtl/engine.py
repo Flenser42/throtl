@@ -26,7 +26,7 @@ import subprocess
 import threading
 import time
 
-from .config import priority_to_int
+from .config import priority_to_int, rule_active
 
 # Standardwerte (aus traffictoll/cli.py) in kbit/s
 GLOBAL_MINIMUM_DOWNLOAD = 100
@@ -58,8 +58,12 @@ def yaml_quote(value: str) -> str:
     return "".join(out)
 
 
-def render_tt_config(config: dict) -> str:
-    """Die Throtl-Config in TrafficToll-YAML rendern (exaktes tt-Format)."""
+def render_tt_config(config: dict, when=None) -> str:
+    """Die Throtl-Config in TrafficToll-YAML rendern (exaktes tt-Format).
+
+    ``when`` (``datetime``) wird fuer Zeitfenster-Regeln ausgewertet: Regeln,
+    deren Fenster jetzt nicht aktiv ist, werden ausgelassen.
+    """
     g = config["global"]
     lines = []
 
@@ -91,7 +95,8 @@ def render_tt_config(config: dict) -> str:
         f"upload-priority: {priority_to_int(g.get('upload_priority', 'normal'))}"
     )
 
-    processes = config.get("processes", [])
+    processes = [rule for rule in config.get("processes", [])
+                 if rule_active(rule, when)]
     if processes:
         lines.append("processes:")
         for rule in processes:

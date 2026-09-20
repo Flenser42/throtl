@@ -182,6 +182,7 @@ class TomlProfileRoundtripTest(unittest.TestCase):
                              download_limit=512, priority="niedrig"),
         ]
         config.capture_profile(cfg, "Mein Profil")
+        cfg["start_profile"] = "Uni"
         cfg["schedule"] = config.normalize_schedule([
             {"profile": "Uni", "days": ["mo", "di", "mi", "do", "fr"],
              "start": "08:00", "end": "14:00"},
@@ -207,6 +208,12 @@ class TomlProfileRoundtripTest(unittest.TestCase):
         self.assertEqual(loaded["schedule"][0]["profile"], "Uni")
         self.assertEqual(loaded["schedule"][0]["days"], [0, 1, 2, 3, 4])
         self.assertEqual(loaded["schedule"][0]["start"], "08:00")
+        self.assertEqual(loaded["start_profile"], "Uni")
+
+    def test_start_profile_bad_name_is_ignored(self):
+        cfg = config.normalize({"start_profile": "bad/name!"})
+        self.assertIsNone(cfg["start_profile"])
+        self.assertIsNone(config.normalize({})["start_profile"])
 
     def test_v010_config_without_profiles_still_loads(self):
         # Eine v0.1.0-config.toml kennt weder profiles noch schedule.
@@ -299,6 +306,15 @@ class DaemonProfileRpcTest(unittest.TestCase):
         deleted = self.client.call("delete_profile", {"name": "Uni"})
         self.assertTrue(deleted["deleted"])
 
+    def test_start_profile_rpc(self):
+        self.client.call("set_global", {"download_limit": "5mbps"})
+        self.client.call("set_profile", {"name": "Morgen", "activate": True})
+        # Vom Profil abweichen und Start-Profil setzen.
+        self.client.call("set_global", {"download_limit": "9mbps"})
+        self.client.call("set_start_profile", {"name": "Morgen"})
+        self.assertEqual(
+            self.client.call("get_config")["start_profile"], "Morgen")
+
     def test_import_config_rpc(self):
         result = self.client.call("import_config", {"config": {
             "unit": "mBs",
@@ -310,6 +326,36 @@ class DaemonProfileRpcTest(unittest.TestCase):
         cfg = self.client.call("get_config")
         self.assertEqual(cfg["unit"], "mBs")
         self.assertEqual(len(cfg["processes"]), 1)
+
+
+class StartProfileApplyTest(unittest.TestCase):
+    """Ein gesetztes start_profile wird beim Daemon-Start aktiviert."""
+
+    def test_start_profile_applied_on_daemon_start(self):
+        from throtl import daemon
+        from throtl.engine import SimEngine
+
+        with tempfile.TemporaryDirectory() as tmp:
+            first = daemon.Daemon(
+                socket_path=os.path.join(tmp, "d.sock"), config_dir=tmp,
+                engine=SimEngine("lo"), monitor_factory=None)
+            cfg = first.store.get()
+            cfg["global"]["download_limit"] = 4321
+            config.capture_profile(cfg, "Morgen")
+            # Danach abweichen und "Standard" aktiv lassen: der Neustart muss
+            # das Start-Profil anwenden.
+            cfg["global"]["download_limit"] = 9999
+            cfg["active_profile"] = config.STANDARD_PROFILE
+            cfg["start_profile"] = "Morgen"
+            first.store._persist()
+
+            second = daemon.Daemon(
+                socket_path=os.path.join(tmp, "d2.sock"), config_dir=tmp,
+                engine=SimEngine("lo"), monitor_factory=None)
+            second._apply_start_profile()
+            loaded = second.store.get()
+            self.assertEqual(loaded["active_profile"], "Morgen")
+            self.assertEqual(loaded["global"]["download_limit"], 4321)
 
 
 if __name__ == "__main__":

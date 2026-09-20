@@ -200,6 +200,21 @@ class DaemonCliEndToEnd(unittest.TestCase):
         self.assertEqual(len(cfg["processes"]), 1)  # kein Duplikat
         self.assertEqual(cfg["processes"][0]["match_value"], created["match_value"])
 
+    def test_set_process_with_window(self):
+        result = self.client.call("set_process", {
+            "name": "Steam", "match_type": "name", "match_value": "steam",
+            "download_limit": 512,
+            "window": {"days": ["sa", "so"], "start": "10:00", "end": "23:00"},
+        })
+        self.assertEqual(result["window"]["days"], [5, 6])
+        cfg = self.client.call("get_config")
+        self.assertEqual(cfg["processes"][0]["window"]["start"], "10:00")
+        # Fenster per Update entfernen (Regel bleibt erhalten).
+        updated = self.client.call("set_process", {
+            "key": result["key"], "window": None})
+        self.assertIsNone(updated["window"])
+        self.assertEqual(len(self.client.call("get_config")["processes"]), 1)
+
     def test_toggle_enabled(self):
         result = self.client.call("toggle_enabled", {"enabled": False})
         self.assertFalse(result["enabled"])

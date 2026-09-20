@@ -45,9 +45,11 @@ from .config import (
     make_rule,
     normalize,
     normalize_schedule,
+    normalize_window,
     priority_to_int,
     priority_to_name,
     profile_names,
+    rule_active,
     save_config,
     validate_profile_name,
 )
@@ -304,6 +306,8 @@ class Daemon:
         self._monitor_thread = None
         self._iface_sample = None
         self._iface_rate = (None, None)
+        # Signatur der aktuell aktiven Zeitfenster-Regeln (Engine-Reapply).
+        self._window_signature = None
         # Engine-Neustarts laufen in einem eigenen Thread (ein tt-Apply dauert
         # ~2 s und darf weder die RPC-Antworten noch die GUI blockieren).
         self._apply_event = threading.Event()
@@ -315,6 +319,8 @@ class Daemon:
     # --- Lifecycle ---
 
     def start(self) -> None:
+        # Ein konfiguriertes Start-Profil vor dem ersten Apply aktivieren.
+        self._apply_start_profile()
         # Initiale Config synchron anwenden, danach uebernimmt der Worker.
         self._apply_engine()
         self._start_apply_worker()
@@ -409,6 +415,8 @@ class Daemon:
                 self._start_monitor()
         # Automatische Profilumschaltung (nur wenn ein Zeitplan existiert).
         self._apply_schedule()
+        # Zeitfenster-Regeln: Engine neu anwenden, wenn ein Fenster kippt.
+        self._apply_time_windows()
         # Echter Monitoring-Tick: Statistik fortschreiben. RPC-Snapshots
         # (list_processes) duerfen NICHT zusaetzlich zaehlen, sonst wuerde der
         # GUI-Poll die Raten doppelt verbuchen.
@@ -436,6 +444,43 @@ class Daemon:
                 return
             self.store._persist()
         self._schedule_engine_apply()
+
+    def _apply_start_profile(self) -> None:
+        """Ein konfiguriertes ``start_profile`` beim Daemon-Start aktivieren.
+
+        Ein Zeitplan hat Vorrang: er wird beim naechsten Monitor-Tick angewandt
+        und ueberschreibt das Start-Profil, falls gerade ein Fenster passt.
+        """
+        with self._state_lock:
+            cfg = self.store.get()
+            name = cfg.get("start_profile")
+            if not name or name == cfg.get("active_profile"):
+                return
+            try:
+                apply_profile(cfg, name)
+            except Exception as error:
+                print(f"Warnung: Start-Profil {name!r}: {error}", flush=True)
+                return
+            self.store._persist()
+
+    def _apply_time_windows(self) -> None:
+        """Engine neu anwenden, wenn sich die aktiven Zeitfenster-Regeln aendern.
+
+        TrafficToll hat keinen dynamischen Reload; damit „Firefox 20-24 Uhr"
+        wirkt, wird beim Uebergang in/aus einem Fenster ein Apply angestossen.
+        Die Signatur ist die Menge der gerade aktiven Regel-Keys.
+        """
+        cfg = self.store.get()
+        rules = cfg.get("processes") or []
+        if not any(rule.get("window") for rule in rules):
+            self._window_signature = None
+            return
+        signature = tuple(sorted(
+            rule.get("key", "") for rule in rules if rule_active(rule)
+        ))
+        if signature != self._window_signature:
+            self._window_signature = signature
+            self._schedule_engine_apply()
 
     def _iface_throughput(self):
         """Echte Interface-Rate (kbit/s) aus /proc/net/dev-Deltas.
@@ -713,6 +758,7 @@ class Daemon:
             "delete_profile": self._h_delete_profile,
             "activate_profile": self._h_activate_profile,
             "set_schedule": self._h_set_schedule,
+            "set_start_profile": self._h_set_start_profile,
             "import_config": self._h_import_config,
         }
 
@@ -816,6 +862,8 @@ class Daemon:
                 )
             if "recursive" in params:
                 rule["recursive"] = bool(params.get("recursive"))
+            if "window" in params:
+                rule["window"] = normalize_window(params.get("window"))
             with self._state_lock:
                 self.store.upsert_process(rule)
             self._schedule_engine_apply()
@@ -836,6 +884,7 @@ class Daemon:
             priority=str(params.get("priority") or "normal"),
             recursive=bool(params.get("recursive", False)),
             key=params.get("key"),
+            window=params.get("window"),
         )
         with self._state_lock:
             self.store.upsert_process(rule)
@@ -974,6 +1023,15 @@ class Daemon:
             self.store.get()["schedule"] = rules
             self.store._persist()
         return {"schedule": rules}
+
+    def _h_set_start_profile(self, params):
+        """Start-Profil setzen/loeschen (``name`` fehlt/leer = deaktivieren)."""
+        raw = params.get("name")
+        name = validate_profile_name(raw) if raw and str(raw).strip() else None
+        with self._state_lock:
+            self.store.get()["start_profile"] = name
+            self.store._persist()
+        return {"start_profile": name}
 
     def _h_import_config(self, params):
         """Rohe (TOML-)Config validieren und komplett uebernehmen."""

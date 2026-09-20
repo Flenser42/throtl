@@ -122,6 +122,8 @@ def _proc_display(name: str, limit: int = 32) -> str:
 
 
 def cmd_list(client, args):
+    from .config import format_window
+
     state = client.call("list_processes")
     print(f"{'PID':<8}{'Process':<34}{'Down (kbit/s)':<18}{'Up (kbit/s)':<16}Rule")
     print("-" * 90)
@@ -138,6 +140,8 @@ def cmd_list(client, args):
         print(
             f"  {rule.get('key'):<44} dl={dl:<12} ul={ul:<12} "
             f"prio={rule.get('priority')}"
+            + (f"  window={format_window(rule.get('window'))}"
+               if rule.get("window") else "")
         )
     return 0
 
@@ -177,6 +181,8 @@ def cmd_set_global(client, args):
 
 
 def cmd_set_process(client, args):
+    from .config import format_window
+
     if not args.exe and not args.name and not args.match:
         sys.stderr.write("Bitte --exe, --name oder --match angeben.\n")
         return 1
@@ -187,6 +193,17 @@ def cmd_set_process(client, args):
     else:
         match_type, match_value = "cmdline", args.match
 
+    has_window_args = bool(args.window_days or args.window_start or args.window_end)
+    window = None
+    if has_window_args:
+        if not (args.window_days and args.window_start and args.window_end):
+            sys.stderr.write(
+                "Zeitfenster braucht --window-days, --window-start und "
+                "--window-end.\n")
+            return 1
+        window = {"days": args.window_days, "start": args.window_start,
+                  "end": args.window_end}
+
     params = {
         "name": args.name or args.appname or None,
         "match_type": match_type,
@@ -196,6 +213,8 @@ def cmd_set_process(client, args):
         "priority": args.priority,
         "recursive": args.recursive,
     }
+    if has_window_args or args.clear_window:
+        params["window"] = window
     result = client.call("set_process", params)
     print("Rule saved/updated:")
     print(f"  key:   {result.get('key')}")
@@ -204,6 +223,7 @@ def cmd_set_process(client, args):
     print(f"  dl:    {_fmt_rate(result.get('download_limit'))}")
     print(f"  ul:    {_fmt_rate(result.get('upload_limit'))}")
     print(f"  prio:  {result.get('priority')}")
+    print(f"  window: {format_window(result.get('window')) or '—'}")
     return 0
 
 
@@ -256,6 +276,21 @@ def cmd_profile_delete(client, args):
         return 0
     print("Profil nicht gefunden.")
     return 3
+
+
+def cmd_start_profile(client, args):
+    """Start-Profil anzeigen, setzen oder entfernen."""
+    if args.clear:
+        result = client.call("set_start_profile", {})
+        print(f"Start-Profil entfernt (jetzt: {result.get('start_profile') or '—'}).")
+        return 0
+    if args.name:
+        result = client.call("set_start_profile", {"name": args.name})
+        print(f"Start-Profil: {result.get('start_profile')}")
+        return 0
+    cfg = client.call("get_config")
+    print(f"Start-Profil: {cfg.get('start_profile') or '—'}")
+    return 0
 
 
 def cmd_budgets(client, args):
@@ -444,6 +479,112 @@ def cmd_top(client, args):
     except KeyboardInterrupt:
         print()
         return 0
+
+
+def cmd_watch(client, args):
+    """Prozesse N Sekunden beobachten und am Ende einen Bericht ausgeben.
+
+    Skript-tauglich: mit ``--alert`` liefert der Befehl Exit-Code 4, wenn die
+    beobachtete Spitzenrate einer App den Schwellwert ueberschreitet.
+    """
+    from .units import parse_rate
+
+    try:
+        duration = max(1.0, float(args.duration))
+    except (TypeError, ValueError):
+        sys.stderr.write("--duration muss eine Zahl sein.\n")
+        return 2
+    interval = max(0.2, float(args.interval))
+    alert = None
+    if args.alert:
+        try:
+            alert = parse_rate(args.alert)
+        except ValueError:
+            alert = None
+        if not alert:
+            sys.stderr.write(f"Ungueltiger --alert-Wert: {args.alert!r}\n")
+            return 2
+    needle = (args.app or "").lower()
+
+    stats = {}
+    state = {}
+    deadline = time.monotonic() + duration
+    try:
+        while True:
+            state = client.call("list_processes")
+            for app in state.get("apps") or state.get("processes") or []:
+                if app.get("unattributed"):
+                    continue
+                name = str(app.get("name") or "?")
+                if needle and needle not in name.lower():
+                    continue
+                entry = stats.get(name)
+                if entry is None:
+                    entry = stats[name] = {
+                        "name": name, "samples": 0,
+                        "down_sum": 0.0, "up_sum": 0.0,
+                        "down_peak": 0.0, "up_peak": 0.0,
+                    }
+                down = float(app.get("download") or 0.0)
+                up = float(app.get("upload") or 0.0)
+                entry["samples"] += 1
+                entry["down_sum"] += down
+                entry["up_sum"] += up
+                entry["down_peak"] = max(entry["down_peak"], down)
+                entry["up_peak"] = max(entry["up_peak"], up)
+            if time.monotonic() + interval > deadline:
+                break
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        pass
+
+    rows = []
+    for entry in stats.values():
+        samples = entry["samples"] or 1
+        rows.append({
+            "name": entry["name"],
+            "samples": entry["samples"],
+            "download_avg": entry["down_sum"] / samples,
+            "upload_avg": entry["up_sum"] / samples,
+            "download_peak": entry["down_peak"],
+            "upload_peak": entry["up_peak"],
+        })
+    rows.sort(key=lambda r: r["download_peak"] + r["upload_peak"], reverse=True)
+    breaches = [r for r in rows
+                if alert and (r["download_peak"] > alert or r["upload_peak"] > alert)]
+
+    if args.json:
+        import json as _json
+
+        print(_json.dumps({
+            "interface": state.get("interface"),
+            "duration": duration,
+            "alert": alert,
+            "apps": rows,
+            "breaches": [r["name"] for r in breaches],
+        }, indent=2))
+        return 4 if breaches else 0
+
+    print(f"Watch: {duration:g}s @ {interval:g}s — "
+          f"interface {state.get('interface', '?')}")
+    if not rows:
+        print("  (no traffic seen)")
+    else:
+        print(f"  {'App':<26}{'Samples':>8}{'Avg down':>14}{'Peak down':>14}"
+              f"{'Avg up':>14}{'Peak up':>14}")
+        for row in rows:
+            print(f"  {_proc_display(row['name'], 26):<26}{row['samples']:>8}"
+                  f"{_fmt_rate(row['download_avg']):>14}"
+                  f"{_fmt_rate(row['download_peak']):>14}"
+                  f"{_fmt_rate(row['upload_avg']):>14}"
+                  f"{_fmt_rate(row['upload_peak']):>14}")
+    if alert is not None:
+        if breaches:
+            print(f"⚠ ALERT: peak above {_fmt_rate(alert)} — "
+                  + ", ".join(r["name"] for r in breaches))
+            return 4
+        print(f"OK: no app exceeded {_fmt_rate(alert)}.")
+    return 0
 
 
 def _wait_engine(client, timeout: float = 15.0) -> None:
@@ -735,6 +876,14 @@ def build_parser() -> argparse.ArgumentParser:
     g2.add_argument("--priority", default="normal",
                     choices=["kritisch", "hoch", "normal", "niedrig"])
     g2.add_argument("--recursive", action="store_true")
+    g2.add_argument("--window-days", default=None,
+                    help="Zeitfenster-Wochentage, z.B. 'mo-fr' oder 'sa,so'")
+    g2.add_argument("--window-start", default=None,
+                    help="Zeitfenster-Start als HH:MM")
+    g2.add_argument("--window-end", default=None,
+                    help="Zeitfenster-Ende als HH:MM (vor Start = ueber Mitternacht)")
+    g2.add_argument("--clear-window", action="store_true",
+                    help="Zeitfenster der Regel entfernen")
 
     r = sub.add_parser("remove-process", help="Regel loeschen")
     r.add_argument("--key", required=True)
@@ -749,6 +898,19 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Aktualisierungsintervall in Sekunden (Default: 1.0)")
     tp.add_argument("--sort", choices=["download", "upload", "name"],
                     default="download", help="Sortierspalte (Default: download)")
+
+    w = sub.add_parser("watch",
+                       help="Prozesse N Sekunden beobachten und Bericht ausgeben")
+    w.add_argument("--duration", "-d", default=10.0,
+                   help="Beobachtungsdauer in Sekunden (Default: 10)")
+    w.add_argument("--interval", "-i", default=1.0,
+                   help="Abtastintervall in Sekunden (Default: 1)")
+    w.add_argument("--app", default=None,
+                   help="Nur Apps mit diesem Namen (Teilstring, optional)")
+    w.add_argument("--alert", default=None,
+                   help="Schwellwert (z.B. 5mbps); Exit-Code 4 bei Ueberschreitung")
+    w.add_argument("--json", action="store_true",
+                   help="Bericht als JSON ausgeben")
 
     sft = sub.add_parser("selftest",
                          help="End-to-End pruefen, ob Limits wirklich greifen")
@@ -776,6 +938,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     pd = sub.add_parser("profile-delete", help="Profil loeschen")
     pd.add_argument("name")
+
+    sp = sub.add_parser("start-profile",
+                        help="Profil beim Daemon-Start aktivieren (anzeigen/setzen/entfernen)")
+    sp.add_argument("name", nargs="?", default=None, help="Profilname")
+    sp.add_argument("--clear", action="store_true", help="Start-Profil entfernen")
 
     st = sub.add_parser("stats", help="Bandbreiten-Statistik anzeigen")
     st.add_argument("--window", choices=["minute", "hour", "day"],
@@ -824,11 +991,13 @@ def main(argv=None) -> int:
             "toggle": cmd_toggle,
             "monitor": cmd_monitor,
             "top": cmd_top,
+            "watch": cmd_watch,
             "selftest": cmd_selftest,
             "profiles": cmd_profiles,
             "profile-use": cmd_profile_use,
             "profile-save": cmd_profile_save,
             "profile-delete": cmd_profile_delete,
+            "start-profile": cmd_start_profile,
             "stats": cmd_stats,
             "budgets": cmd_budgets,
             "budget-set": cmd_budget_set,

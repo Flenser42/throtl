@@ -60,6 +60,21 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(engine.yaml_quote('a"b\\c'), '"a\\"b\\\\c"')
         self.assertEqual(engine.yaml_quote("plain"), '"plain"')
 
+    def test_window_rules_filtered(self):
+        from datetime import datetime
+
+        always = make_rule("Always", "name", "always", download_limit=1000)
+        nights = make_rule(
+            "Nights", "name", "nights", download_limit=2000,
+            window={"days": ["mi"], "start": "20:00", "end": "02:00"})
+        cfg = _cfg(processes=[always, nights])
+        midday = datetime(2026, 9, 16, 12, 0)
+        text = engine.render_tt_config(cfg, when=midday)
+        self.assertIn('"Always"', text)
+        self.assertNotIn('"Nights"', text)
+        night = datetime(2026, 9, 16, 22, 0)
+        self.assertIn('"Nights"', engine.render_tt_config(cfg, when=night))
+
     def test_format_rate(self):
         self.assertEqual(engine.format_rate_kbps(512), "512kbps")
         self.assertIsNone(engine.format_rate_kbps(None))

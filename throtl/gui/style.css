@@ -94,6 +94,24 @@
 .legend-down { color: @throtl_down; font-size: 0.86em; }
 .legend-up { color: @throtl_up; font-size: 0.86em; }
 
+/* Row time-window button: quiet by default, accent when a window is set. */
+.row-window {
+    padding: 0 2px;
+    min-width: 22px;
+    min-height: 22px;
+    color: @throtl_dim;
+    opacity: 0.45;
+}
+
+.row-window:hover {
+    opacity: 1;
+}
+
+.row-window.armed {
+    color: @throtl_accent;
+    opacity: 1;
+}
+
 /* Tabular numbers keep the columns from jittering while rates change */
 .table-header,
 .row label,
@@ -130,6 +148,12 @@
 
 .throtl-unit {
     margin-left: 4px;
+}
+
+/* --- Filter / search ------------------------------------------------- */
+
+.throtl-search {
+    min-height: 30px;
 }
 
 .throtl-window {

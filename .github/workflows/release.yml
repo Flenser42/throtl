@@ -28,3 +28,22 @@ jobs:
             || gh release create "$GITHUB_REF_NAME" \
                  --title "Throtl $GITHUB_REF_NAME" --generate-notes
           gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+
+  deb:
+    name: Build and attach .deb
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Build .deb
+        run: |
+          python -m pip install --upgrade pip
+          bash packaging/deb/build.sh
+      - name: Attach .deb to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" dist/*.deb --clobber

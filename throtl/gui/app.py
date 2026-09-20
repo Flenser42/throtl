@@ -131,6 +131,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
         menu = Gio.Menu()
         menu.append("Save settings as profile…", "win.save-profile")
         menu.append("Delete profile", "win.delete-profile")
+        menu.append("Startup profile…", "win.start-profile")
         menu.append("Statistics…", "win.stats")
         menu_btn = Gtk.MenuButton(icon_name="open-menu-symbolic")
         menu_btn.set_menu_model(menu)
@@ -142,6 +143,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
         for name, handler in (
             ("save-profile", self._on_save_profile),
             ("delete-profile", self._on_delete_profile),
+            ("start-profile", self._on_start_profile),
             ("stats", self._on_show_stats),
         ):
             action = Gio.SimpleAction.new(name, None)
@@ -191,14 +193,39 @@ class ThrotlWindow(Adw.ApplicationWindow):
         view.append(self.graph)
 
         # --- Process table (fuellt den Rest bis zum unteren Rand) ---
+        filter_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        filter_caption = Gtk.Label(label="Filter")
+        filter_caption.add_css_class("dim-label")
+        filter_bar.append(filter_caption)
+        self.search_entry = Gtk.SearchEntry()
+        self.search_entry.set_placeholder_text("Filter applications…")
+        self.search_entry.set_hexpand(True)
+        self.search_entry.add_css_class("throtl-search")
+        self.search_entry.set_tooltip_text(
+            "Show only apps whose name or executable matches this text")
+        self.search_entry.connect("search-changed", self._on_search)
+        filter_bar.append(self.search_entry)
+        view.append(filter_bar)
+
         self.table = ProcessTable(self, unit=self.unit,
                                   on_sort_change=self._on_sort_change)
         self._prefs = load_prefs()
         saved_sort = self._prefs.get("sort_key")
         if saved_sort in ("pid", "name", "download", "upload", "priority"):
             self.table.set_sort(saved_sort, bool(self._prefs.get("sort_desc", True)))
+        saved_filter = self._prefs.get("filter") or ""
+        if saved_filter:
+            self.search_entry.set_text(saved_filter)
+            self.table.set_filter(saved_filter)
         self.table.set_vexpand(True)
         view.append(self.table)
+
+    def _on_search(self, entry) -> None:
+        """Filtertext der Prozessliste anwenden und merken."""
+        text = entry.get_text()
+        self.table.set_filter(text)
+        self._prefs["filter"] = text
+        save_prefs(self._prefs)
 
     def _on_sort_change(self, key: str, desc: bool) -> None:
         """Spalten-Sortierung der Prozessliste merken (User-Prefs)."""
@@ -326,6 +353,45 @@ class ThrotlWindow(Adw.ApplicationWindow):
 
     def _on_show_stats(self, *_args):
         StatsDialog(self, self.gui).present()
+
+    def _on_start_profile(self, *_args):
+        try:
+            result = self.gui.call("list_profiles")
+            cfg = self.gui.call("get_config")
+        except Exception as error:
+            self.show_error(str(error))
+            return
+        names = ["(none)"] + (result.get("profiles") or [])
+        current = cfg.get("start_profile") or "(none)"
+        dialog = Adw.MessageDialog(
+            transient_for=self, heading="Startup profile")
+        dialog.set_body(
+            "This profile is activated whenever the daemon starts. A matching "
+            "schedule still takes priority over it.")
+        dropdown = Gtk.DropDown(model=Gio.ListStore.new(Gtk.StringObject))
+        for name in names:
+            dropdown.get_model().append(Gtk.StringObject.new(name))
+        dropdown.set_selected(names.index(current) if current in names else 0)
+        dialog.set_extra_child(dropdown)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("save", "Save")
+        dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("save")
+        dialog.connect("response", self._on_start_profile_response,
+                       dropdown, names)
+        dialog.present()
+
+    def _on_start_profile_response(self, _dialog, response, dropdown, names):
+        if response != "save":
+            return
+        index = dropdown.get_selected()
+        name = names[index] if 0 <= index < len(names) else "(none)"
+        payload = {} if name == "(none)" else {"name": name}
+        self.gui.call_async(
+            "set_start_profile", payload,
+            on_done=lambda _r: self.show_info(
+                f"Startup profile: {name}"),
+            on_error=self.show_error)
 
     # --- Status bar -------------------------------------------------------
 
@@ -605,9 +671,10 @@ def _format_bytes(value) -> str:
 
 
 class StatsDialog(Adw.Window):
-    """Einfache Statistik-Ansicht: App -> Volumen, umschaltbarer Zeitraum.
+    """Statistik-Ansicht: Volumen pro App + Verlaufsgraph je Zeitraum.
 
-    Bewusst kein Diagramm — eine Liste genuegt (siehe Aufgabe C).
+    Tabelle + Balkengraph (Download gruen, Upload orange) mit umschaltbarem
+    Zeitraum (1 h / 2 Tage / 30 Tage).
     """
 
     WINDOW_CHOICES = (

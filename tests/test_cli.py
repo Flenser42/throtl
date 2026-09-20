@@ -34,6 +34,83 @@ class HelpersTest(unittest.TestCase):
         self.assertIsNone(cli._find_app(state, "wget"))
 
 
+class _SeqClient:
+    """Gibt bei jedem ``list_processes`` den naechsten Zustand zurueck."""
+
+    def __init__(self, states):
+        self._states = list(states)
+        self._index = 0
+
+    def call(self, method, params=None, timeout=10):
+        if method != "list_processes":
+            return {}
+        if not self._states:
+            return {"apps": []}
+        state = self._states[min(self._index, len(self._states) - 1)]
+        self._index += 1
+        return state
+
+
+class WatchCommandTest(unittest.TestCase):
+    def _args(self, **overrides):
+        base = dict(duration=1.0, interval=0.2, app=None, alert=None, json=False)
+        base.update(overrides)
+        return argparse.Namespace(**base)
+
+    def test_report_and_no_alert(self):
+        import contextlib
+        import io
+
+        states = [
+            {"interface": "eth0",
+             "apps": [{"name": "firefox", "download": 1000.0, "upload": 100.0}]},
+            {"interface": "eth0",
+             "apps": [{"name": "firefox", "download": 2000.0, "upload": 300.0}]},
+        ]
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cli.cmd_watch(_SeqClient(states), self._args(alert="10mbps"))
+        self.assertEqual(rc, 0)
+        self.assertIn("firefox", buf.getvalue())
+        self.assertIn("OK: no app exceeded", buf.getvalue())
+
+    def test_alert_triggers_exit_4(self):
+        import contextlib
+        import io
+
+        states = [{"interface": "eth0",
+                   "apps": [{"name": "game", "download": 50000.0, "upload": 0.0}]}]
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cli.cmd_watch(_SeqClient(states), self._args(alert="1mbps"))
+        self.assertEqual(rc, 4)
+        self.assertIn("ALERT", buf.getvalue())
+
+    def test_json_output(self):
+        import contextlib
+        import io
+        import json
+
+        states = [{"interface": "eth0",
+                   "apps": [{"name": "curl", "download": 800.0, "upload": 20.0}]}]
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cli.cmd_watch(_SeqClient(states), self._args(json=True))
+        self.assertEqual(rc, 0)
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(payload["apps"][0]["name"], "curl")
+        self.assertEqual(payload["interface"], "eth0")
+
+    def test_invalid_alert_value(self):
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cli.cmd_watch(_SeqClient([]), self._args(alert="nonsense"))
+        self.assertEqual(rc, 2)
+
+
 class SelfTestGuardTest(unittest.TestCase):
     def _args(self):
         return argparse.Namespace(limit="2mbps", url="http://x", time=6.0,

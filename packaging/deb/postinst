@@ -1,0 +1,50 @@
+#!/bin/sh
+# Throtl postinst: Gruppe, TrafficToll-venv, systemd-Unit aktivieren.
+set -e
+
+# --- Gruppe fuer den Daemon-Socket (root:throtl 0660) ----------------------
+if ! getent group throtl >/dev/null 2>&1; then
+    groupadd --system throtl || true
+fi
+
+# --- TrafficToll in ein eigenes venv unter /opt/throtl --------------------
+# TrafficToll (tt) ist das Shaping-Backend. Es gibt (Stand heute) kein
+# Debian-Paket dafuer, deshalb legen wir wie setup/install.sh ein venv an.
+# Ist ein Wheel mitgeliefert (/opt/throtl/wheels), laeuft die Installation
+# offline; sonst wird PyPI genutzt.
+if [ ! -x /opt/throtl/venv/bin/python ]; then
+    /usr/bin/python3 -m venv /opt/throtl/venv || true
+fi
+if [ -x /opt/throtl/venv/bin/python ] && [ ! -x /opt/throtl/venv/bin/tt ]; then
+    /opt/throtl/venv/bin/python -m ensurepip --upgrade >/dev/null 2>&1 || true
+    /opt/throtl/venv/bin/python -m pip install --upgrade pip >/dev/null 2>&1 || true
+    if [ -d /opt/throtl/wheels ]; then
+        /opt/throtl/venv/bin/python -m pip install --no-index \
+            --find-links /opt/throtl/wheels traffictoll >/dev/null 2>&1 \
+            || /opt/throtl/venv/bin/python -m pip install traffictoll >/dev/null 2>&1 \
+            || echo "Warnung: TrafficToll (traffictoll) konnte nicht installiert werden." >&2
+    else
+        /opt/throtl/venv/bin/python -m pip install traffictoll >/dev/null 2>&1 \
+            || echo "Warnung: TrafficToll (traffictoll) konnte nicht installiert werden." >&2
+    fi
+fi
+
+# --- Laufzeit-/Konfigurationsverzeichnisse ---------------------------------
+mkdir -p /etc/throtl /run/throtl
+
+# --- systemd ---------------------------------------------------------------
+# `timeout` guard: in containers/minimal systems `systemctl` can block (no
+# running systemd to answer). A maintainer script must never hang dpkg.
+if command -v systemctl >/dev/null 2>&1; then
+    timeout 10 systemctl daemon-reload >/dev/null 2>&1 || true
+    timeout 10 systemctl enable throtl.service >/dev/null 2>&1 || true
+fi
+
+echo ""
+echo "Throtl installiert."
+echo "  Deinen Nutzer zur Gruppe 'throtl' hinzufuegen und neu einloggen:"
+echo "      sudo usermod -aG throtl \$USER"
+echo "  Danach:  sudo systemctl start throtl   und   throtl-gui"
+echo ""
+
+exit 0

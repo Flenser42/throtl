@@ -30,27 +30,30 @@ It is a thin, well-behaved layer on top of two proven tools:
 
 - **Per-application limits** — download/upload caps for a single app, even when
   it runs many processes (they are grouped into one row and summed).
+- **Time windows** — give any rule a weekday + time window ("Firefox,
+  Mon–Fri 20:00–00:00"); the rule only applies inside it. Windows across
+  midnight work, and the engine re-applies automatically when a window opens
+  or closes.
 - **Priorities** — Critical / High / Normal / Low for individual apps, plus a
   global default priority for everything that has no rule.
 - **Live graph** — download/upload over time on a real time axis. Shows the last
   60 s by default and auto-scrolls; switch the window to 30 s / 1 min / 5 min /
   15 min / All and scroll back through history at any time.
 - **Live process table** — per-app rates, editable limits and priority, sortable
-  columns, colour-coded up/down values.
+  columns, colour-coded up/down values, and a filter box to focus on one app.
 - **Global switch** — turn all shaping on/off without losing your rules.
 - **Consumption budgets** — a rolling daily/weekly volume limit (global or per
   app); the GUI warns and shows a desktop notification when it is exceeded.
 - **Statistics** — persistent per-app history over 1 h / 2 days / 30 days,
   shown as a table and a graph.
-- **Profiles & schedules** — save the current limits as named profiles
-  ("Uni", "Abend", "Nacht") and switch between them automatically by weekday
-  and time.
-- **Statistics** — per-app download/upload volume for the last hour, two days
-  and 30 days, persisted by the daemon across restarts.
+- **Profiles, schedules & startup profile** — save the current limits as named
+  profiles ("Uni", "Abend", "Nacht"), switch between them automatically by
+  weekday and time, and pick one to activate on daemon startup.
 - **Responsive** — TrafficToll restarts are coalesced and happen off the UI
   thread, so the window never freezes while a change is applied.
-- **Headless CLI** — everything the GUI can do, plus a live monitor and a
-  simulation mode that needs neither root nor TrafficToll.
+- **Headless CLI** — everything the GUI can do, plus `monitor`, `top`,
+  `watch` (a timed report with an optional alert threshold) and a simulation
+  mode that needs neither root nor TrafficToll.
 - **Local only** — a Unix socket, no network port.
 
 ### Graph
@@ -146,8 +149,9 @@ Uninstall with `sudo ./setup/uninstall.sh` (add `--purge` to also remove code
 and configuration).
 
 > **Prebuilt artifacts / distro packages:** Throtl is pure Python, so there is
-> nothing to compile. Every release carries an sdist and a wheel, and there is
-> an AUR `PKGBUILD` for Arch/Omarchy. See [`packaging/README.md`](packaging/README.md).
+> nothing to compile. Every release carries an sdist, a wheel and a **Debian
+> `.deb`** (build it locally with `make deb`), and there is an AUR `PKGBUILD`
+> for Arch/Omarchy. See [`packaging/README.md`](packaging/README.md).
 
 > The daemon and engine need root, so Throtl installs system-wide. The frontend
 > (GUI/CLI) runs as your user and talks to the daemon over the Unix socket.
@@ -188,11 +192,20 @@ throtl-cli set-global --download-priority hoch
 throtl-cli set-process --name Firefox --exe /usr/lib/firefox/firefox \
     --download-limit 2mbps --priority hoch
 
+# Only throttle Firefox on weekdays between 20:00 and midnight
+throtl-cli set-process --name Firefox --exe /usr/lib/firefox/firefox \
+    --download-limit 1mbps --window-days mo-fr \
+    --window-start 20:00 --window-end 00:00
+
 throtl-cli remove-process --key 'exe:/usr/lib/firefox/firefox'
 
 throtl-cli toggle --enabled false      # pause all shaping
 throtl-cli monitor                     # live rates, once per second
 throtl-cli top                         # full-screen live ranking (htop-style)
+
+# Timed report for scripting; exit code 4 if an app exceeds the threshold
+throtl-cli watch --duration 30 --alert 5mbps
+throtl-cli watch --duration 10 --app firefox --json
 
 # End-to-end check that limits actually throttle (needs root + TrafficToll)
 throtl-cli selftest --limit 2mbps
@@ -202,6 +215,11 @@ throtl-cli profiles                    # list profiles (+ active)
 throtl-cli profile-save Uni            # save current settings as "Uni"
 throtl-cli profile-use Uni             # activate "Uni"
 throtl-cli profile-delete Uni
+
+# Activate a profile automatically when the daemon starts
+throtl-cli start-profile Uni
+throtl-cli start-profile                # show the current startup profile
+throtl-cli start-profile --clear
 
 # Statistics: last hour, last two days or last 30 days
 throtl-cli stats --window minute
@@ -252,6 +270,39 @@ The daemon checks the schedule once per monitoring tick and activates the
 first matching profile automatically (only when `schedule` is non-empty).
 `days` accepts `mo`…`so` (Mo = 0), ranges like `"mo-fr"`, and English names;
 overnight rules (`end < start`) run until the next morning.
+
+A **startup profile** is the fallback for when no schedule matches:
+
+```toml
+start_profile = "Uni"
+```
+
+It is applied once when the daemon starts; a schedule that matches at that
+moment still takes priority.
+
+### Time windows (per rule)
+
+Individual rules can be limited to a weekday + time window. Add a `window` to
+a rule in `config.toml` (flat form shown here):
+
+```toml
+[[processes]]
+name = "Firefox"
+match_type = "exe"
+match_value = "/usr/lib/firefox/firefox"
+download_limit = 1024
+priority = "normal"
+window_days = ["mo", "di", "mi", "do", "fr"]
+window_start = "20:00"
+window_end = "00:00"       # before start -> runs across midnight
+```
+
+Inside the window the rule is applied as usual; outside it the rule is left
+out of the generated TrafficToll config, so the app is unthrottled. The daemon
+re-applies automatically on the transition (once per monitoring tick). In the
+GUI, the small clock button in each row opens the window editor; `Clear`
+removes the window. The CLI accepts `--window-days` / `--window-start` /
+`--window-end` (and `--clear-window`).
 
 ### Statistics
 
@@ -329,17 +380,21 @@ limitations.
 ```
 throtl/
   __init__.py        path/app constants
-  units.py           kbit/s schema, rate parse/format
+  units.py           kbit/s schema, rate/size parse/format
   protocol.py        IPC: JSON over Unix socket, client with reader thread
-  config.py          TOML schema, priorities, rule/persistence helpers
+  config.py          TOML schema, priorities, rules, profiles, schedules,
+                     time windows, rule/persistence helpers
   monitor.py         nethogs -t parser + NethogsMonitor
   engine.py          TrafficToll YAML renderer + tt process + SimEngine
+  budgets.py         rolling daily/weekly volume budgets
+  stats.py           persistent per-app history (ring buffers, 3 windows)
   daemon.py          Unix-socket RPC daemon (root)
   cli.py             CLI (throtl-cli)
-  gui/               GTK4 + libadwaita frontend
-tests/               unittest suite
+  gui/               GTK4 + libadwaita frontend (app, graph, process table,
+                     rule-window dialog, prefs, style.css)
+tests/               unittest suite (GUI tests run under Xvfb)
 setup/               install/uninstall, systemd unit, .desktop, autostart
-packaging/           AUR PKGBUILD + notes on distro packages
+packaging/           AUR PKGBUILD, Debian .deb builder + distro notes
 data/                icon (SVG)
 docs/                TESTING.md, RELEASING.md
 docs/images/         banner, architecture diagram and screenshots

@@ -1,0 +1,14 @@
+#!/bin/sh
+# Throtl postrm: systemd neu laden; bei 'purge' das venv entfernen.
+set -e
+
+if command -v systemctl >/dev/null 2>&1; then
+    timeout 10 systemctl daemon-reload >/dev/null 2>&1 || true
+fi
+
+if [ "$1" = "purge" ]; then
+    rm -rf /opt/throtl/venv /opt/throtl/wheels /opt/throtl/throtl /run/throtl
+    rmdir /opt/throtl 2>/dev/null || true
+fi
+
+exit 0

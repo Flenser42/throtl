@@ -211,3 +211,97 @@ class BudgetsTest(unittest.TestCase):
             "app = \"x\"\nweek = \"1 GiB\"\n"))
         self.assertEqual(cfg["budgets"]["day"], 20_000_000_000)
         self.assertEqual(cfg["budgets"]["rules"][0]["week"], 1024 ** 3)
+
+
+class WindowTest(unittest.TestCase):
+    def _rule(self, window):
+        return config.make_rule("X", "name", "x", window=window)
+
+    def test_normalize_window(self):
+        window = config.normalize_window(
+            {"days": ["mo", "fr"], "start": "20:00", "end": "00:00"})
+        self.assertEqual(window["days"], [0, 4])
+        self.assertEqual(window["start"], "20:00")
+        self.assertEqual(window["end"], "00:00")
+        self.assertIsNone(config.normalize_window({"days": ["mo"]}))
+        self.assertIsNone(config.normalize_window(
+            {"days": ["mo"], "start": "kaputt", "end": "10:00"}))
+        self.assertIsNone(config.normalize_window(None))
+
+    def test_rule_active_same_day(self):
+        from datetime import datetime
+
+        rule = self._rule({"days": ["mi"], "start": "09:00", "end": "17:00"})
+        self.assertTrue(config.rule_active(rule, datetime(2026, 9, 16, 10, 0)))
+        self.assertFalse(config.rule_active(rule, datetime(2026, 9, 16, 18, 0)))
+        # anderer Wochentag
+        self.assertFalse(config.rule_active(rule, datetime(2026, 9, 17, 10, 0)))
+
+    def test_rule_active_overnight(self):
+        from datetime import datetime
+
+        rule = self._rule({"days": ["mi"], "start": "20:00", "end": "02:00"})
+        # Mittwoch 22:00 -> aktiv
+        self.assertTrue(config.rule_active(rule, datetime(2026, 9, 16, 22, 0)))
+        # Donnerstag 01:00 -> noch aktiv (Morgen nach Mittwoch)
+        self.assertTrue(config.rule_active(rule, datetime(2026, 9, 17, 1, 0)))
+        # Donnerstag 03:00 -> inaktiv
+        self.assertFalse(config.rule_active(rule, datetime(2026, 9, 17, 3, 0)))
+
+    def test_rule_without_window_is_always_active(self):
+        from datetime import datetime
+
+        rule = self._rule(None)
+        self.assertTrue(config.rule_active(rule, datetime(2026, 9, 16, 3, 0)))
+
+    def test_active_rules_filters(self):
+        from datetime import datetime
+
+        always = self._rule(None)
+        nights = self._rule({"days": ["mi"], "start": "20:00", "end": "02:00"})
+        when = datetime(2026, 9, 16, 12, 0)   # Mittag -> nur `always`
+        self.assertEqual(config.active_rules([always, nights], when), [always])
+
+    def test_format_window(self):
+        self.assertEqual(
+            config.format_window({"days": [0, 1, 2, 3, 4],
+                                  "start": "09:00", "end": "17:00"}),
+            "mo,di,mi,do,fr 09:00-17:00")
+        self.assertEqual(
+            config.format_window({"days": list(range(7)),
+                                  "start": "00:00", "end": "23:59"}),
+            "daily 00:00-23:59")
+        self.assertEqual(config.format_window(None), "")
+
+    def test_toml_roundtrip_flat_window(self):
+        import tomllib
+
+        cfg = config.default_config()
+        cfg["processes"] = [config.make_rule(
+            "Steam", "name", "steam", download_limit=512,
+            window={"days": ["sa", "so"], "start": "10:00", "end": "23:00"})]
+        loaded = config.normalize(tomllib.loads(config.dump_config(cfg)))
+        rule = loaded["processes"][0]
+        self.assertEqual(rule["window"]["days"], [5, 6])
+        self.assertEqual(rule["window"]["start"], "10:00")
+        self.assertEqual(rule["window"]["end"], "23:00")
+
+    def test_toml_nested_window_table(self):
+        import tomllib
+
+        raw = """
+version = 1
+
+[[processes]]
+name = "Firefox"
+match_type = "name"
+match_value = "firefox"
+priority = "normal"
+
+[processes.window]
+days = ["mo", "di"]
+start = "08:00"
+end = "12:00"
+"""
+        loaded = config.normalize(tomllib.loads(raw))
+        self.assertEqual(loaded["processes"][0]["window"]["days"], [0, 1])

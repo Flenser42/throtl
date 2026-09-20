@@ -1,0 +1,10 @@
+#!/bin/sh
+# Throtl prerm: Dienst stoppen und deaktivieren.
+set -e
+
+if command -v systemctl >/dev/null 2>&1; then
+    timeout 10 systemctl stop throtl.service >/dev/null 2>&1 || true
+    timeout 10 systemctl disable throtl.service >/dev/null 2>&1 || true
+fi
+
+exit 0

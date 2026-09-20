@@ -134,6 +134,7 @@ def _build_rule(
     recursive: bool = False,
     key: str | None = None,
     escape: bool = True,
+    window=None,
 ) -> dict:
     """Neue Regel erzeugen (validiert).
 
@@ -156,6 +157,8 @@ def _build_rule(
         "upload_limit": _rate_or_none(upload_limit),
         "priority": priority_to_name(priority),
         "recursive": bool(recursive),
+        # Optionales Zeitfenster (None = immer aktiv).
+        "window": normalize_window(window),
     }
 
 
@@ -168,11 +171,12 @@ def make_rule(
     priority: str = "normal",
     recursive: bool = False,
     key: str | None = None,
+    window=None,
 ) -> dict:
     """Neue Regel aus Rohwerten (GUI/CLI): exe/name werden regex-escaped."""
     return _build_rule(
         name, match_type, match_value, download_limit, upload_limit,
-        priority, recursive, key, escape=True,
+        priority, recursive, key, escape=True, window=window,
     )
 
 
@@ -209,6 +213,8 @@ def default_config() -> dict:
         "unit": "kbps",
         # Aktives Profil + Profilkatalog + Zeitplaene (additiv, v0.1.0-kompatibel).
         "active_profile": STANDARD_PROFILE,
+        # Profil, das der Daemon bei jedem Start aktiviert (None = aus).
+        "start_profile": None,
         "profiles": {},
         "schedule": [],
         # Verbrauchs-Budgets (Bytes, rollierend: day=letzte 24h, week=7 Tage).
@@ -286,6 +292,15 @@ def normalize(data: dict) -> dict:
     cfg["profiles"] = profiles
     cfg["schedule"] = normalize_schedule(data.get("schedule"))
 
+    start_profile = data.get("start_profile")
+    if isinstance(start_profile, str) and start_profile.strip():
+        try:
+            cfg["start_profile"] = validate_profile_name(start_profile)
+        except ConfigError:
+            cfg["start_profile"] = None
+    else:
+        cfg["start_profile"] = None
+
     # --- Budgets (additiv) -------------------------------------------------
     raw_budgets = data.get("budgets") or {}
     budgets = cfg["budgets"]
@@ -314,6 +329,19 @@ def normalize(data: dict) -> dict:
     return cfg
 
 
+def _window_from_toml(raw: dict) -> dict | None:
+    """Zeitfenster einer TOML-Regel lesen: verschachtelt ODER flach."""
+    if "window" in raw:
+        window = normalize_window(raw.get("window"))
+        if window:
+            return window
+    return normalize_window({
+        "days": raw.get("window_days"),
+        "start": raw.get("window_start"),
+        "end": raw.get("window_end"),
+    })
+
+
 def _normalize_rule(raw) -> dict | None:
     """Eine rohe (TOML-)Regel bauen; ungueltige liefern ``None``."""
     if not isinstance(raw, dict):
@@ -333,6 +361,7 @@ def _normalize_rule(raw) -> dict | None:
             recursive=bool(raw.get("recursive", False)),
             key=str(raw.get("key") or ""),
             escape=False,
+            window=_window_from_toml(raw),
         )
     except (ConfigError, ValueError):
         return None
@@ -497,6 +526,74 @@ def normalize_schedule(rules) -> list:
         result.append({"profile": name, "days": sorted(days),
                        "start": start, "end": end})
     return result
+
+
+def normalize_window(raw) -> dict | None:
+    """Optionales Zeitfenster einer Regel normalisieren.
+
+    Akzeptiert ``{"days": [...], "start": "HH:MM", "end": "HH:MM"}``.
+    Fehlende/kaputte Angaben -> ``None`` (= Regel gilt immer).
+    """
+    if not isinstance(raw, dict):
+        return None
+    days = parse_days(raw.get("days"))
+    start = _parse_time(raw.get("start"))
+    end = _parse_time(raw.get("end"))
+    if not days or start is None or end is None:
+        return None
+    return {"days": sorted(days), "start": start, "end": end}
+
+
+def _window_matches(window: dict, when) -> bool:
+    """Pruefen, ob ``when`` in das Zeitfenster faellt (inkl. ueber Mitternacht)."""
+    days = set(window.get("days") or [])
+    start = window.get("start")
+    end = window.get("end")
+    if not days or not start or not end:
+        return True
+    weekday = when.weekday()
+    now_minutes = when.hour * 60 + when.minute
+    start_minutes = _time_to_minutes(start)
+    end_minutes = _time_to_minutes(end)
+    if start_minutes <= end_minutes:
+        return weekday in days and start_minutes <= now_minutes < end_minutes
+    # Ueber Mitternacht: Abendteil am Starttag, Morgenteil am Folgetag.
+    if weekday in days and now_minutes >= start_minutes:
+        return True
+    if ((weekday - 1) % 7) in days and now_minutes < end_minutes:
+        return True
+    return False
+
+
+def rule_active(rule: dict, when=None) -> bool:
+    """True, wenn die Regel jetzt gilt (kein Zeitfenster = immer aktiv)."""
+    window = rule.get("window")
+    if not window:
+        return True
+    if when is None:
+        from datetime import datetime
+
+        when = datetime.now()
+    return _window_matches(window, when)
+
+
+def active_rules(processes, when=None) -> list:
+    """Nur die Regeln, deren Zeitfenster jetzt aktiv ist."""
+    return [rule for rule in (processes or []) if rule_active(rule, when)]
+
+
+def format_window(window) -> str:
+    """Zeitfenster kurz darstellen, z.B. ``"Mo-Fr 20:00-00:00"``."""
+    if not window:
+        return ""
+    days = sorted(set(window.get("days") or []))
+    if len(days) == 7:
+        day_text = "daily"
+    else:
+        tokens = [WEEKDAY_TOKENS[day] for day in days
+                  if isinstance(day, int) and 0 <= day <= 6]
+        day_text = ",".join(tokens)
+    return f"{day_text} {window.get('start')}-{window.get('end')}".strip()
 
 
 def profile_names(cfg) -> list:
@@ -722,6 +819,22 @@ def _days_to_tokens(days) -> list:
     return tokens
 
 
+def _dump_rule_keys(rule: dict) -> list:
+    """Die TOML-Zeilen einer Regel (inkl. optionalem Zeitfenster)."""
+    out = []
+    for key in _PROCESS_KEYS:
+        value = _scalar(rule.get(key))
+        if value is None:
+            continue
+        out.append(f"{key} = {value}")
+    window = rule.get("window")
+    if window:
+        out.append(f"window_days = {_string_array(_days_to_tokens(window.get('days')))}")
+        out.append(f"window_start = {_quote(str(window.get('start', '')))}")
+        out.append(f"window_end = {_quote(str(window.get('end', '')))}")
+    return out
+
+
 def dump_config(config: dict) -> str:
     lines = ["version = 1"]
     if config.get("interface"):
@@ -730,6 +843,9 @@ def dump_config(config: dict) -> str:
     lines.append(
         f"active_profile = {_quote(config.get('active_profile', STANDARD_PROFILE))}"
     )
+    start_profile = config.get("start_profile")
+    if start_profile:
+        lines.append(f"start_profile = {_quote(str(start_profile))}")
     lines.append("")
 
     lines.append("[global]")
@@ -742,11 +858,7 @@ def dump_config(config: dict) -> str:
 
     for rule in config.get("processes", []):
         lines.append("[[processes]]")
-        for key in _PROCESS_KEYS:
-            value = _scalar(rule.get(key))
-            if value is None:
-                continue
-            lines.append(f"{key} = {value}")
+        lines.extend(_dump_rule_keys(rule))
         lines.append("")
 
     # --- Profile (verschachtelt: [[profiles.NAME.processes]]) --------------
@@ -778,11 +890,7 @@ def dump_config(config: dict) -> str:
         lines.append("")
         for rule in profile.get("processes") or []:
             lines.append(f"[[{table}.processes]]")
-            for key in _PROCESS_KEYS:
-                value = _scalar(rule.get(key))
-                if value is None:
-                    continue
-                lines.append(f"{key} = {value}")
+            lines.extend(_dump_rule_keys(rule))
             lines.append("")
 
     # --- Zeitplaene (flache Array-of-Tables) -------------------------------
