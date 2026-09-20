@@ -53,7 +53,9 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self.set_default_size(1060, 780)
         self.unit = "mBs"
         self._syncing = False
+        self._profile_names = []
 
+        self._build_actions()
         self.content = Adw.ToolbarView()
         self.set_content(self.content)
         self._build_headerbar()
@@ -100,6 +102,43 @@ class ThrotlWindow(Adw.ApplicationWindow):
         refresh_btn.set_tooltip_text("Reload from daemon")
         refresh_btn.connect("clicked", lambda *_w: self.reload())
         header.pack_end(refresh_btn)
+
+        self._build_profile_controls(header)
+
+    def _build_profile_controls(self, header):
+        """Profil-Auswahl + Menue (Profil speichern/loeschen, Statistik)."""
+        box = Gtk.Box(spacing=6)
+        box.append(Gtk.Label(label="Profile"))
+        self.profile_dd = Gtk.DropDown(model=Gio.ListStore.new(Gtk.StringObject))
+        self.profile_dd.set_tooltip_text("Active profile")
+        self.profile_dd.set_size_request(150, -1)
+        self.profile_dd.connect("notify::selected", self._on_profile_selected)
+        box.append(self.profile_dd)
+
+        profile_refresh = Gtk.Button(icon_name="view-refresh-symbolic")
+        profile_refresh.set_tooltip_text("Reload profiles")
+        profile_refresh.connect("clicked", lambda *_w: self._reload_profiles())
+        box.append(profile_refresh)
+
+        menu = Gio.Menu()
+        menu.append("Save settings as profile…", "win.save-profile")
+        menu.append("Delete profile", "win.delete-profile")
+        menu.append("Statistics…", "win.stats")
+        menu_btn = Gtk.MenuButton(icon_name="open-menu-symbolic")
+        menu_btn.set_menu_model(menu)
+        menu_btn.set_tooltip_text("Profile and statistics")
+        box.append(menu_btn)
+        header.pack_end(box)
+
+    def _build_actions(self):
+        for name, handler in (
+            ("save-profile", self._on_save_profile),
+            ("delete-profile", self._on_delete_profile),
+            ("stats", self._on_show_stats),
+        ):
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", handler)
+            self.add_action(action)
 
     def _build_body(self):
         view = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -169,6 +208,103 @@ class ThrotlWindow(Adw.ApplicationWindow):
         dd.set_priority_name("normal")
         return dd
 
+    # --- Profile ----------------------------------------------------------
+
+    def _reload_profiles(self) -> None:
+        try:
+            result = self.gui.call("list_profiles")
+        except Exception as error:
+            self.show_error(str(error))
+            return
+        names = result.get("profiles") or []
+        active = result.get("active")
+        self._profile_names = names
+        model = self.profile_dd.get_model()
+        model.remove_all()
+        for name in names:
+            model.append(Gtk.StringObject.new(name))
+        index = names.index(active) if active in names else 0
+        self._syncing = True
+        try:
+            self.profile_dd.set_selected(index)
+        finally:
+            self._syncing = False
+
+    def _current_profile(self) -> str | None:
+        idx = self.profile_dd.get_selected()
+        if 0 <= idx < len(self._profile_names):
+            return self._profile_names[idx]
+        return None
+
+    def _on_profile_selected(self, dd, *_args):
+        if self._syncing:
+            return
+        name = self._current_profile()
+        if not name:
+            return
+        self.gui.call_async(
+            "activate_profile", {"name": name},
+            on_done=lambda _r: self._on_profile_activated(name),
+            on_error=self.show_error,
+        )
+
+    def _on_profile_activated(self, name: str) -> None:
+        self.show_info(f"Profile: {name}")
+        self.reload()
+
+    def _on_save_profile(self, *_args):
+        dialog = Adw.MessageDialog(
+            transient_for=self, heading="Save settings as profile")
+        dialog.set_body(
+            "The current global limits and process rules are stored under the "
+            "given name.")
+        entry = Gtk.Entry()
+        entry.set_placeholder_text("Profile name")
+        dialog.set_extra_child(entry)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("save", "Save")
+        dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("save")
+        dialog.connect("response", self._on_save_profile_response, entry)
+        dialog.present()
+
+    def _on_save_profile_response(self, _dialog, response, entry):
+        if response != "save":
+            return
+        name = entry.get_text().strip()
+        if not name:
+            self.show_error("Profile name must not be empty.")
+            return
+        self.gui.call_async(
+            "set_profile", {"name": name, "activate": True},
+            on_done=lambda _r: self._on_profile_activated(name),
+            on_error=self.show_error,
+        )
+
+    def _on_delete_profile(self, *_args):
+        name = self._current_profile()
+        if not name:
+            return
+        dialog = Adw.MessageDialog(transient_for=self, heading="Delete profile?")
+        dialog.set_body(f'Delete the profile "{name}"?')
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("delete", "Delete")
+        dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.connect("response", self._on_delete_profile_response, name)
+        dialog.present()
+
+    def _on_delete_profile_response(self, _dialog, response, name):
+        if response != "delete":
+            return
+        self.gui.call_async(
+            "delete_profile", {"name": name},
+            on_done=lambda _r: self.reload(),
+            on_error=self.show_error,
+        )
+
+    def _on_show_stats(self, *_args):
+        StatsDialog(self, self.gui).present()
+
     # --- Status bar -------------------------------------------------------
 
     def show_error(self, message: str) -> None:
@@ -193,6 +329,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
             state = self.gui.call("list_processes")
             self._apply_state(state)
             self._report_monitor_status()
+            self._reload_profiles()
         except Exception as error:
             self.show_error(str(error))
 
@@ -389,6 +526,138 @@ class ThrotlWindow(Adw.ApplicationWindow):
     @property
     def client(self):
         return self.gui
+
+
+_BYTE_UNITS = ("B", "KB", "MB", "GB", "TB", "PB")
+
+
+def _format_bytes(value) -> str:
+    """Bytes menschenlesbar formatieren (SI, 1000er-Schritte)."""
+    try:
+        amount = float(value or 0.0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    for unit in _BYTE_UNITS:
+        if amount < 1000 or unit == _BYTE_UNITS[-1]:
+            return f"{amount:.1f} {unit}"
+        amount /= 1000.0
+    return f"{amount:.1f} {_BYTE_UNITS[-1]}"
+
+
+class StatsDialog(Adw.Window):
+    """Einfache Statistik-Ansicht: App -> Volumen, umschaltbarer Zeitraum.
+
+    Bewusst kein Diagramm — eine Liste genuegt (siehe Aufgabe C).
+    """
+
+    WINDOW_CHOICES = (
+        ("minute", "Last hour"),
+        ("hour", "Last 2 days"),
+        ("day", "Last 30 days"),
+    )
+
+    def __init__(self, parent, gui):
+        super().__init__()
+        self.gui = gui
+        self.set_title("Throtl — Statistics")
+        self.set_default_size(520, 520)
+        try:
+            self.set_transient_for(parent)
+        except (TypeError, AttributeError):
+            pass
+
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(Gtk.Label(label="Statistics"))
+        toolbar.add_top_bar(header)
+        self.set_content(toolbar)
+
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        body.set_margin_top(12)
+        body.set_margin_bottom(12)
+        body.set_margin_start(12)
+        body.set_margin_end(12)
+        toolbar.set_content(body)
+
+        controls = Gtk.Box(spacing=8)
+        controls.append(Gtk.Label(label="Range"))
+        self.window_dd = Gtk.DropDown(model=Gio.ListStore.new(Gtk.StringObject))
+        for _key, label in self.WINDOW_CHOICES:
+            self.window_dd.get_model().append(Gtk.StringObject.new(label))
+        self.window_dd.set_selected(0)
+        self.window_dd.connect("notify::selected", lambda *_a: self._refresh())
+        controls.append(self.window_dd)
+        refresh = Gtk.Button(icon_name="view-refresh-symbolic")
+        refresh.set_tooltip_text("Reload statistics")
+        refresh.connect("clicked", lambda *_a: self._refresh())
+        controls.append(refresh)
+        reset = Gtk.Button(label="Reset")
+        reset.add_css_class("destructive-action")
+        reset.connect("clicked", self._on_reset)
+        controls.append(reset)
+        body.append(controls)
+
+        self.totals_label = Gtk.Label(label="", xalign=0.0)
+        self.totals_label.add_css_class("dim-label")
+        body.append(self.totals_label)
+
+        self.listbox = Gtk.ListBox()
+        self.listbox.add_css_class("boxed-list")
+        self.listbox.set_selection_mode(Gtk.SelectionMode.NONE)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_vexpand(True)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_child(self.listbox)
+        body.append(scroll)
+
+        self._refresh()
+
+    def _window_key(self) -> str:
+        idx = self.window_dd.get_selected()
+        if 0 <= idx < len(self.WINDOW_CHOICES):
+            return self.WINDOW_CHOICES[idx][0]
+        return "minute"
+
+    def _clear_rows(self) -> None:
+        child = self.listbox.get_first_child()
+        while child is not None:
+            self.listbox.remove(child)
+            child = self.listbox.get_first_child()
+
+    def _refresh(self) -> None:
+        try:
+            data = self.gui.call("get_stats", {"window": self._window_key()})
+        except Exception as error:
+            self.totals_label.set_text(f"⚠  {error}")
+            return
+        apps = data.get("apps") or []
+        totals = data.get("totals") or {}
+        self.totals_label.set_text(
+            "Total:  ▼ {down}   ▲ {up}".format(
+                down=_format_bytes(totals.get("download")),
+                up=_format_bytes(totals.get("upload")),
+            ))
+        self._clear_rows()
+        if not apps:
+            self.listbox.append(Adw.ActionRow(title="No data recorded yet"))
+            return
+        for item in apps:
+            download = item.get("download", 0.0)
+            upload = item.get("upload", 0.0)
+            row = Adw.ActionRow(title=str(item.get("app", "?")))
+            row.set_subtitle(
+                f"▼ {_format_bytes(download)}   ▲ {_format_bytes(upload)}")
+            total = Gtk.Label(label=_format_bytes(download + upload))
+            total.add_css_class("dim-label")
+            row.add_suffix(total)
+            self.listbox.append(row)
+
+    def _on_reset(self, *_args):
+        self.gui.call_async(
+            "reset_stats", {},
+            on_done=lambda _r: self._refresh(),
+            on_error=lambda message: self.totals_label.set_text(f"⚠  {message}"),
+        )
 
 
 def _load_css() -> None:
