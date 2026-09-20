@@ -298,13 +298,19 @@ class TrafficTollEngine:
         return [self.command, self.device, cfg_path, "--delay", str(self.delay)]
 
     def _write_yaml(self, yaml: str) -> str:
-        """YAML im Laufzeitverzeichnis ablegen (NICHT /tmp).
+        """YAML atomar im Laufzeitverzeichnis ablegen (NICHT /tmp).
 
         In /tmp kollidieren die Rechte verschiedener Nutzer (beobachtet:
         EACCES auf /tmp/throtl-tt-config.yaml). Reihenfolge:
         $THROTL_RUN_DIR -> /run/throtl -> Temp-Verzeichnis.
+
+        Geschrieben wird atomar: ``tt`` liest die Datei beim Start komplett ein
+        und wuerde eine halb geschriebene YAML als kaputte Konfiguration
+        interpretieren (Rendern + Schreiben passiert bei jeder Aenderung).
         """
         import tempfile
+
+        from . import write_text_atomic
 
         candidates = []
         env_dir = os.environ.get("THROTL_RUN_DIR")
@@ -318,8 +324,9 @@ class TrafficTollEngine:
             try:
                 os.makedirs(directory, exist_ok=True)
                 path = os.path.join(directory, "throtl-tt-config.yaml")
-                with open(path, "w", encoding="utf-8") as handle:
-                    handle.write(yaml)
+                # 0600: die YAML beschreibt die Regeln des Nutzers und muss
+                # nicht fuer andere lokale Konten lesbar sein.
+                write_text_atomic(path, yaml, mode=0o600)
                 return path
             except OSError as error:
                 last_error = error
