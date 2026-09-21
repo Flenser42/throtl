@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-09-21
+
+### Fixed
+
+- **Per-app rates were inaccurate.** nethogs' built-in rate divides by its
+  assumed `PERIOD` and drifts under load (measured: 2.0 MB/s reported while the
+  kernel and the app itself showed ~2.5 MB/s). The monitor now runs nethogs in
+  `-v 1` mode (cumulative kB) and computes the rate itself from the delta over a
+  monotonic clock. Verified against the kernel: Agent.exe 2.42–2.73 vs 2.52 MB/s.
+
 ## [0.5.1] - 2026-09-20
 
 ### Fixed
@@ -229,7 +239,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/Flenser42/throtl/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/Flenser42/throtl/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Flenser42/throtl/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/Flenser42/throtl/compare/v0.4.1...v0.4.2

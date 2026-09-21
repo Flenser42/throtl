@@ -49,17 +49,18 @@ class TraceParserTickTest(unittest.TestCase):
         tick = ticks[0]
         self.assertIn("1457", tick)
         self.assertEqual(tick["1457"]["name"], "/usr/lib/firefox/firefox")
-        self.assertEqual(tick["1457"]["download"], monitor._kBs_to_kbit(300.0))
-        self.assertEqual(tick["1457"]["upload"], monitor._kBs_to_kbit(2.0))
+        # -v 1: kumulativ (KiB), nicht Rate
+        self.assertEqual(tick["1457"]["recv_kB"], 300.0)
+        self.assertEqual(tick["1457"]["sent_kB"], 2.0)
 
     def test_recv_is_download(self):
         parser = TraceParser()
         ticks = parser.feed(TRACE.decode())
         ticks.append(parser.finish())
-        # JDownloader: sent 80 (upload), recv 40 (download)
+        # JDownloader: sent 80 (upload), recv 40 (download), kumulativ
         jd = ticks[0]["4001"]
-        self.assertEqual(jd["upload"], monitor._kBs_to_kbit(80.0))
-        self.assertEqual(jd["download"], monitor._kBs_to_kbit(40.0))
+        self.assertEqual(jd["sent_kB"], 80.0)
+        self.assertEqual(jd["recv_kB"], 40.0)
 
     def test_process_disappears(self):
         parser = TraceParser()
@@ -101,15 +102,41 @@ class NethogsMonitorTest(unittest.TestCase):
     def test_build_argv(self):
         mon = NethogsMonitor("wlo1", interval=2.0, cmd="nethogs")
         self.assertEqual(mon._build_argv(),
-                         ["nethogs", "-t", "-d", "2.0", "-C", "-l", "wlo1"])
+                         ["nethogs", "-t", "-d", "2.0", "-v", "1", "-C", "-l", "wlo1"])
 
     def test_build_argv_skips_auto_device(self):
         mon = NethogsMonitor("auto", interval=1.0, cmd="nethogs")
-        self.assertEqual(mon._build_argv(), ["nethogs", "-t", "-d", "1.0", "-C", "-l"])
+        self.assertEqual(mon._build_argv(),
+                         ["nethogs", "-t", "-d", "1.0", "-v", "1", "-C", "-l"])
 
     def test_build_argv_without_udp(self):
         mon = NethogsMonitor("wlo1", interval=1.0, cmd="nethogs", capture_udp=False)
-        self.assertEqual(mon._build_argv(), ["nethogs", "-t", "-d", "1.0", "-l", "wlo1"])
+        self.assertEqual(mon._build_argv(),
+                         ["nethogs", "-t", "-d", "1.0", "-v", "1", "-l", "wlo1"])
+
+    def test_kib_delta_conversion(self):
+        # nethogs zaehlt KiB: 1000 KiB in 1 s = 8192 kbit/s.
+        self.assertAlmostEqual(monitor._kb_delta_to_kbit(1000.0, 1.0), 8192.0,
+                               places=3)
+        self.assertEqual(monitor._kb_delta_to_kbit(1000.0, 0.0), 0.0)
+
+    def test_rates_from_cumulative_tick(self):
+        mon = NethogsMonitor("lo", inject=io.StringIO(""))
+        mon._prev = {"1": (100.0, 1000.0, 0.0)}
+        rates = mon._rates_from_tick(
+            {"1": {"name": "x", "uid": "1000",
+                    "recv_kB": 3000.0, "sent_kB": 0.0}}, now=101.0)
+        self.assertAlmostEqual(rates["1"]["download"], 2000 * 1024 * 8 / 1000,
+                               places=1)
+        self.assertEqual(rates["1"]["name"], "x")
+
+    def test_rates_handle_counter_reset(self):
+        mon = NethogsMonitor("lo", inject=io.StringIO(""))
+        mon._prev = {"1": (100.0, 5000.0, 0.0)}
+        rates = mon._rates_from_tick(
+            {"1": {"name": "x", "uid": "1", "recv_kB": 100.0, "sent_kB": 0.0}},
+            now=101.0)
+        self.assertGreater(rates["1"]["download"], 0)
 
     def test_unattributable_traffic_is_kept(self):
         """Nicht zuordenbarer Traffic darf NICHT verschwinden."""
@@ -141,10 +168,6 @@ class NethogsMonitorTest(unittest.TestCase):
         self.assertIsNotNone(mon.last_error)
         mon.stop()  # darf nicht werfen
         self.assertFalse(mon.is_alive())
-
-    def test_kib_per_second_conversion(self):
-        # nethogs rechnet in 1024er-Schritten: 1 KiB/s = 8.192 kbit/s.
-        self.assertAlmostEqual(monitor._kBs_to_kbit(1000.0), 8192.0, places=3)
 
     def test_injected_stream_reports_alive_until_stopped(self):
         mon = NethogsMonitor("lo", inject=io.StringIO(TRACE.decode()))

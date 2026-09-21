@@ -1,19 +1,23 @@
 """Live per-process bandwidth monitoring via nethogs (trace mode).
 
-nethogs `-t` prints one "Refreshing:" block per interval, each containing lines
-like::
+nethogs `-t -v 1` prints one "Refreshing:" block per interval, each containing
+lines like::
 
-    Program[ <cmdline>]/<pid>/<uid>\t<sent_kBs>\t<recv_kBs>
+    Program[ <cmdline>]/<pid>/<uid>\t<sent_kB>\t<recv_kB>
 
-Values are throughput in kB/s (view mode 0). Per the nethogs source
-(cui.cpp, ``Line::log()``) the first number is ``sent_value`` (upload) and the
-second is ``recv_value`` (download); we map them accordingly and convert to
-kbit/s.
+With ``-v 1`` the values are **cumulative** kB (KiB) since nethogs started, not
+a rate. We deliberately use the cumulative mode and compute the rate ourselves
+from the delta over our own monotonic clock: nethogs' built-in rate divides by
+its assumed ``PERIOD`` and drifts badly under load (observed 2.0 vs 3.9 vs a
+kernel 2.5 MB/s for the same traffic). The delta is exact.
+
+Per the nethogs source (cui.cpp, ``Line::log()``) the first number is
+``sent_value`` (upload) and the second is ``recv_value`` (download); we map them
+accordingly and convert to kbit/s (nethogs counts KiB: 1024 bytes).
 
 Traffic that cannot be attributed to a process is reported by nethogs as
 ``unknown TCP/0/0``. We keep it under a synthetic entry (pid ``-``,
-name ``(unattributed)``) instead of discarding it, so nothing silently
-disappears and the sum reconciles with the interface counters.
+name ``(unattributed)``) instead of discarding it.
 
 We monitor exactly ONE device (the shaped interface): nethogs emits a line per
 (device, process) and the trace format carries no device name, so monitoring
@@ -25,6 +29,7 @@ import os
 import shutil
 import subprocess
 import threading
+import time
 
 # nethogs `-t`: identifier (name/pid/uid) + 2 values
 TRACE_FIELD_COUNT = 3
@@ -108,11 +113,11 @@ def pretty_app_name(cmdline: str) -> str:
 
 
 def parse_trace(line: str):
-    """Parse one nethogs trace line.
+    """Parse one nethogs ``-t -v 1`` trace line.
 
-    Returns ``(name, pid, uid, sent_kBs, recv_kBs)`` or None if unparsable.
-    Unattributable traffic (pid 0 / "unknown …") is returned with
-    ``pid == UNATTRIBUTED_PID`` so the caller can keep it.
+    Returns ``(name, pid, uid, sent_kB, recv_kB)`` (both **cumulative** KiB) or
+    ``None`` if unparsable. Unattributable traffic (pid 0 / "unknown …") is
+    returned with ``pid == UNATTRIBUTED_PID`` so the caller can keep it.
     """
     line = line.rstrip("\n")
     if not line or line == "Refreshing:" or line.startswith("Unknown connection"):
@@ -128,22 +133,24 @@ def parse_trace(line: str):
     uid_str = parts[-1]
     name = "/".join(parts[:-2]) or "?"
     try:
-        sent_kBs = float(sent)
-        recv_kBs = float(recv)
+        sent_kB = float(sent)
+        recv_kB = float(recv)
     except ValueError:
         return None
     if pid_str in ("0", "?") or name.lower().startswith("unknown"):
-        return UNATTRIBUTED_NAME, UNATTRIBUTED_PID, uid_str, sent_kBs, recv_kBs
-    return name, pid_str, uid_str, sent_kBs, recv_kBs
+        return UNATTRIBUTED_NAME, UNATTRIBUTED_PID, uid_str, sent_kB, recv_kB
+    return name, pid_str, uid_str, sent_kB, recv_kB
 
 
-def _kBs_to_kbit(kBs: float) -> float:
-    """nethogs rechnet in 1024er-Schritten (``#define KB (1UL << 10)``), also
-    KiB/s. Intern nutzen wir kbit/s (1000er): 1 KiB/s = 1024*8/1000 kbit/s.
+def _kb_delta_to_kbit(delta_kB: float, seconds: float) -> float:
+    """Ein kumulatives KiB-Delta ueber ``seconds`` in kbit/s umrechnen.
 
-    Vorher wurde KiB/s wie kB/s behandelt -> Raten ~2,4 % zu niedrig.
+    nethogs zaehlt in 1024er-Schritten (``#define KB (1UL << 10)``), intern
+    rechnen wir in kbit/s (1000er): 1 KiB/s = 1024*8/1000 kbit/s.
     """
-    return kBs * 1024.0 * 8.0 / 1000.0
+    if seconds <= 0:
+        return 0.0
+    return delta_kB * 1024.0 * 8.0 / 1000.0 / seconds
 
 
 class TraceParser:
@@ -173,19 +180,17 @@ class TraceParser:
                 continue
             name, pid, uid, sent, recv = parsed
             entry = self._current.get(pid)
-            download = _kBs_to_kbit(recv)
-            upload = _kBs_to_kbit(sent)
             if entry is None:
                 self._current[pid] = {
                     "name": name,
                     "uid": uid,
-                    "download": download,
-                    "upload": upload,
+                    "sent_kB": sent,
+                    "recv_kB": recv,
                 }
             else:
                 # same process on several lines -> accumulate
-                entry["download"] += download
-                entry["upload"] += upload
+                entry["sent_kB"] += sent
+                entry["recv_kB"] += recv
         return ticks
 
     def finish(self) -> dict:
@@ -216,16 +221,17 @@ class NethogsMonitor:
         self._running = False
         self._lock = threading.Lock()
         self._latest = {}
+        self._prev = {}          # pid -> (monotonic, recv_kB, sent_kB)
         self._stderr_tail = collections.deque(maxlen=30)
         self._stderr_thread = None
         self.last_error = None
 
     def _build_argv(self) -> list:
-        # -t trace mode, -d interval. No -v: nethogs' default 0 = kB/s (rate);
-        # -v 1 would be cumulative "total kB".
+        # -t trace mode, -d interval, -v 1 = **cumulative** kB (we compute the
+        # rate ourselves from deltas; nethogs' own rate drifts under load).
         # -C captures TCP *and* UDP (QUIC/VPN/DNS live on UDP and would
         # otherwise be missing entirely).
-        argv = [self.cmd, "-t", "-d", str(self.interval)]
+        argv = [self.cmd, "-t", "-d", str(self.interval), "-v", "1"]
         if self.capture_udp:
             argv.append("-C")
         # -l: vollstaendige Kommandozeile mit ausgeben. Ohne -l meldet nethogs
@@ -255,6 +261,7 @@ class NethogsMonitor:
                 ) from error
             source = self._proc.stdout
         self._running = True
+        self._prev = {}
         self._reader_thread = threading.Thread(
             target=self._read_stream, args=(source,), daemon=True
         )
@@ -284,14 +291,49 @@ class NethogsMonitor:
     def stderr_tail(self) -> list:
         return list(self._stderr_tail)
 
+    def _rates_from_tick(self, tick: dict, now: float) -> dict:
+        """Kumulative nethogs-Werte eines Ticks in kbit/s-Raten umrechnen."""
+        rates = {}
+        for pid, info in tick.items():
+            previous = self._prev.get(pid)
+            if previous is None:
+                continue  # erste Sichtung: erst beim naechsten Tick messbar
+            elapsed = now - previous[0]
+            if elapsed <= 0:
+                continue
+            recv_kB = info.get("recv_kB", 0.0)
+            sent_kB = info.get("sent_kB", 0.0)
+            d_recv = recv_kB - previous[1]
+            d_sent = sent_kB - previous[2]
+            # nethogs-Neustart / Zaehler-Reset: Delta waere negativ -> ganze
+            # aktuelle Summe als Delta nehmen.
+            if d_recv < 0:
+                d_recv = recv_kB
+            if d_sent < 0:
+                d_sent = sent_kB
+            rates[pid] = {
+                "name": info.get("name", "?"),
+                "uid": info.get("uid", ""),
+                "download": _kb_delta_to_kbit(d_recv, elapsed),
+                "upload": _kb_delta_to_kbit(d_sent, elapsed),
+            }
+        return rates
+
     def _read_stream(self, stream) -> None:
         for line in iter(stream.readline, ""):
             if not self._running:
                 break
             try:
                 for tick in self._parser.feed(line):
+                    now = time.monotonic()
+                    rates = self._rates_from_tick(tick, now)
+                    self._prev = {
+                        pid: (now, info.get("recv_kB", 0.0),
+                              info.get("sent_kB", 0.0))
+                        for pid, info in tick.items()
+                    }
                     with self._lock:
-                        self._latest = tick
+                        self._latest = rates
             except Exception:
                 continue
         with self._lock:
