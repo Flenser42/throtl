@@ -29,6 +29,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk, Pango
 
 from ..config import format_window, normalize_window
+from ..monitor import UNATTRIBUTED_NAME
 from ..units import format_rate, format_rate_for_entry, parse_rate_in_unit
 from .widgets import UNIT_LABELS, PriorityDropdown, RateEntry
 
@@ -409,7 +410,7 @@ class ProcessTable(Gtk.Box):
         count = int(blob.get("pid_count") or len(pids) or 1)
         real_pid = blob.get("pid")
         if count > 1:
-            pid_text = f"{count} pids"
+            pid_text = f"{count} processes"
         elif pids and pids[0] not in ("", "-"):
             pid_text = pids[0]
         elif real_pid not in (None, "", "-"):
@@ -427,14 +428,23 @@ class ProcessTable(Gtk.Box):
         pid_l.add_css_class("dim-label")
         box.append(self._cell(pid_l, _COLUMNS[0][2]))
 
-        app_name = _short_name(blob.get("name", "?"), 40)
+        # Der synthetische Name ist kein Kommandopfad — _short_name wuerde ihn
+        # am ersten Leerzeichen zerschneiden.
+        app_name = (UNATTRIBUTED_NAME if unattributed
+                    else _short_name(blob.get("name", "?"), 40))
         name_l = Gtk.Label(label=app_name, xalign=0.0)
         name_l.set_ellipsize(Pango.EllipsizeMode.END)
         name_l.set_hexpand(True)
-        tip = blob.get("exe") or blob.get("name", "")
-        if count > 1:
-            tip = f"{tip}\n({count} processes: {', '.join(blob.get('pids', [])[:8])})"
-        name_l.set_tooltip_text((tip or "")[:500])
+        if unattributed:
+            name_l.set_tooltip_text(
+                "Traffic measured on the interface that could not be matched "
+                "to a running process. It cannot be limited.")
+        else:
+            tip = blob.get("exe") or blob.get("name", "")
+            if count > 1:
+                tip = (f"{tip}\n({count} processes: "
+                       f"{', '.join(blob.get('pids', [])[:8])})")
+            name_l.set_tooltip_text((tip or "")[:500])
 
         # Zeitfenster-Button: klein, mit dem App-Namen in einer Zelle.
         window = rule.get("window")
@@ -448,6 +458,13 @@ class ProcessTable(Gtk.Box):
                 f"Time window: {format_window(window)}\nClick to edit")
         else:
             sched.set_tooltip_text("No time window (always active) — click to add")
+        # Der Zustand darf nicht allein an der Farbe haengen: der „armed"-Fall
+        # setzt zusaetzlich eine Hintergrundflaeche (siehe style.css) und hier
+        # einen Namen fuer Screenreader.
+        sched.update_property(
+            [Gtk.AccessibleProperty.LABEL],
+            [f"Time window for {app_name}: {format_window(window)}"
+             if window else f"No time window for {app_name}"])
         sched.connect("clicked", self._on_edit_window, key)
         name_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         name_box.set_size_request(_COLUMNS[1][2], -1)

@@ -5,6 +5,42 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-09-22
+
+### Added
+
+- **Keyboard control throughout the GUI**: `Ctrl+R` reload, `Ctrl+I`
+  statistics, `Ctrl+S` save profile, `Ctrl+F` focus the filter, `Esc` clears it,
+  `Ctrl+1…9` activate a profile, and `Alt+D` / `Alt+U` / `Alt+P` jump to the
+  global limit fields. Menu items show their accelerators.
+
+### Changed
+
+- **Plain language instead of kernel jargon**: the totals line reads "Total
+  traffic" and "matched to apps" (the interface name moved into its tooltip),
+  grouped rows say "2 processes" instead of "2 pids", and traffic that could not
+  be matched to a process is labelled "(not matched)" with an explanation on
+  hover.
+- **Actionable errors**: transport failures are restated in plain language with
+  a **Retry now** button that reconnects immediately, and the raw daemon message
+  moves into the tooltip instead of being the only thing on screen. The monitor
+  outage banner offers the same retry.
+- The Statistics view is now an `Adw.Dialog` (instead of a secondary window) and
+  its bar chart follows the system light/dark theme rather than being hardcoded
+  dark.
+- The global-priority confirmation shows the label ("Critical") instead of the
+  internal slug ("kritisch").
+- The time-window button in the process table carries a background surface in
+  addition to the accent colour, so its state survives greyscale and colour
+  blindness, and it has an accessible name.
+
+### Fixed
+
+- The unmatched-traffic row's label was truncated to `(not` because the name
+  shortening treated the synthetic label as a command line.
+- Global limit toasts name the field that changed ("Download limit updated").
+- The `ThrotlWindow` docstring described a status bar that no longer exists.
+
 ## [0.7.0] - 2026-09-22
 
 ### Changed
@@ -269,7 +305,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/Flenser42/throtl/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Flenser42/throtl/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Flenser42/throtl/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/Flenser42/throtl/compare/v0.5.1...v0.5.2

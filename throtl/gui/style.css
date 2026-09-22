@@ -93,8 +93,11 @@
     color: @window_fg_color;
 }
 
+/* „armed" traegt bewusst mehr als Farbe: die Hintergrundflaeche bleibt auch
+ * bei Farbblindheit oder in Graustufen sichtbar. */
 .row-window.armed {
     color: @accent_color;
+    background-color: alpha(@accent_bg_color, 0.16);
 }
 
 /* Tabular numbers keep the columns from jittering while rates change. */

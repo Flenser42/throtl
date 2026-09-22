@@ -38,6 +38,41 @@ WINDOW_CHOICES = (
 )
 
 
+def theme_colors() -> dict:
+    """Graph-Farben je nach Hell/Dunkel (Adwaita-Schema).
+
+    Ein ``Gtk.DrawingArea`` kann die benannten Adwaita-Farben nicht lesen,
+    deshalb liegen die Literale hier an genau einer Stelle: Live-Graph und
+    Statistik-Graph teilen sie sich, damit beide Themes stimmen.
+    """
+    try:
+        import gi
+
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        dark = Adw.StyleManager.get_default().get_dark()
+    except Exception:
+        dark = True
+    if dark:
+        return {
+            "bg": (0.055, 0.067, 0.082, 1.0),
+            "grid": (0.20, 0.24, 0.28, 0.6),
+            "text": (0.55, 0.61, 0.67, 0.95),
+            "down": (0.31, 0.82, 0.50, 1.0),
+            "up": (0.96, 0.64, 0.35, 1.0),
+            "marker": (0.85, 0.89, 0.94, 0.55),
+        }
+    return {
+        "bg": (0.98, 0.98, 0.98, 1.0),
+        "grid": (0.85, 0.87, 0.89, 1.0),
+        "text": (0.33, 0.36, 0.40, 0.95),
+        "down": (0.18, 0.76, 0.47, 1.0),
+        "up": (0.90, 0.42, 0.00, 1.0),
+        "marker": (0.20, 0.22, 0.25, 0.55),
+    }
+
+
 class BandwidthGraph(Gtk.Box):
     """Bandwidth over time with auto-scrolling and a hover readout."""
 
@@ -250,32 +285,7 @@ class BandwidthGraph(Gtk.Box):
 
     def _colors(self) -> dict:
         """Farben je nach Hell/Dunkel (Adwaita-Schema)."""
-        try:
-            import gi
-
-            gi.require_version("Adw", "1")
-            from gi.repository import Adw
-
-            dark = Adw.StyleManager.get_default().get_dark()
-        except Exception:
-            dark = True
-        if dark:
-            return {
-                "bg": (0.055, 0.067, 0.082, 1.0),
-                "grid": (0.20, 0.24, 0.28, 0.6),
-                "text": (0.55, 0.61, 0.67, 0.95),
-                "down": (0.31, 0.82, 0.50, 1.0),
-                "up": (0.96, 0.64, 0.35, 1.0),
-                "marker": (0.85, 0.89, 0.94, 0.55),
-            }
-        return {
-            "bg": (0.98, 0.98, 0.98, 1.0),
-            "grid": (0.85, 0.87, 0.89, 1.0),
-            "text": (0.33, 0.36, 0.40, 0.95),
-            "down": (0.18, 0.76, 0.47, 1.0),
-            "up": (0.90, 0.42, 0.00, 1.0),
-            "marker": (0.20, 0.22, 0.25, 0.55),
-        }
+        return theme_colors()
 
     def _draw(self, _area, cr, width, height, _data) -> None:
         colors = self._colors()

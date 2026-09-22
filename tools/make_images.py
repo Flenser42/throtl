@@ -78,7 +78,7 @@ APPS = [
     ("Firefox", "/usr/lib/firefox/firefox", 19200.0, 1150.0, ["4120", "4188"]),
     ("Spotify", "/usr/share/spotify/spotify", 2560.0, 520.0, ["7710"]),
     ("ssh", "ssh", 160.0, 1600.0, ["3366"]),
-    ("(unattributed)", "", 4000.0, 210.0, ["-"]),
+    ("(not matched)", "", 4000.0, 210.0, ["-"]),
 ]
 
 
@@ -319,7 +319,6 @@ def main():
 
     # Statistik-Dialog (Verlaufsgraph + App-Liste).
     stats = StatsDialog(win, FakeGui())
-    stats.set_default_size(520, 520)
     stats.present()
     pump(12)
     stats._refresh()
@@ -327,7 +326,7 @@ def main():
     stats_path = os.path.join(IMAGES, "stats.png")
     render(stats, stats_path)
     _draw_stats_graph_overlay(stats, stats_path)
-    stats.destroy()
+    stats.force_close()
     pump(4)
     print("Statistik-Screenshot geschrieben.")
 

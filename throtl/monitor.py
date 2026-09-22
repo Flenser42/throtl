@@ -17,7 +17,7 @@ accordingly and convert to kbit/s (nethogs counts KiB: 1024 bytes).
 
 Traffic that cannot be attributed to a process is reported by nethogs as
 ``unknown TCP/0/0``. We keep it under a synthetic entry (pid ``-``,
-name ``(unattributed)``) instead of discarding it.
+name ``(not matched)``) instead of discarding it.
 
 We monitor exactly ONE device (the shaped interface): nethogs emits a line per
 (device, process) and the trace format carries no device name, so monitoring
@@ -36,7 +36,7 @@ TRACE_FIELD_COUNT = 3
 
 # Synthetic pid/name for traffic nethogs cannot attribute to a process
 UNATTRIBUTED_PID = "-"
-UNATTRIBUTED_NAME = "(unattributed)"
+UNATTRIBUTED_NAME = "(not matched)"
 
 
 def resolve_nethogs_binary(cmd: str | None = None) -> str:

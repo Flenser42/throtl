@@ -303,7 +303,7 @@ class ProcessTableGroupedTest(unittest.TestCase):
         # Prozess-Spalte zeigt die Anzahl der PIDs
         row = t._rows["legendary"]
         pid_label = row.box.get_first_child().get_first_child()
-        self.assertEqual(pid_label.get_text(), "3 pids")
+        self.assertEqual(pid_label.get_text(), "3 processes")
 
     def test_grouped_sorted_by_summed_rate(self):
         from throtl.gui.process_pane import ProcessTable
@@ -429,7 +429,103 @@ class StatsDialogTest(unittest.TestCase):
 
         dialog = StatsDialog(None, _Gui())
         self.assertIsNotNone(dialog.graph)
-        dialog.destroy()
+        import gi
+
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        self.assertIsInstance(dialog, Adw.Dialog)
+        dialog.force_close()
+
+
+class PlainErrorTest(unittest.TestCase):
+    """Rohe Daemon-Meldungen werden in Klartext uebersetzt, nie erfunden."""
+
+    def test_transport_error_offers_retry(self):
+        from throtl.gui.app import _plain_error
+
+        title, details, offline = _plain_error("Connection refused")
+        self.assertTrue(offline)
+        self.assertIn("Reconnecting", title)
+        self.assertEqual(details, "Connection refused")
+
+    def test_group_hint_keeps_the_daemon_diagnosis(self):
+        from throtl.gui.app import _plain_error
+
+        title, details, offline = _plain_error(
+            "Socket not accessible.\nRun: newgrp throtl")
+        self.assertFalse(offline)
+        self.assertEqual(title, "Socket not accessible.")
+        self.assertIn("newgrp", details)
+
+    def test_unknown_message_passes_through_unchanged(self):
+        from throtl.gui.app import _plain_error
+
+        title, details, offline = _plain_error("Disk on fire")
+        self.assertEqual(title, "Disk on fire")
+        self.assertEqual(details, "")
+        self.assertFalse(offline)
+
+
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class KeyboardShortcutTest(unittest.TestCase):
+    """Tastaturbedienung: Kuerzel registriert, Esc verbraucht nur was es loest."""
+
+    # Jede Gtk.Application braucht eine eigene ID — sonst kollidiert der
+    # zweite Test der Klasse beim Registrieren.
+    _seq = 0
+
+    @staticmethod
+    def _window():
+        import gi
+
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        from throtl.gui.app import ThrotlWindow
+
+        class _Gui:
+            connected = True
+
+            def call(self, method, params=None, timeout=10):
+                return {}
+
+            def call_async(self, method, params=None, **kwargs):
+                pass
+
+            def shutdown(self):
+                pass
+
+        KeyboardShortcutTest._seq += 1
+        app = Adw.Application(
+            application_id=f"io.github.throtl.keytest{KeyboardShortcutTest._seq}")
+        app.register(None)
+        return ThrotlWindow(app, _Gui())
+
+    def test_window_registers_shortcuts(self):
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gtk
+
+        win = self._window()
+        try:
+            self.assertIsInstance(win.shortcuts, Gtk.ShortcutController)
+            # Ctrl+F, Escape und Ctrl+1 … Ctrl+9 (ShortcutController ist ein
+            # GListModel, daher get_n_items).
+            self.assertGreaterEqual(win.shortcuts.get_n_items(), 11)
+        finally:
+            win.destroy()
+
+    def test_escape_only_consumes_when_a_filter_is_set(self):
+        win = self._window()
+        try:
+            self.assertFalse(win._clear_filter())
+            win.search_entry.set_text("firefox")
+            self.assertTrue(win._clear_filter())
+            self.assertEqual(win.search_entry.get_text(), "")
+        finally:
+            win.destroy()
 
 
 @unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")

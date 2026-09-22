@@ -1,13 +1,19 @@
 """Throtl GUI — a per-application bandwidth manager for Linux (GTK4 + libadwaita).
 
 Layout:
-    HeaderBar:  [Throttling switch]                      [Unit ▾] [Reload]
-    ─────────────────────────────────────────────────────────────────────────
+    HeaderBar:  [Throttling switch]   [Profile ▾] [Unit ▾] [Menu]
+    ─────────────────────────────────────────────────────────────────────
+    Banner (only while a persistent problem exists)
     Global limits:  Download [____]  Upload [____]  Priority [▾]   hint…
-    Total:  ▼ 12.3 Mbit/s   ▲ 480 kbit/s
+    Total traffic:  ▼ 12.3 Mbit/s   ▲ 480 kbit/s   N apps · matched to apps …
     Live bandwidth graph (download / upload over time)
+    Filter applications…
     Network table:  PID | Process | ▼ Download | ▲ Upload | DL limit | UL limit | Priority
-    Status / error bar at the bottom.
+
+Feedback is a toast for confirmations and a banner for persistent problems
+(GNOME HIG); there is no status bar. Keyboard: Ctrl+R reload, Ctrl+I
+statistics, Ctrl+S save profile, Ctrl+F focus the filter, Ctrl+1…9 pick a
+profile, Esc clears the filter.
 
 All user-facing text is English. Limit fields are displayed and interpreted in
 the selected unit (MB/s, Mbit/s, KB/s, kbit/s); an explicit suffix like
@@ -27,10 +33,10 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
 from ..units import format_rate, format_rate_for_entry, parse_rate_in_unit
 from .client import GuiClient
-from .graph import BandwidthGraph
+from .graph import BandwidthGraph, theme_colors
 from .prefs import load_prefs, save_prefs
 from .process_pane import ProcessTable
-from .widgets import UNIT_CHOICES, UNIT_IDS, UNIT_LABELS
+from .widgets import PRIORITY_LABELS, UNIT_CHOICES, UNIT_IDS, UNIT_LABELS
 
 APP_ID = "io.github.throtl"
 CSS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "style.css")
@@ -80,11 +86,12 @@ class ThrotlWindow(Adw.ApplicationWindow):
 
         self.banner = Adw.Banner(revealed=False)
         self.banner.set_button_label("Dismiss")
-        self.banner.connect("button-clicked",
-                            lambda *_a: self.banner.set_revealed(False))
+        self._banner_action = None
+        self.banner.connect("button-clicked", self._on_banner_button)
         self.content.add_top_bar(self.banner)
 
         self._build_body()
+        self._build_shortcuts()
 
         # Graph-Farben folgen Hell/Dunkel-Wechseln.
         self._style_manager.connect("notify::dark",
@@ -205,11 +212,14 @@ class ThrotlWindow(Adw.ApplicationWindow):
         globals_card.add_css_class("throtl-globals")
 
         self.global_dl_entry = self._rate_entry()
-        globals_card.append(self._labelled("Download limit", self.global_dl_entry))
+        globals_card.append(
+            self._labelled("Download limit", self.global_dl_entry, "D"))
         self.global_ul_entry = self._rate_entry()
-        globals_card.append(self._labelled("Upload limit", self.global_ul_entry))
+        globals_card.append(
+            self._labelled("Upload limit", self.global_ul_entry, "U"))
         self.global_prio = self._priority_dropdown()
-        globals_card.append(self._labelled("Priority", self.global_prio))
+        globals_card.append(
+            self._labelled("Priority", self.global_prio, "P"))
 
         hint = Gtk.Label(
             label="Empty = unlimited. A global cap enables prioritisation.",
@@ -244,9 +254,9 @@ class ThrotlWindow(Adw.ApplicationWindow):
                        self.total_meta_up):
             self.totals_box.append(widget)
         self.total_label.set_tooltip_text(
-            "Global = real interface throughput (kernel counters, includes "
-            "traffic that cannot be attributed to a process).\n"
-            "attributed = what nethogs could map to processes.")
+            "Total traffic is everything the kernel measured on the network "
+            "interface.\n"
+            "“matched to apps” is the part that could be mapped to a process.")
         page.append(self.totals_box)
 
         # --- Graph card ---
@@ -264,7 +274,8 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self.search_entry.set_hexpand(True)
         self.search_entry.add_css_class("throtl-search")
         self.search_entry.set_tooltip_text(
-            "Show only apps whose name or executable matches this text")
+            "Show only apps whose name or executable matches this text "
+            "(Ctrl+F — Esc clears)")
         self.search_entry.connect("search-changed", self._on_search)
         page.append(self.search_entry)
 
@@ -280,6 +291,49 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self.table.set_vexpand(True)
         page.append(self.table)
 
+    def _build_shortcuts(self) -> None:
+        """Tastaturkuerzel fuer alles, was keine Menue-Action ist.
+
+        Reload/Statistics/Save laufen ueber App-Accels (siehe
+        ``ThrotlApplication.do_startup``), damit das Menue sie anzeigt. Hier
+        bleiben Fokus, Filter und Profilwahl.
+        """
+        controller = Gtk.ShortcutController()
+        controller.set_scope(Gtk.ShortcutScope.GLOBAL)
+
+        def add(accel: str, fn) -> None:
+            def run(*_args):
+                return bool(fn())
+
+            controller.add_shortcut(Gtk.Shortcut.new(
+                Gtk.ShortcutTrigger.parse_string(accel),
+                Gtk.CallbackAction.new(run)))
+
+        add("<Primary>f", self._focus_filter)
+        add("Escape", self._clear_filter)
+        for index in range(9):
+            add(f"<Primary>{index + 1}",
+                lambda index=index: self._select_profile_index(index))
+        self.shortcuts = controller
+        self.add_controller(controller)
+
+    def _focus_filter(self) -> bool:
+        self.search_entry.grab_focus()
+        return True
+
+    def _clear_filter(self) -> bool:
+        # False gibt das Ereignis weiter, damit Esc Dialoge weiterhin schliesst.
+        if not self.search_entry.get_text():
+            return False
+        self.search_entry.set_text("")
+        return True
+
+    def _select_profile_index(self, index: int) -> bool:
+        if index >= len(self._profile_names):
+            return False
+        self.profile_dd.set_selected(index)
+        return True
+
     def _on_search(self, entry) -> None:
         """Filtertext der Prozessliste anwenden und merken."""
         text = entry.get_text()
@@ -293,11 +347,18 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self._prefs["sort_desc"] = bool(desc)
         save_prefs(self._prefs)
 
-    def _labelled(self, caption: str, widget) -> Gtk.Box:
+    def _labelled(self, caption: str, widget, mnemonic: str | None = None):
+        """Caption ueber einem Feld; ``mnemonic`` ergaenzt ein Alt-Kuerzel."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        label = Gtk.Label(label=caption, xalign=0.0)
+        text = caption
+        if mnemonic:
+            text = caption.replace(mnemonic, f"_{mnemonic}", 1)
+        label = Gtk.Label(label=text, xalign=0.0)
+        label.set_use_underline(bool(mnemonic))
         label.add_css_class("caption")
         label.add_css_class("dim-label")
+        if mnemonic:
+            label.set_mnemonic_widget(widget)
         box.append(label)
         box.append(widget)
         return box
@@ -460,10 +521,40 @@ class ThrotlWindow(Adw.ApplicationWindow):
 
     # --- Feedback ---------------------------------------------------------
 
-    def show_error(self, message: str) -> None:
-        """Dauerhaftes Problem: Banner unter der Headerbar (GNOME-HIG)."""
-        self.banner.set_title(str(message))
+    def show_error(self, message: str, action_label: str = "Dismiss",
+                   action=None) -> None:
+        """Dauerhaftes Problem: Banner unter der Headerbar (GNOME-HIG).
+
+        Der Text wird in Klartext uebersetzt; die rohe Meldung bleibt im
+        Tooltip und (mit THROTL_DEBUG=1) im Log, damit sie nicht verloren geht.
+        """
+        title, details, offline = _plain_error(message)
+        if offline and action is None:
+            action_label, action = "Retry now", self._retry_connection
+        self._banner_action = action
+        self.banner.set_title(title)
+        self.banner.set_button_label(action_label)
+        self.banner.set_tooltip_text(details or None)
+        _debug(f"error banner: {message}")
         self.banner.set_revealed(True)
+
+    def _on_banner_button(self, *_args) -> None:
+        action, self._banner_action = self._banner_action, None
+        self.banner.set_revealed(False)
+        if action is not None:
+            try:
+                action()
+            except Exception as error:   # ein kaputter Callback darf nichts reissen
+                self.show_error(str(error))
+
+    def _retry_connection(self) -> None:
+        """Vom Banner aus: sofort neu verbinden statt auf den Poller zu warten."""
+        try:
+            self.gui.connect(timeout=2.0)
+        except Exception:
+            return                      # Meldung kommt ueber on_error
+        if self.gui.connected:
+            self.reload()
 
     def show_info(self, message: str) -> None:
         """Kurzes Feedback: Toast."""
@@ -493,9 +584,11 @@ class ThrotlWindow(Adw.ApplicationWindow):
             return
         err = st.get("monitor_error")
         if err:
-            self.show_error(f"Monitoring disabled — no process list. Cause: {err}")
+            self.show_error(f"Live process data is unavailable — {err}",
+                            action_label="Retry now", action=self.reload)
         elif not st.get("monitoring"):
-            self.show_error("Monitoring is not active — no process list available.")
+            self.show_error("Live process data is unavailable.",
+                            action_label="Retry now", action=self.reload)
 
     def _sync_unit_widgets(self) -> None:
         self.table.set_unit(self.unit)
@@ -538,7 +631,11 @@ class ThrotlWindow(Adw.ApplicationWindow):
         # weil sie auch nicht zuordenbaren Traffic enthaelt.
         g = state.get("global") or {}
         a = state.get("attributed") or {}
-        self.total_label.set_text(f"Global ({iface}):")
+        self.total_label.set_text("Total traffic")
+        self.total_label.set_tooltip_text(
+            f"Everything the kernel measured on {iface}, including traffic that "
+            "cannot be matched to an application.\n"
+            "“matched to apps” is the part that could be mapped to a process.")
         if g.get("download") is None:
             graph_d = a.get("download", 0.0)
             graph_u = a.get("upload", 0.0)
@@ -557,8 +654,8 @@ class ThrotlWindow(Adw.ApplicationWindow):
                 unit_word = "apps"
             else:
                 count = len(processes)
-                unit_word = "procs"
-            self.total_meta.set_text(f"{count} {unit_word} · attributed")
+                unit_word = "processes"
+            self.total_meta.set_text(f"{count} {unit_word} · matched to apps")
             self.total_meta_down.set_text(
                 f"▼ {format_rate(a.get('download', 0.0), self.unit, 1)}")
             self.total_meta_up.set_text(
@@ -668,12 +765,12 @@ class ThrotlWindow(Adw.ApplicationWindow):
             self.show_error(str(error))
 
     def _on_global_dl(self, entry, *_args):
-        self._debounce_global("download_limit", entry)
+        self._debounce_global("download_limit", entry, "Download limit")
 
     def _on_global_ul(self, entry, *_args):
-        self._debounce_global("upload_limit", entry)
+        self._debounce_global("upload_limit", entry, "Upload limit")
 
-    def _debounce_global(self, key, entry):
+    def _debounce_global(self, key, entry, label: str):
         if self._syncing:
             return
         timer_attr = "_timer_" + key.replace("_", "")
@@ -690,7 +787,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
                 return False
             self.gui.call_async(
                 "set_global", {key: value},
-                on_done=lambda _r: self.show_info("Global limit updated"),
+                on_done=lambda _r: self.show_info(f"{label} updated"),
                 on_error=self.show_error,
             )
             return False
@@ -704,9 +801,10 @@ class ThrotlWindow(Adw.ApplicationWindow):
         if self._syncing:
             return
         name = dd.get_priority_name()
+        label = PRIORITY_LABELS.get(name, name)
         self.gui.call_async(
             "set_global", {"download_priority": name, "upload_priority": name},
-            on_done=lambda _r: self.show_info(f"Global priority: {name}"),
+            on_done=lambda _r: self.show_info(f"Global priority: {label}"),
             on_error=self.show_error,
         )
 
@@ -723,6 +821,29 @@ class ThrotlWindow(Adw.ApplicationWindow):
 _BYTE_UNITS = ("B", "KB", "MB", "GB", "TB", "PB")
 
 
+def _plain_error(message: str) -> tuple[str, str, bool]:
+    """Rohe Daemon-/Socket-Meldung in Klartext uebersetzen.
+
+    Rueckgabe: (Satz fuer das Banner, Detailtext fuer den Tooltip, ob es ein
+    Verbindungsproblem ist). Unbekannte Meldungen werden unveraendert
+    durchgelassen — eine erfundene Ursache waere schlimmer als der Rohtext.
+    """
+    text = str(message).strip()
+    low = text.lower()
+    first = text.splitlines()[0].strip() if text else ""
+    # Gruppierungs- und Rechteprobleme zuerst: die Diagnose des Daemons ist
+    # wertvoller als jede generische Meldung.
+    if any(marker in low for marker in
+           ("newgrp", "group", "permission", "access denied", "errno 13")):
+        return (first or "Permission denied.", text, False)
+    if any(marker in low for marker in
+           ("connection refused", "connection reset", "broken pipe",
+            "no such file", "socket", "connect", "timed out", "timeout")):
+        return (f"{first or 'The Throtl service is not reachable.'} "
+                "Reconnecting automatically.", text, True)
+    return (text or "Something went wrong.", "", False)
+
+
 def _format_bytes(value) -> str:
     """Bytes menschenlesbar formatieren (SI, 1000er-Schritte)."""
     try:
@@ -736,11 +857,12 @@ def _format_bytes(value) -> str:
     return f"{amount:.1f} {_BYTE_UNITS[-1]}"
 
 
-class StatsDialog(Adw.Window):
+class StatsDialog(Adw.Dialog):
     """Statistik-Ansicht: Volumen pro App + Verlaufsgraph je Zeitraum.
 
     Tabelle + Balkengraph (Download gruen, Upload orange) mit umschaltbarem
-    Zeitraum (1 h / 2 Tage / 30 Tage).
+    Zeitraum (1 h / 2 Tage / 30 Tage). Ein ``Adw.Dialog`` (GNOME-HIG) statt
+    eines eigenen Fensters; die Graphfarben folgen dem System-Theme.
     """
 
     WINDOW_CHOICES = (
@@ -752,18 +874,15 @@ class StatsDialog(Adw.Window):
     def __init__(self, parent, gui):
         super().__init__()
         self.gui = gui
-        self.set_title("Throtl — Statistics")
-        self.set_default_size(520, 520)
-        try:
-            self.set_transient_for(parent)
-        except (TypeError, AttributeError):
-            pass
+        self._parent = parent
+        self.set_title("Statistics")
+        self.set_content_width(520)
+        self.set_content_height(520)
 
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
-        header.set_title_widget(Gtk.Label(label="Statistics"))
         toolbar.add_top_bar(header)
-        self.set_content(toolbar)
+        self.set_child(toolbar)
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         body.set_margin_top(12)
@@ -811,7 +930,14 @@ class StatsDialog(Adw.Window):
         scroll.set_child(self.listbox)
         body.append(scroll)
 
+        # Graphfarben folgen Hell/Dunkel-Wechseln (wie der Live-Graph).
+        Adw.StyleManager.get_default().connect(
+            "notify::dark", lambda *_a: self.graph.queue_draw())
+
         self._refresh()
+
+    def present(self):  # noqa: D102 - Adw.Dialog.present(parent)
+        Adw.Dialog.present(self, self._parent)
 
     def _window_key(self) -> str:
         idx = self.window_dd.get_selected()
@@ -859,12 +985,13 @@ class StatsDialog(Adw.Window):
 
     def _draw_graph(self, _area, cr, width, height, _data):
         """Balken je Bucket: unten Download (gruen), darueber Upload (orange)."""
-        cr.set_source_rgba(0.06, 0.08, 0.10, 1.0)
+        colors = theme_colors()
+        cr.set_source_rgba(*colors["bg"])
         cr.rectangle(0, 0, width, height)
         cr.fill()
         series = self._series
         if not series:
-            cr.set_source_rgba(0.5, 0.55, 0.6, 1.0)
+            cr.set_source_rgba(*colors["text"])
             cr.set_font_size(11)
             cr.move_to(8, height / 2)
             cr.show_text("No data yet")
@@ -882,19 +1009,19 @@ class StatsDialog(Adw.Window):
             bar_h = (total / peak) * (base - 8.0)
             down_h = (sample.get("download", 0.0) / total) * bar_h
             x = index * slot + (slot - bar) / 2.0
-            cr.set_source_rgba(0.31, 0.82, 0.50, 1.0)
+            cr.set_source_rgba(*colors["down"])
             cr.rectangle(x, base - down_h, bar, down_h)
             cr.fill()
-            cr.set_source_rgba(0.96, 0.64, 0.35, 1.0)
+            cr.set_source_rgba(*colors["up"])
             cr.rectangle(x, base - bar_h, bar, bar_h - down_h)
             cr.fill()
         # Grundlinie + Maximalwert
-        cr.set_source_rgba(0.35, 0.40, 0.45, 0.8)
+        cr.set_source_rgba(*colors["grid"])
         cr.set_line_width(1.0)
         cr.move_to(0, base)
         cr.line_to(width, base)
         cr.stroke()
-        cr.set_source_rgba(0.55, 0.61, 0.67, 0.95)
+        cr.set_source_rgba(*colors["text"])
         cr.set_font_size(10)
         cr.move_to(6, 12)
         cr.show_text(_format_bytes(peak))
@@ -930,6 +1057,11 @@ class ThrotlApplication(Adw.Application):
         _debug("do_startup: begin")
         Adw.Application.do_startup(self)
         _load_css()
+        # Menue-Actions bekommen ihre Kuerzel hier, damit das Menue sie anzeigt.
+        for action, accel in (("win.reload", "<Primary>r"),
+                              ("win.stats", "<Primary>i"),
+                              ("win.save-profile", "<Primary>s")):
+            self.set_accels_for_action(action, [accel])
         _debug("do_startup: done")
 
     def do_activate(self):

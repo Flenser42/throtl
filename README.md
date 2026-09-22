@@ -190,6 +190,18 @@ is sent to the daemon automatically.
 > Limits are displayed and interpreted in the selected unit (MB/s, Mbit/s, KB/s,
 > kbit/s). An explicit suffix such as `2 kbps` always wins over the unit.
 
+#### Keyboard
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+R` | Reload settings and the process list |
+| `Ctrl+I` | Open Statistics |
+| `Ctrl+S` | Save the current settings as a profile |
+| `Ctrl+F` | Focus the application filter |
+| `Esc` | Clear the filter |
+| `Ctrl+1` … `Ctrl+9` | Activate the n-th profile |
+| `Alt+D` / `Alt+U` / `Alt+P` | Jump to the download limit, upload limit, priority field |
+
 ### CLI
 
 The daemon is fully controllable without the GUI:
