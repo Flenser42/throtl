@@ -16,3 +16,7 @@ attic/
 .mypy_cache/
 .coverage
 htmlcov/
+
+# Design context (local only)
+DESIGN.md
+.impeccable/
