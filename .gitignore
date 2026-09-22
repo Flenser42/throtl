@@ -17,6 +17,7 @@ attic/
 .coverage
 htmlcov/
 
-# Design context (local only)
+# Design & product context (local only)
+PRODUCT.md
 DESIGN.md
 .impeccable/
