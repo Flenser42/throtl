@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-09-22
+
+### Changed
+
+- **Redesigned the GUI around the GNOME Human Interface Guidelines.** The app
+  now uses libadwaita's named colours and follows the system light/dark style,
+  with a **Follow System / Light / Dark** choice in the main menu. Header-bar
+  controls are icon-only with tooltips, transient feedback uses **toasts**
+  ("Rule saved"), and persistent problems use a **banner** instead of a status
+  bar. The global limits are a compact card, list rows use hairlines and hover
+  highlights, and the graph picks its palette from the active theme.
+- Dialogs migrated to `Adw.AlertDialog` (no more deprecation warnings).
+- Regenerated the README screenshots (dark **and** light) plus the demo GIF.
+
 ## [0.6.0] - 2026-09-21
 
 ### Changed
@@ -255,7 +269,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/Flenser42/throtl/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Flenser42/throtl/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/Flenser42/throtl/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/Flenser42/throtl/compare/v0.5.0...v0.5.1

@@ -17,7 +17,6 @@ guarded so they never fire daemon calls.
 
 import os
 import sys
-from html import escape as _escape
 
 import gi
 
@@ -52,7 +51,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self.gui = gui
         self.app = app
         self.set_title("Throtl — Network Bandwidth Manager")
-        self.set_default_size(1060, 780)
+        self.set_default_size(1000, 760)
         self.unit = "mBs"
         self._syncing = False
         # Eigener Guard: das Befuellen des Profil-Dropdowns feuert
@@ -63,20 +62,33 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self._budget_counter = 0
         self._budget_notified = set()
         self._profile_names = []
+        self._prefs = load_prefs()
+        self._style_manager = Adw.StyleManager.get_default()
 
         self._build_actions()
+        self._apply_appearance()
+
+        # Toast-Overlay umschliesst die Toolbar-Ansicht: Toasts fuer kurzes
+        # Feedback ("Rule saved"), der Banner unter der Headerbar fuer
+        # dauerhafte Probleme (GNOME-HIG: Toasts/Banners statt Statusleiste).
+        self.toast_overlay = Adw.ToastOverlay()
         self.content = Adw.ToolbarView()
-        self.set_content(self.content)
+        self.toast_overlay.set_child(self.content)
+        self.set_content(self.toast_overlay)
+
         self._build_headerbar()
+
+        self.banner = Adw.Banner(revealed=False)
+        self.banner.set_button_label("Dismiss")
+        self.banner.connect("button-clicked",
+                            lambda *_a: self.banner.set_revealed(False))
+        self.content.add_top_bar(self.banner)
+
         self._build_body()
 
-        # Status / error bar
-        self.status_label = Gtk.Label(label="", xalign=0.0, wrap=True)
-        self.status_label.add_css_class("dim-label")
-        self._status_revealer = Gtk.Revealer()
-        self._status_revealer.add_css_class("status-bar")
-        self._status_revealer.set_child(self.status_label)
-        self.content.add_bottom_bar(self._status_revealer)
+        # Graph-Farben folgen Hell/Dunkel-Wechseln.
+        self._style_manager.connect("notify::dark",
+                                    lambda *_a: self.graph.queue_draw())
 
         self.connect("destroy", self._on_destroy)
         self.present()
@@ -98,45 +110,56 @@ class ThrotlWindow(Adw.ApplicationWindow):
         switch_box.append(self.toggle_switch)
         header.pack_start(switch_box)
 
+        # Hauptmenue. Headerbar-Buttons sind icon-only und flach (GNOME-HIG);
+        # alles Weitere lebt hier drin.
+        menu = Gio.Menu()
+        menu.append("Reload", "win.reload")
+        menu.append("Statistics…", "win.stats")
+        profile_menu = Gio.Menu()
+        profile_menu.append("Save settings as profile…", "win.save-profile")
+        profile_menu.append("Startup profile…", "win.start-profile")
+        profile_menu.append("Delete profile", "win.delete-profile")
+        menu.append_section("Profile", profile_menu)
+        appearance_menu = Gio.Menu()
+        for key, label in (("system", "Follow System"),
+                           ("light", "Light"), ("dark", "Dark")):
+            item = Gio.MenuItem.new(label, None)
+            item.set_action_and_target_value(
+                "win.appearance", GLib.Variant.new_string(key))
+            appearance_menu.append_item(item)
+        menu.append_section("Appearance", appearance_menu)
+        menu_btn = Gtk.MenuButton(icon_name="open-menu-symbolic")
+        menu_btn.set_menu_model(menu)
+        menu_btn.set_tooltip_text("Main menu")
+        header.pack_end(menu_btn)
+
         self.unit_dd = Gtk.DropDown(model=Gio.ListStore.new(Gtk.StringObject))
         for _unit, label in UNIT_CHOICES:
             self.unit_dd.get_model().append(Gtk.StringObject.new(label))
         self.unit_dd.set_selected(0)
+        self.unit_dd.set_valign(Gtk.Align.CENTER)
         self.unit_dd.set_tooltip_text("Display unit")
         self.unit_dd.add_css_class("throtl-unit")
         self.unit_dd.connect("notify::selected", self._on_unit)
         header.pack_end(self.unit_dd)
 
-        refresh_btn = Gtk.Button(icon_name="view-refresh-symbolic")
-        refresh_btn.set_tooltip_text("Reload from daemon")
-        refresh_btn.connect("clicked", lambda *_w: self.reload())
-        header.pack_end(refresh_btn)
-
         self._build_profile_controls(header)
 
     def _build_profile_controls(self, header):
-        """Profil-Auswahl + Menue (Profil speichern/loeschen, Statistik)."""
+        """Profil-Auswahl in der Headerbar."""
         box = Gtk.Box(spacing=6)
         box.append(Gtk.Label(label="Profile"))
         self.profile_dd = Gtk.DropDown(model=Gio.ListStore.new(Gtk.StringObject))
         self.profile_dd.set_tooltip_text("Active profile")
         self.profile_dd.set_size_request(150, -1)
+        self.profile_dd.set_valign(Gtk.Align.CENTER)
         self.profile_dd.connect("notify::selected", self._on_profile_selected)
         box.append(self.profile_dd)
-
-        menu = Gio.Menu()
-        menu.append("Save settings as profile…", "win.save-profile")
-        menu.append("Delete profile", "win.delete-profile")
-        menu.append("Startup profile…", "win.start-profile")
-        menu.append("Statistics…", "win.stats")
-        menu_btn = Gtk.MenuButton(icon_name="open-menu-symbolic")
-        menu_btn.set_menu_model(menu)
-        menu_btn.set_tooltip_text("Profile and statistics")
-        box.append(menu_btn)
         header.pack_end(box)
 
     def _build_actions(self):
         for name, handler in (
+            ("reload", lambda *_a: self.reload()),
             ("save-profile", self._on_save_profile),
             ("delete-profile", self._on_delete_profile),
             ("start-profile", self._on_start_profile),
@@ -145,50 +168,97 @@ class ThrotlWindow(Adw.ApplicationWindow):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", handler)
             self.add_action(action)
+        appearance = Gio.SimpleAction.new_stateful(
+            "appearance", GLib.VariantType.new("s"),
+            GLib.Variant.new_string(self._prefs.get("appearance", "system")))
+        appearance.connect("activate", self._on_appearance)
+        self.add_action(appearance)
+
+    def _on_appearance(self, action, param):
+        value = param.get_string() if param is not None else "system"
+        action.set_state(GLib.Variant.new_string(value))
+        self._prefs["appearance"] = value
+        save_prefs(self._prefs)
+        self._apply_appearance()
+
+    def _apply_appearance(self):
+        """Hell/Dunkel/System anwenden (Adw.StyleManager)."""
+        scheme = {
+            "light": Adw.ColorScheme.FORCE_LIGHT,
+            "dark": Adw.ColorScheme.FORCE_DARK,
+        }.get(self._prefs.get("appearance"), Adw.ColorScheme.DEFAULT)
+        self._style_manager.set_color_scheme(scheme)
 
     def _build_body(self):
-        view = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        view.add_css_class("throtl-root")
-        view.set_margin_top(10)
-        view.set_margin_bottom(10)
-        view.set_margin_start(12)
-        view.set_margin_end(12)
-        self.content.set_content(view)
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        page.add_css_class("throtl-page")
+        page.set_margin_top(12)
+        page.set_margin_bottom(12)
+        page.set_margin_start(12)
+        page.set_margin_end(12)
+        self.content.set_content(page)
 
-        # --- Global limits ---
-        glob = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
-        glob.add_css_class("toolbar")
-        self.global_dl_entry = self._labelled_entry(glob, "Global download limit")
-        self.global_ul_entry = self._labelled_entry(glob, "Global upload limit")
+        # --- Global limits (compact card) ---
+        globals_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                               spacing=20)
+        globals_card.add_css_class("card")
+        globals_card.add_css_class("throtl-globals")
 
-        prio_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        prio_box.append(self._caption("Global priority"))
+        self.global_dl_entry = self._rate_entry()
+        globals_card.append(self._labelled("Download limit", self.global_dl_entry))
+        self.global_ul_entry = self._rate_entry()
+        globals_card.append(self._labelled("Upload limit", self.global_ul_entry))
         self.global_prio = self._priority_dropdown()
-        prio_box.append(self.global_prio)
-        glob.append(prio_box)
+        globals_card.append(self._labelled("Priority", self.global_prio))
 
         hint = Gtk.Label(
-            label="Empty = unlimited. Set a global cap to enable prioritisation.",
+            label="Empty = unlimited. A global cap enables prioritisation.",
             xalign=0.0, wrap=True, hexpand=True)
         hint.add_css_class("dim-label")
         hint.set_valign(Gtk.Align.END)
-        glob.append(hint)
-        view.append(glob)
+        globals_card.append(hint)
+        page.append(globals_card)
 
         self.global_dl_entry.connect("changed", self._on_global_dl)
         self.global_ul_entry.connect("changed", self._on_global_ul)
         self.global_prio.connect("notify::selected", self._on_global_prio)
 
-        # --- Totals + graph ---
-        self.total_label = Gtk.Label(label="Total:  ▼ 0   ▲ 0", xalign=0.0)
-        self.total_label.add_css_class("total-label")
-        view.append(self.total_label)
+        # --- Totals ---
+        self.totals_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                                  spacing=8)
+        self.totals_box.add_css_class("throtl-totals")
+        self.total_label = Gtk.Label(xalign=0.0)
+        self.total_label.add_css_class("throtl-total")
+        self.total_down = Gtk.Label(xalign=0.0)
+        self.total_down.add_css_class("rate-down")
+        self.total_up = Gtk.Label(xalign=0.0)
+        self.total_up.add_css_class("rate-up")
+        self.total_meta = Gtk.Label(xalign=0.0)
+        self.total_meta.add_css_class("dim-label")
+        self.total_meta_down = Gtk.Label(xalign=0.0)
+        self.total_meta_down.add_css_class("rate-down")
+        self.total_meta_up = Gtk.Label(xalign=0.0)
+        self.total_meta_up.add_css_class("rate-up")
+        for widget in (self.total_label, self.total_down, self.total_up,
+                       self.total_meta, self.total_meta_down,
+                       self.total_meta_up):
+            self.totals_box.append(widget)
+        self.total_label.set_tooltip_text(
+            "Global = real interface throughput (kernel counters, includes "
+            "traffic that cannot be attributed to a process).\n"
+            "attributed = what nethogs could map to processes.")
+        page.append(self.totals_box)
 
-        # Scrollbare History (~15 min bei 1 Hz), Hover zeigt Werte
+        # --- Graph card ---
+        graph_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        graph_card.add_css_class("card")
+        graph_card.add_css_class("throtl-graph-card")
         self.graph = BandwidthGraph(max_samples=900, unit=self.unit)
-        view.append(self.graph)
+        self.graph.set_vexpand(False)
+        graph_card.append(self.graph)
+        page.append(graph_card)
 
-        # --- Process table (fuellt den Rest bis zum unteren Rand) ---
+        # --- Filter + process table ---
         self.search_entry = Gtk.SearchEntry()
         self.search_entry.set_placeholder_text("Filter applications…")
         self.search_entry.set_hexpand(True)
@@ -196,11 +266,10 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self.search_entry.set_tooltip_text(
             "Show only apps whose name or executable matches this text")
         self.search_entry.connect("search-changed", self._on_search)
-        view.append(self.search_entry)
+        page.append(self.search_entry)
 
         self.table = ProcessTable(self, unit=self.unit,
                                   on_sort_change=self._on_sort_change)
-        self._prefs = load_prefs()
         saved_sort = self._prefs.get("sort_key")
         if saved_sort in ("pid", "name", "download", "upload", "priority"):
             self.table.set_sort(saved_sort, bool(self._prefs.get("sort_desc", True)))
@@ -209,7 +278,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
             self.search_entry.set_text(saved_filter)
             self.table.set_filter(saved_filter)
         self.table.set_vexpand(True)
-        view.append(self.table)
+        page.append(self.table)
 
     def _on_search(self, entry) -> None:
         """Filtertext der Prozessliste anwenden und merken."""
@@ -224,18 +293,20 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self._prefs["sort_desc"] = bool(desc)
         save_prefs(self._prefs)
 
-    def _caption(self, text: str) -> Gtk.Label:
-        label = Gtk.Label(label=text, xalign=0.0)
+    def _labelled(self, caption: str, widget) -> Gtk.Box:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        label = Gtk.Label(label=caption, xalign=0.0)
+        label.add_css_class("caption")
         label.add_css_class("dim-label")
-        return label
+        box.append(label)
+        box.append(widget)
+        return box
 
-    def _labelled_entry(self, parent: Gtk.Box, caption: str) -> Gtk.Entry:
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        box.append(self._caption(caption))
-        entry = Gtk.Entry(width_chars=12)
+    def _rate_entry(self) -> Gtk.Entry:
+        entry = Gtk.Entry(width_chars=10)
+        entry.set_valign(Gtk.Align.CENTER)
         entry.set_placeholder_text("unlimited")
-        box.append(entry)
-        parent.append(box)
+        entry.add_css_class("throtl-rate-entry")
         return entry
 
     def _priority_dropdown(self):
@@ -243,6 +314,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
 
         dd = PriorityDropdown()
         dd.set_priority_name("normal")
+        dd.set_valign(Gtk.Align.CENTER)
         return dd
 
     # --- Profile ----------------------------------------------------------
@@ -293,11 +365,10 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self.reload()
 
     def _on_save_profile(self, *_args):
-        dialog = Adw.MessageDialog(
-            transient_for=self, heading="Save settings as profile")
-        dialog.set_body(
-            "The current global limits and process rules are stored under the "
-            "given name.")
+        dialog = Adw.AlertDialog(
+            heading="Save settings as profile",
+            body=("The current global limits and process rules are stored "
+                  "under the given name."))
         entry = Gtk.Entry()
         entry.set_placeholder_text("Profile name")
         dialog.set_extra_child(entry)
@@ -305,8 +376,9 @@ class ThrotlWindow(Adw.ApplicationWindow):
         dialog.add_response("save", "Save")
         dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
         dialog.set_default_response("save")
+        dialog.set_close_response("cancel")
         dialog.connect("response", self._on_save_profile_response, entry)
-        dialog.present()
+        dialog.present(self)
 
     def _on_save_profile_response(self, _dialog, response, entry):
         if response != "save":
@@ -325,13 +397,15 @@ class ThrotlWindow(Adw.ApplicationWindow):
         name = self._current_profile()
         if not name:
             return
-        dialog = Adw.MessageDialog(transient_for=self, heading="Delete profile?")
-        dialog.set_body(f'Delete the profile "{name}"?')
+        dialog = Adw.AlertDialog(heading="Delete profile?",
+                                 body=f'Delete the profile "{name}"?')
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("delete", "Delete")
-        dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_response_appearance("delete",
+                                       Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_close_response("cancel")
         dialog.connect("response", self._on_delete_profile_response, name)
-        dialog.present()
+        dialog.present(self)
 
     def _on_delete_profile_response(self, _dialog, response, name):
         if response != "delete":
@@ -354,11 +428,10 @@ class ThrotlWindow(Adw.ApplicationWindow):
             return
         names = ["(none)"] + (result.get("profiles") or [])
         current = cfg.get("start_profile") or "(none)"
-        dialog = Adw.MessageDialog(
-            transient_for=self, heading="Startup profile")
-        dialog.set_body(
-            "This profile is activated whenever the daemon starts. A matching "
-            "schedule still takes priority over it.")
+        dialog = Adw.AlertDialog(
+            heading="Startup profile",
+            body=("This profile is activated whenever the daemon starts. A "
+                  "matching schedule still takes priority over it."))
         dropdown = Gtk.DropDown(model=Gio.ListStore.new(Gtk.StringObject))
         for name in names:
             dropdown.get_model().append(Gtk.StringObject.new(name))
@@ -368,9 +441,10 @@ class ThrotlWindow(Adw.ApplicationWindow):
         dialog.add_response("save", "Save")
         dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
         dialog.set_default_response("save")
+        dialog.set_close_response("cancel")
         dialog.connect("response", self._on_start_profile_response,
                        dropdown, names)
-        dialog.present()
+        dialog.present(self)
 
     def _on_start_profile_response(self, _dialog, response, dropdown, names):
         if response != "save":
@@ -384,17 +458,16 @@ class ThrotlWindow(Adw.ApplicationWindow):
                 f"Startup profile: {name}"),
             on_error=self.show_error)
 
-    # --- Status bar -------------------------------------------------------
+    # --- Feedback ---------------------------------------------------------
 
     def show_error(self, message: str) -> None:
-        self.status_label.set_text(f"⚠  {message}")
-        self._status_revealer.add_css_class("error")
-        self._status_revealer.set_reveal_child(True)
+        """Dauerhaftes Problem: Banner unter der Headerbar (GNOME-HIG)."""
+        self.banner.set_title(str(message))
+        self.banner.set_revealed(True)
 
     def show_info(self, message: str) -> None:
-        self.status_label.set_text(message)
-        self._status_revealer.remove_css_class("error")
-        self._status_revealer.set_reveal_child(True)
+        """Kurzes Feedback: Toast."""
+        self.toast_overlay.add_toast(Adw.Toast.new(str(message)))
 
     # --- Daemon sync ------------------------------------------------------
 
@@ -465,37 +538,31 @@ class ThrotlWindow(Adw.ApplicationWindow):
         # weil sie auch nicht zuordenbaren Traffic enthaelt.
         g = state.get("global") or {}
         a = state.get("attributed") or {}
-        dim = "#8b98a5"
-
-        def span(arrow, value):
-            color = "#4fd07f" if arrow == "▼" else "#f5a45a"
-            text = _escape(format_rate(value, self.unit, 1))
-            return f"<span foreground='{color}'>{arrow} {text}</span>"
-
-        iface_text = _escape(str(iface))
+        self.total_label.set_text(f"Global ({iface}):")
         if g.get("download") is None:
-            main = (f"Global ({iface_text}):   "
-                    f"<span foreground='{dim}'>measuring…</span>")
             graph_d = a.get("download", 0.0)
             graph_u = a.get("upload", 0.0)
+            for widget in (self.total_down, self.total_up,
+                           self.total_meta_down, self.total_meta_up):
+                widget.set_text("")
+            self.total_meta.set_text("measuring…")
         else:
-            main = (f"Global ({iface_text}):   "
-                    f"{span('▼', g.get('download'))}   {span('▲', g.get('upload'))}")
             graph_d, graph_u = g.get("download"), g.get("upload")
-        if "apps" in state:
-            count = len(state.get("apps") or [])
-            unit_word = "apps"
-        else:
-            count = len(processes)
-            unit_word = "procs"
-        sub = (f"<span foreground='{dim}'>{count} {unit_word} · attributed</span>   "
-               f"{span('▼', a.get('download', 0.0))}   "
-               f"{span('▲', a.get('upload', 0.0))}")
-        self.total_label.set_markup(f"{main}      <span foreground='{dim}'>·</span>      {sub}")
-        self.total_label.set_tooltip_text(
-            "Global = real interface throughput (kernel counters, includes "
-            "traffic that cannot be attributed to a process).\n"
-            "attributed = what nethogs could map to processes.")
+            self.total_down.set_text(
+                f"▼ {format_rate(g.get('download'), self.unit, 1)}")
+            self.total_up.set_text(
+                f"▲ {format_rate(g.get('upload'), self.unit, 1)}")
+            if "apps" in state:
+                count = len(state.get("apps") or [])
+                unit_word = "apps"
+            else:
+                count = len(processes)
+                unit_word = "procs"
+            self.total_meta.set_text(f"{count} {unit_word} · attributed")
+            self.total_meta_down.set_text(
+                f"▼ {format_rate(a.get('download', 0.0), self.unit, 1)}")
+            self.total_meta_up.set_text(
+                f"▲ {format_rate(a.get('upload', 0.0), self.unit, 1)}")
         self.graph.push(graph_d, graph_u)
         if not self._syncing:
             enabled = bool(state.get("enabled", True))

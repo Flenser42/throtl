@@ -24,7 +24,7 @@ from gi.repository import Gio, Gtk
 
 from ..units import format_rate
 
-GRAPH_HEIGHT = 132
+GRAPH_HEIGHT = 118
 PAD = 16.0            # horizontal padding inside the canvas
 MIN_CANVAS = 320.0
 
@@ -248,13 +248,44 @@ class BandwidthGraph(Gtk.Box):
 
     # --- Drawing ----------------------------------------------------------
 
+    def _colors(self) -> dict:
+        """Farben je nach Hell/Dunkel (Adwaita-Schema)."""
+        try:
+            import gi
+
+            gi.require_version("Adw", "1")
+            from gi.repository import Adw
+
+            dark = Adw.StyleManager.get_default().get_dark()
+        except Exception:
+            dark = True
+        if dark:
+            return {
+                "bg": (0.055, 0.067, 0.082, 1.0),
+                "grid": (0.20, 0.24, 0.28, 0.6),
+                "text": (0.55, 0.61, 0.67, 0.95),
+                "down": (0.31, 0.82, 0.50, 1.0),
+                "up": (0.96, 0.64, 0.35, 1.0),
+                "marker": (0.85, 0.89, 0.94, 0.55),
+            }
+        return {
+            "bg": (0.98, 0.98, 0.98, 1.0),
+            "grid": (0.85, 0.87, 0.89, 1.0),
+            "text": (0.33, 0.36, 0.40, 0.95),
+            "down": (0.18, 0.76, 0.47, 1.0),
+            "up": (0.90, 0.42, 0.00, 1.0),
+            "marker": (0.20, 0.22, 0.25, 0.55),
+        }
+
     def _draw(self, _area, cr, width, height, _data) -> None:
-        cr.set_source_rgba(0.06, 0.08, 0.10, 1.0)
+        colors = self._colors()
+        cr.set_source_rgba(*colors["bg"])
         cr.rectangle(0, 0, width, height)
         cr.fill()
 
         if not self._samples:
-            self._draw_centered_text(cr, width, height, "Waiting for traffic…")
+            self._draw_centered_text(cr, width, height, "Waiting for traffic…",
+                                     colors["text"])
             return
 
         t_end = self._times[-1]
@@ -269,7 +300,7 @@ class BandwidthGraph(Gtk.Box):
             return 8.0 + (1.0 - frac) * (height - 16.0)
 
         # Grid
-        cr.set_source_rgba(0.20, 0.24, 0.28, 0.6)
+        cr.set_source_rgba(*colors["grid"])
         cr.set_line_width(1.0)
         bands = 4
         for i in range(bands + 1):
@@ -279,28 +310,28 @@ class BandwidthGraph(Gtk.Box):
         cr.stroke()
 
         cr.set_font_size(10)
-        cr.set_source_rgba(0.55, 0.61, 0.67, 0.95)
+        cr.set_source_rgba(*colors["text"])
         cr.move_to(6, 14)
         cr.show_text(format_rate(y_max, self._unit, 1))
         cr.move_to(6, height - 8)
         cr.show_text("0")
 
-        self._stroke_curve(cr, x_of, y_of, 1, (0.35, 0.85, 0.55, 1.0))
-        self._stroke_curve(cr, x_of, y_of, 2, (0.95, 0.62, 0.25, 1.0))
+        self._stroke_curve(cr, x_of, y_of, 1, colors["down"])
+        self._stroke_curve(cr, x_of, y_of, 2, colors["up"])
 
         # Hover marker
         if self._hover is not None and self._hover < len(self._samples):
             hx = x_of(self._hover)
             _t, down, up = self._samples[self._hover]
-            cr.set_source_rgba(0.85, 0.89, 0.94, 0.55)
+            cr.set_source_rgba(*colors["marker"])
             cr.set_line_width(1.0)
             cr.move_to(hx, 4)
             cr.line_to(hx, height - 4)
             cr.stroke()
-            cr.set_source_rgba(0.35, 0.85, 0.55, 1.0)
+            cr.set_source_rgba(*colors["down"])
             cr.arc(hx, y_of(down), 3.0, 0, 6.2832)
             cr.fill()
-            cr.set_source_rgba(0.95, 0.62, 0.25, 1.0)
+            cr.set_source_rgba(*colors["up"])
             cr.arc(hx, y_of(up), 3.0, 0, 6.2832)
             cr.fill()
 
@@ -323,9 +354,9 @@ class BandwidthGraph(Gtk.Box):
             cr.line_to(x_of(i), y_of(self._samples[i][index]))
         cr.stroke()
 
-    def _draw_centered_text(self, cr, width, height, text) -> None:
+    def _draw_centered_text(self, cr, width, height, text, color) -> None:
         cr.set_font_size(11)
-        cr.set_source_rgba(0.5, 0.55, 0.6, 1.0)
+        cr.set_source_rgba(*color)
         extents = cr.text_extents(text)
         cr.move_to((width - extents.width) / 2, height / 2)
         cr.show_text(text)

@@ -167,7 +167,7 @@ def pump(n=6, delay=0.008):
         time.sleep(delay)
 
 
-def render(widget, path):
+def render(widget, path, background=(18, 22, 27)):
     width, height = widget.get_width(), widget.get_height()
     if width <= 0 or height <= 0:
         raise RuntimeError(f"Widget hat keine Groesse: {widget}")
@@ -176,18 +176,18 @@ def render(widget, path):
     paintable.snapshot(snapshot, width, height)
     rect = Graphene.Rect().init(0, 0, width, height)
     _renderer().render_texture(snapshot.to_node(), rect).save_to_png(path)
-    _flatten(path)
+    _flatten(path, background)
     return width, height
 
 
-def _flatten(path):
+def _flatten(path, background=(18, 22, 27)):
     """RGBA auf den App-Hintergrund legen (vermeidet weisse Transparenz)."""
     from PIL import Image
 
     image = Image.open(path)
     if image.mode == "RGBA":
-        background = Image.new("RGBA", image.size, (18, 22, 27, 255))
-        image = Image.alpha_composite(background, image)
+        bg = Image.new("RGBA", image.size, (*background, 255))
+        image = Image.alpha_composite(bg, image)
     image.convert("RGB").save(path)
 
 
@@ -302,6 +302,20 @@ def main():
     crop_widget(screenshot, win.table, win,
                 os.path.join(IMAGES, "table.png"), trim=True)
     print("Screenshots geschrieben.")
+
+    # Heller Modus (zeigt, dass die App dem System-Theme folgt).
+    from gi.repository import Adw as _Adw
+
+    manager = _Adw.StyleManager.get_default()
+    manager.set_color_scheme(_Adw.ColorScheme.FORCE_LIGHT)
+    pump(12)
+    render(win, os.path.join(IMAGES, "screenshot-light.png"),
+           background=(250, 250, 250))
+    crop_widget(os.path.join(IMAGES, "screenshot-light.png"), win.table, win,
+                os.path.join(IMAGES, "table-light.png"), trim=True)
+    manager.set_color_scheme(_Adw.ColorScheme.DEFAULT)
+    pump(8)
+    print("Hell-Modus-Screenshot geschrieben.")
 
     # Statistik-Dialog (Verlaufsgraph + App-Liste).
     stats = StatsDialog(win, FakeGui())

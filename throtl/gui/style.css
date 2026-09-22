@@ -1,145 +1,61 @@
-/* Throtl GUI — dark, quiet, tabular.
+/* Throtl GUI — small additions on top of libadwaita/Adwaita.
  *
- * A cohesive dark palette is defined up front and applied explicitly to every
- * custom dark surface, so the table stays readable regardless of whether the
- * host system theme is light or dark.
+ * Per the GNOME HIG the app uses the platform's named colors and follows the
+ * light/dark/system preference instead of hard-coding a palette. Only the
+ * data-heavy widgets (graph, table, rate colours) need a little custom styling.
  */
 
-@define-color throtl_bg #12161b;
-@define-color throtl_panel #1a1f26;
-@define-color throtl_panel_alt #161b21;
-@define-color throtl_hover #232a33;
-@define-color throtl_border #2b323b;
-@define-color throtl_fg #e6edf3;
-@define-color throtl_dim #8b98a5;
-@define-color throtl_accent #4c9aff;
-@define-color throtl_down #4fd07f;
-@define-color throtl_up #f5a45a;
-@define-color throtl_error #ff7b72;
-
-/* --- Root / chrome --------------------------------------------------- */
-
-.throtl-root {
-    background-color: @throtl_bg;
-    color: @throtl_fg;
-}
-
-/* --- Global limits card ---------------------------------------------- */
-
-.toolbar {
-    background-color: @throtl_panel;
-    border: 1px solid @throtl_border;
-    border-radius: 12px;
-    padding: 12px 16px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-}
-
-.toolbar label {
-    color: @throtl_dim;
+.throtl-page {
+    background-color: @window_bg_color;
+    color: @window_fg_color;
 }
 
 /* --- Totals ---------------------------------------------------------- */
 
-.total-label {
+.throtl-total {
     font-weight: 700;
-    font-size: 1.05em;
-    color: @throtl_fg;
-    padding: 2px 4px;
+}
+
+.rate-down { color: @success_color; }
+.rate-up { color: @warning_color; }
+.legend-down { color: @success_color; font-size: 0.86em; }
+.legend-up { color: @warning_color; font-size: 0.86em; }
+
+/* --- Graph ----------------------------------------------------------- */
+
+.throtl-globals {
+    padding: 10px 16px;
+}
+
+.throtl-graph-card {
+    padding: 4px;
+}
+
+.throtl-graph {
+    border-radius: 8px;
 }
 
 /* --- Table ----------------------------------------------------------- */
 
-/* Panel behind the whole list (header + rows) so the empty area below the
-   last row still reads as part of the table. */
 .table-scroll {
-    background-color: alpha(@throtl_panel, 0.45);
-    border: 1px solid @throtl_border;
-    border-radius: 10px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.30);
+    background-color: @view_bg_color;
+    border: 1px solid @borders;
+    border-radius: 12px;
 }
 
 .table-header-row {
-    background-color: @throtl_panel;
-    border-radius: 8px;
-    padding: 6px 8px;
-    margin-bottom: 4px;
+    background-color: transparent;
+    padding: 4px 8px;
+    margin-bottom: 2px;
+    border-bottom: 1px solid @borders;
 }
 
 .table-header {
     font-weight: 700;
-    font-size: 0.86em;
-    color: @throtl_dim;
+    font-size: 0.82em;
+    color: alpha(@window_fg_color, 0.6);
 }
 
-.row {
-    background-color: @throtl_panel_alt;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    padding: 3px 8px;
-    min-height: 30px;
-    color: @throtl_fg;
-}
-
-.row:hover {
-    background-color: @throtl_hover;
-    border-color: @throtl_border;
-}
-
-.row.unattributed label {
-    color: @throtl_dim;
-    font-style: italic;
-}
-
-/* Colour-code rates like the graph: download green, upload orange. */
-.rate-down { color: @throtl_down; }
-.rate-up { color: @throtl_up; }
-.legend-down { color: @throtl_down; font-size: 0.86em; }
-.legend-up { color: @throtl_up; font-size: 0.86em; }
-
-/* Row time-window button: quiet by default, accent when a window is set. */
-.row-window {
-    padding: 0 2px;
-    min-width: 22px;
-    min-height: 22px;
-    color: @throtl_dim;
-    opacity: 0.45;
-}
-
-.row-window:hover {
-    opacity: 1;
-}
-
-.row-window.armed {
-    color: @throtl_accent;
-    opacity: 1;
-}
-
-/* Tabular numbers keep the columns from jittering while rates change */
-.table-header,
-.row label,
-.throtl-rate-entry {
-    font-feature-settings: "tnum";
-}
-
-/* --- Graph ----------------------------------------------------------- */
-
-.throtl-graph {
-    border-radius: 10px;
-    border: 1px solid @throtl_border;
-    background-color: #0f1317;
-}
-
-/* --- Inputs ---------------------------------------------------------- */
-
-.throtl-rate-entry {
-    min-width: 0;
-    padding-left: 6px;
-    padding-right: 6px;
-}
-
-/* Header-Buttons sollen exakt die Spaltenbreite annehmen, nicht mehr:
-   Buttons bringen sonst Polster/Mindestbreite mit und verschieben die
-   Spalten gegenueber den Datenzeilen. */
 .table-header-row button,
 .table-header-row button.flat {
     padding: 0 2px;
@@ -148,20 +64,55 @@
     border-radius: 4px;
 }
 
-.table-header-row button:hover {
-    background-color: @throtl_hover;
-    color: @throtl_fg;
+.row {
+    background-color: transparent;
+    border-radius: 8px;
+    padding: 3px 8px;
+    min-height: 30px;
+    color: @window_fg_color;
+}
+
+.row:hover {
+    background-color: alpha(@accent_bg_color, 0.12);
+}
+
+.row.unattributed label {
+    color: alpha(@window_fg_color, 0.55);
+    font-style: italic;
+}
+
+/* Row time-window button: quiet by default, accent when a window is set. */
+.row-window {
+    padding: 0 2px;
+    min-width: 22px;
+    min-height: 22px;
+    color: alpha(@window_fg_color, 0.45);
+}
+
+.row-window:hover {
+    color: @window_fg_color;
+}
+
+.row-window.armed {
+    color: @accent_color;
+}
+
+/* Tabular numbers keep the columns from jittering while rates change. */
+.table-header,
+.row label,
+.throtl-rate-entry,
+.throtl-totals label {
+    font-feature-settings: "tnum";
+}
+
+.throtl-rate-entry {
+    min-width: 0;
+    padding-left: 6px;
+    padding-right: 6px;
 }
 
 .throtl-unit {
     margin-left: 4px;
-}
-
-/* --- Filter / search ------------------------------------------------- */
-
-.throtl-search {
-    min-height: 32px;
-    border-radius: 8px;
 }
 
 .throtl-window {
@@ -177,35 +128,8 @@
 
 .empty-title {
     font-weight: 700;
-    color: @throtl_fg;
 }
 
 .empty-hint {
-    color: @throtl_dim;
-}
-
-/* --- Status bar ------------------------------------------------------ */
-
-.status-bar {
-    padding: 6px 12px;
-    background-color: @throtl_panel_alt;
-    color: @throtl_dim;
-    border-top: 1px solid @throtl_border;
-}
-
-.status-bar.error {
-    background-color: alpha(@throtl_error, 0.14);
-    color: @throtl_error;
-}
-
-.status-bar.error label {
-    color: @throtl_error;
-}
-
-.dim-label {
-    color: @throtl_dim;
-}
-
-.bold {
-    font-weight: 700;
+    color: alpha(@window_fg_color, 0.6);
 }

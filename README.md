@@ -24,6 +24,13 @@ It is a thin, well-behaved layer on top of two proven tools:
 
 *Live view: per-app rates, editable limits and priority, auto-scrolling graph.*
 
+### Light & dark
+
+Throtl follows your system style by default and can be pinned from the main
+menu:
+
+![Throtl in light mode](docs/images/screenshot-light.png)
+
 ---
 
 ## Features
@@ -49,6 +56,9 @@ It is a thin, well-behaved layer on top of two proven tools:
 - **Profiles, schedules & startup profile** — save the current limits as named
   profiles ("University", "Evening", "Night"), switch between them automatically by
   weekday and time, and pick one to activate on daemon startup.
+- **Native GNOME design** — built on libadwaita and following your system
+  light/dark preference (or pin Light/Dark in the main menu); the graph and
+  rate colours adapt with it.
 - **Responsive** — TrafficToll restarts are coalesced and happen off the UI
   thread, so the window never freezes while a change is applied.
 - **Headless CLI** — everything the GUI can do, plus `monitor`, `top`,

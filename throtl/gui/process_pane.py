@@ -613,9 +613,8 @@ class RuleWindowDialog:
     def __init__(self, parent, window, row_key, on_save):
         self._row_key = row_key
         self._on_save = on_save
-        root = parent.get_root() if parent is not None else None
-        self.dialog = Adw.MessageDialog(
-            transient_for=root,
+        self._root = parent.get_root() if parent is not None else None
+        self.dialog = Adw.AlertDialog(
             heading="Time window",
             body=("The rule applies only inside this window. Pick days and "
                   "times, then Save. 'Clear' removes the window."))
@@ -665,7 +664,7 @@ class RuleWindowDialog:
         self._update_sensitivity()
 
     def present(self):
-        self.dialog.present()
+        self.dialog.present(self._root)
 
     def _selected_days(self):
         return [index for index, button in self._day_buttons.items()
