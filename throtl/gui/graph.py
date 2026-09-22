@@ -167,7 +167,14 @@ class BandwidthGraph(Gtk.Box):
             # Sobald die Historie das Fenster fuellt, wird normal gescrollt.
             window = max(span, 1.0)
         self._pps = max(0.05, (viewport - 2 * PAD) / window)
-        wanted = int(max(viewport, span * self._pps + 2 * PAD))
+        needed = span * self._pps + 2 * PAD
+        # Scrollbalken nur einblenden, wenn die Historie wirklich breiter ist
+        # als der Viewport (sonst blitzte unten ein voller Track auf).
+        fits = needed <= viewport + 1.0
+        policy = Gtk.PolicyType.NEVER if fits else Gtk.PolicyType.AUTOMATIC
+        if self._scroll.get_policy()[0] != policy:
+            self._scroll.set_policy(policy, Gtk.PolicyType.NEVER)
+        wanted = int(viewport) if fits else int(needed)
         if wanted != self._area.get_width():
             self._area.set_size_request(wanted, GRAPH_HEIGHT)
 

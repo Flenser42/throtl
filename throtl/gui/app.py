@@ -17,6 +17,7 @@ guarded so they never fire daemon calls.
 
 import os
 import sys
+from html import escape as _escape
 
 import gi
 
@@ -123,11 +124,6 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self.profile_dd.connect("notify::selected", self._on_profile_selected)
         box.append(self.profile_dd)
 
-        profile_refresh = Gtk.Button(icon_name="view-refresh-symbolic")
-        profile_refresh.set_tooltip_text("Reload profiles")
-        profile_refresh.connect("clicked", lambda *_w: self._reload_profiles())
-        box.append(profile_refresh)
-
         menu = Gio.Menu()
         menu.append("Save settings as profile…", "win.save-profile")
         menu.append("Delete profile", "win.delete-profile")
@@ -193,10 +189,6 @@ class ThrotlWindow(Adw.ApplicationWindow):
         view.append(self.graph)
 
         # --- Process table (fuellt den Rest bis zum unteren Rand) ---
-        filter_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        filter_caption = Gtk.Label(label="Filter")
-        filter_caption.add_css_class("dim-label")
-        filter_bar.append(filter_caption)
         self.search_entry = Gtk.SearchEntry()
         self.search_entry.set_placeholder_text("Filter applications…")
         self.search_entry.set_hexpand(True)
@@ -204,8 +196,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self.search_entry.set_tooltip_text(
             "Show only apps whose name or executable matches this text")
         self.search_entry.connect("search-changed", self._on_search)
-        filter_bar.append(self.search_entry)
-        view.append(filter_bar)
+        view.append(self.search_entry)
 
         self.table = ProcessTable(self, unit=self.unit,
                                   on_sort_change=self._on_sort_change)
@@ -474,14 +465,22 @@ class ThrotlWindow(Adw.ApplicationWindow):
         # weil sie auch nicht zuordenbaren Traffic enthaelt.
         g = state.get("global") or {}
         a = state.get("attributed") or {}
+        dim = "#8b98a5"
+
+        def span(arrow, value):
+            color = "#4fd07f" if arrow == "▼" else "#f5a45a"
+            text = _escape(format_rate(value, self.unit, 1))
+            return f"<span foreground='{color}'>{arrow} {text}</span>"
+
+        iface_text = _escape(str(iface))
         if g.get("download") is None:
-            main = f"Global ({iface}):  measuring…"
+            main = (f"Global ({iface_text}):   "
+                    f"<span foreground='{dim}'>measuring…</span>")
             graph_d = a.get("download", 0.0)
             graph_u = a.get("upload", 0.0)
         else:
-            main = (f"Global ({iface}):"
-                    f"   ▼ {format_rate(g.get('download'), self.unit, 1)}"
-                    f"   ▲ {format_rate(g.get('upload'), self.unit, 1)}")
+            main = (f"Global ({iface_text}):   "
+                    f"{span('▼', g.get('download'))}   {span('▲', g.get('upload'))}")
             graph_d, graph_u = g.get("download"), g.get("upload")
         if "apps" in state:
             count = len(state.get("apps") or [])
@@ -489,10 +488,10 @@ class ThrotlWindow(Adw.ApplicationWindow):
         else:
             count = len(processes)
             unit_word = "procs"
-        sub = (f"{count} {unit_word}, attributed"
-               f" ▼ {format_rate(a.get('download', 0.0), self.unit, 1)}"
-               f" ▲ {format_rate(a.get('upload', 0.0), self.unit, 1)}")
-        self.total_label.set_text(f"{main}      ·      {sub}")
+        sub = (f"<span foreground='{dim}'>{count} {unit_word} · attributed</span>   "
+               f"{span('▼', a.get('download', 0.0))}   "
+               f"{span('▲', a.get('upload', 0.0))}")
+        self.total_label.set_markup(f"{main}      <span foreground='{dim}'>·</span>      {sub}")
         self.total_label.set_tooltip_text(
             "Global = real interface throughput (kernel counters, includes "
             "traffic that cannot be attributed to a process).\n"

@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-09-21
+
+### Changed
+
+- **GUI polish**: coloured totals row (green download / orange upload), a
+  cleaner header (one reload button instead of two), a single full-width
+  filter field, subtle card shadows and sort-header hover styling.
+- README screenshots and the demo GIF were regenerated. The image tool now
+  loads the app stylesheet, so the generated images match the real UI instead
+  of the default Adwaita theme; a Statistics-dialog screenshot was added.
+
+### Fixed
+
+- The bandwidth graph no longer shows an empty scrollbar when the history fits
+  the selected window.
+
 ## [0.5.2] - 2026-09-21
 
 ### Fixed
@@ -239,7 +255,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Flenser42/throtl/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/Flenser42/throtl/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/Flenser42/throtl/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Flenser42/throtl/compare/v0.4.2...v0.5.0

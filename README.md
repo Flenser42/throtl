@@ -105,10 +105,14 @@ Throtl sets download and upload priority together from a single control.
 
 ### Monitoring semantics
 
-In `-t` mode nethogs prints `Name/pid/uid<TAB>sent<TAB>recv` per tick; per its
-source, the first value is upload and the second is download. Throtl converts
-both to an internal kbit/s schema. Traffic that cannot be attributed to a
-process is kept as a synthetic `(unattributed)` row instead of being dropped.
+Throtl runs nethogs in trace mode with **`-v 1`** (cumulative kB per process)
+and computes the rate itself from the delta between two ticks over a monotonic
+clock. nethogs' built-in rate mode divides by its assumed `PERIOD` and drifts
+badly under load (we measured 2.0 MB/s reported while the kernel and the
+application showed ~2.5 MB/s for the same traffic), so the deltas are used
+directly. nethogs counts KiB (1024-byte units), which Throtl converts to its
+internal kbit/s schema. Traffic that cannot be attributed to a process is kept
+as a synthetic `(unattributed)` row instead of being dropped.
 
 ---
 
@@ -316,10 +320,12 @@ every application into three rolling windows and stores them as
 | `hour` | 1 hour | 2 days |
 | `day` | 1 day | 30 days |
 
-The GUI exposes this under **Statistics…** (window switcher + per-app list);
-the CLI prints it with `throtl-cli stats`. Stored values are **bytes**, derived
-from the sampled rates — see [`docs/TESTING.md`](docs/TESTING.md) for the
-accuracy limits.
+The GUI exposes this under **Statistics…** (window switcher + per-app list and
+history graph); the CLI prints it with `throtl-cli stats`. Stored values are
+**bytes**, derived from the sampled rates — see [`docs/TESTING.md`](docs/TESTING.md)
+for the accuracy limits.
+
+![Statistics dialog](docs/images/stats.png)
 
 ### Simulation mode
 
@@ -384,7 +390,7 @@ throtl/
   protocol.py        IPC: JSON over Unix socket, client with reader thread
   config.py          TOML schema, priorities, rules, profiles, schedules,
                      time windows, rule/persistence helpers
-  monitor.py         nethogs -t parser + NethogsMonitor
+  monitor.py         nethogs cumulative-mode parser + NethogsMonitor
   engine.py          TrafficToll YAML renderer + tt process + SimEngine
   budgets.py         rolling daily/weekly volume budgets
   stats.py           persistent per-app history (ring buffers, 3 windows)

@@ -36,7 +36,7 @@ gi.require_foreign("cairo")
 
 from gi.repository import Adw, GLib, Graphene, Gsk, Gtk  # noqa: E402
 
-from throtl.gui.app import ThrotlWindow  # noqa: E402
+from throtl.gui.app import StatsDialog, ThrotlWindow, _load_css  # noqa: E402
 
 IMAGES = os.path.join(REPO, "docs", "images")
 WIDTH, HEIGHT = 1060, 780
@@ -104,6 +104,25 @@ class FakeGui:
             return {"monitoring": True, "daemon": "0.5.0"}
         if method == "get_budgets":
             return {"enabled": True, "entries": []}
+        if method == "get_stats":
+            return {
+                "window": (params or {}).get("window", "minute"),
+                "apps": [
+                    {"app": "Steam", "download": 4.2e9, "upload": 1.1e8},
+                    {"app": "Firefox", "download": 1.8e9, "upload": 6.0e7},
+                    {"app": "legendary", "download": 9.1e8, "upload": 2.0e7},
+                    {"app": "Spotify", "download": 4.4e8, "upload": 3.0e7},
+                ],
+                "totals": {"download": 7.35e9, "upload": 2.2e8},
+            }
+        if method == "get_stats_history":
+            series = []
+            for i in range(60):
+                download = 3.0e8 + 2.2e8 * math.sin(i / 5.0) + 4.0e7 * (i % 3)
+                series.append({"id": i, "download": download,
+                               "upload": download * 0.09})
+            return {"window": (params or {}).get("window", "minute"),
+                    "series": series}
         return {}
 
     def call_async(self, *args, **kwargs):
@@ -220,11 +239,38 @@ def crop_widget(full_path, widget, root, out_path, trim=False):
         trim_bottom(out_path)
 
 
+def _draw_stats_graph_overlay(stats, path):
+    """Verlaufsgraph per cairo rendern und in den Dialog-Screenshot legen.
+
+    GTK snapshot't die DrawingArea des Dialogs offscreen nicht (der Dialog hat
+    keinen Frame), daher zeichnen wir sie deterministisch selbst.
+    """
+    from PIL import Image
+
+    ok, rect = stats.graph.compute_bounds(stats)
+    if not ok or rect.get_width() <= 1 or rect.get_height() <= 1:
+        return
+    width, height = int(rect.get_width()), int(rect.get_height())
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+    context = cairo.Context(surface)
+    stats._draw_graph(stats.graph, context, width, height, None)
+    overlay = os.path.join(tempfile.gettempdir(), "throtl-stats-graph.png")
+    surface.write_to_png(overlay)
+
+    base = Image.open(path).convert("RGBA")
+    graph = Image.open(overlay).convert("RGBA")
+    base.alpha_composite(graph, (int(rect.get_x()), int(rect.get_y())))
+    base.convert("RGB").save(path)
+
+
 def main():
     random.seed(7)
     os.makedirs(IMAGES, exist_ok=True)
     app = Adw.Application(application_id="io.github.throtl.images")
     app.register(None)
+    # Ohne das laedt ein nacktes Adw.Application unser CSS nicht und die Bilder
+    # zeigen das Default-Adwaita-Theme (keine Rate-Farben, falsche Flaechen).
+    _load_css()
     win = ThrotlWindow(app, FakeGui())
     win.set_default_size(WIDTH, HEIGHT)
     pump(8)
@@ -256,6 +302,20 @@ def main():
     crop_widget(screenshot, win.table, win,
                 os.path.join(IMAGES, "table.png"), trim=True)
     print("Screenshots geschrieben.")
+
+    # Statistik-Dialog (Verlaufsgraph + App-Liste).
+    stats = StatsDialog(win, FakeGui())
+    stats.set_default_size(520, 520)
+    stats.present()
+    pump(12)
+    stats._refresh()
+    pump(8)
+    stats_path = os.path.join(IMAGES, "stats.png")
+    render(stats, stats_path)
+    _draw_stats_graph_overlay(stats, stats_path)
+    stats.destroy()
+    pump(4)
+    print("Statistik-Screenshot geschrieben.")
 
     # Demo-GIF: 30 Frames, Graph scrollt/animiert.
     tmp = tempfile.mkdtemp(prefix="throtl-gif-")
