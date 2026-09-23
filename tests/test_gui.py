@@ -438,6 +438,7 @@ class StatsDialogTest(unittest.TestCase):
         dialog.force_close()
 
 
+@unittest.skipUnless(_gi_available(), "PyGObject nicht verfuegbar")
 class PlainErrorTest(unittest.TestCase):
     """Rohe Daemon-Meldungen werden in Klartext uebersetzt, nie erfunden."""
 
