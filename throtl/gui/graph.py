@@ -37,6 +37,44 @@ WINDOW_CHOICES = (
     ("All", 0),
 )
 
+# Runde Tick-Abstaende in Sekunden, damit die Zeitachse lesbare Werte zeigt.
+_TICK_STEPS = (1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800,
+               3600, 7200, 21600, 43200, 86400)
+
+
+def time_ticks(span_seconds: float, target: int = 4) -> list[float]:
+    """Tick-Offsets in Sekunden vor "jetzt", absteigend.
+
+    Der Abstand wird aus runden Werten gewaehlt (statt den Zeitraum einfach zu
+    vierteln), damit Beschriftungen wie "-15s" oder "-5m" lesbar bleiben. Das
+    rechte Ende ist immer 0 (= jetzt).
+    """
+    if span_seconds <= 0:
+        return [0.0]
+    step = _TICK_STEPS[-1]
+    for candidate in _TICK_STEPS:
+        if span_seconds / candidate <= target:
+            step = candidate
+            break
+    offsets = [0.0]
+    offset = float(step)
+    while offset < span_seconds:
+        offsets.append(offset)
+        offset += step
+    offsets.append(float(span_seconds))
+    return sorted(set(offsets), reverse=True)
+
+
+def _tick_label(offset: float) -> str:
+    """Beschriftung eines Ticks: "now", "-15s", "-5m", "-2h"."""
+    if offset < 1:
+        return "now"
+    if offset < 60:
+        return f"-{int(round(offset))}s"
+    if offset < 3600:
+        return f"-{int(round(offset / 60))}m"
+    return f"-{int(round(offset / 3600))}h"
+
 
 def theme_colors() -> dict:
     """Graph-Farben je nach Hell/Dunkel (Adwaita-Schema).
@@ -146,6 +184,11 @@ class BandwidthGraph(Gtk.Box):
         self._unit = unit
         self._update_readout()
         self._area.queue_draw()
+
+    @property
+    def unit(self) -> str:
+        """Aktuelle Anzeigeeinheit (Gegenstueck zu ``ProcessTable.unit``)."""
+        return self._unit
 
     def push(self, down_kbit: float, up_kbit: float, now: float | None = None) -> None:
         t = _time.time() if now is None else now
@@ -305,26 +348,34 @@ class BandwidthGraph(Gtk.Box):
 
         y_max = self._y_scale()
 
+        # Unten bleibt Platz fuer die Zeitachse.
+        bottom = height - 18.0
+
         def y_of(rate: float) -> float:
             frac = min(1.0, max(0.0, rate / y_max)) if y_max > 0 else 0.0
-            return 8.0 + (1.0 - frac) * (height - 16.0)
+            return 8.0 + (1.0 - frac) * (bottom - 8.0)
 
         # Grid
         cr.set_source_rgba(*colors["grid"])
         cr.set_line_width(1.0)
         bands = 4
         for i in range(bands + 1):
-            yy = 8.0 + i * ((height - 16.0) / bands)
+            yy = 8.0 + i * ((bottom - 8.0) / bands)
             cr.move_to(0, yy)
             cr.line_to(width, yy)
         cr.stroke()
+
+        # Zeitachse: senkrechte Linien an runden Abstaenden, beschriftet.
+        self._draw_time_axis(cr, width, bottom, colors)
 
         cr.set_font_size(10)
         cr.set_source_rgba(*colors["text"])
         cr.move_to(6, 14)
         cr.show_text(format_rate(y_max, self._unit, 1))
-        cr.move_to(6, height - 8)
-        cr.show_text("0")
+        # Mittlere Skalenmarke: die Null ist die Grundlinie selbst, und die
+        # untere Zeile gehoert der Zeitachse.
+        cr.move_to(6, 8.0 + (bottom - 8.0) / 2 + 4)
+        cr.show_text(format_rate(y_max / 2, self._unit, 1))
 
         self._stroke_curve(cr, x_of, y_of, 1, colors["down"])
         self._stroke_curve(cr, x_of, y_of, 2, colors["up"])
@@ -344,6 +395,33 @@ class BandwidthGraph(Gtk.Box):
             cr.set_source_rgba(*colors["up"])
             cr.arc(hx, y_of(up), 3.0, 0, 6.2832)
             cr.fill()
+
+    def _draw_time_axis(self, cr, width: float, bottom: float,
+                        colors: dict) -> None:
+        """Senkrechte Ticks mit Zeitbeschriftung von links bis "jetzt".
+
+        Der sichtbare Zeitraum ergibt sich aus Pixelbreite und Zoom, nicht aus
+        der Fensterwahl — so stimmt die Achse auch nach dem Scrollen zurueck.
+        """
+        pps = max(self._pps, 1e-6)
+        # Gleiche Rechnung wie _recompute: zwischen den Raendern liegen span*pps.
+        span = max(1.0, (width - 2 * PAD) / pps)
+        cr.set_line_width(1.0)
+        for offset in time_ticks(span):
+            xx = width - PAD - offset * pps
+            if xx < 2 or xx > width - 2:
+                continue
+            cr.set_source_rgba(*colors["grid"])
+            cr.move_to(xx, 8.0)
+            cr.line_to(xx, bottom)
+            cr.stroke()
+            label = _tick_label(offset)
+            cr.set_font_size(10)
+            cr.set_source_rgba(*colors["text"])
+            extents = cr.text_extents(label)
+            cr.move_to(min(max(xx - extents.width / 2, 2),
+                           width - extents.width - 2), bottom + 12)
+            cr.show_text(label)
 
     def _y_scale(self) -> float:
         peak = 1.0

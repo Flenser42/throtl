@@ -18,6 +18,64 @@ WINDOWS = {
     "week": ("day", 7),
 }
 
+# SI-Schritte (1000er), passend zu units.parse_size
+_VOLUME_UNITS = ("B", "KB", "MB", "GB", "TB", "PB")
+
+
+def format_volume(value) -> str:
+    """Volumen fuer Eingabefelder formatieren: ``"20 GB"``, ``"1.5 MB"``.
+
+    ``None`` bedeutet "kein Budget" und ergibt einen leeren Text. Das Ergebnis
+    laesst sich mit ``units.parse_size`` wieder exakt einlesen.
+    """
+    if value is None:
+        return ""
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return ""
+    for unit in _VOLUME_UNITS:
+        if amount < 1000 or unit == _VOLUME_UNITS[-1]:
+            text = f"{amount:.1f}".rstrip("0").rstrip(".")
+            return f"{text} {unit}"
+        amount /= 1000.0
+    return f"{amount:.1f} {_VOLUME_UNITS[-1]}"
+
+
+def budget_rows(payload: dict) -> dict:
+    """Antwort von ``get_budgets`` in Anzeigeform bringen.
+
+    Rein und ohne Widgets, damit die Zuordnung der Fenster (Tag/Woche) und die
+    Trennung global/App unabhaengig von der Oberflaeche testbar bleibt.
+    """
+    payload = payload or {}
+    rows = {
+        "enabled": bool(payload.get("enabled", True)),
+        "global": {"day": None, "week": None},
+        "apps": [],
+    }
+    apps: dict[str, dict] = {}
+    for entry in payload.get("entries") or []:
+        window = entry.get("window")
+        if window not in rows["global"]:
+            continue
+        cell = {
+            "used": entry.get("used") or 0.0,
+            "limit": entry.get("limit") or 0,
+            "ratio": entry.get("ratio") or 0.0,
+            "exceeded": bool(entry.get("exceeded")),
+        }
+        if entry.get("scope") == "global":
+            rows["global"][window] = cell
+            continue
+        app = str(entry.get("app") or "").strip()
+        if not app:
+            continue
+        bucket = apps.setdefault(app, {"app": app, "day": None, "week": None})
+        bucket[window] = cell
+    rows["apps"] = [apps[name] for name in sorted(apps)]
+    return rows
+
 
 def _entry(scope: str, app: str | None, window: str, used: float, limit: float) -> dict:
     ratio = (used / limit) if limit else 0.0

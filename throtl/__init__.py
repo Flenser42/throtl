@@ -9,7 +9,7 @@ import grp
 import os
 import tempfile
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 # Konfigurationsverzeichnis (~/.config/throtl)
 CONFIG_DIR_NAME = "throtl"

@@ -98,12 +98,37 @@ class FakeGui:
                            "upload_priority": "normal"},
                 "processes": RULES,
             }
+        if method == "list_processes":
+            return {
+                "interface": "enp34s0",
+                "enabled": True,
+                "apps": [
+                    {"name": name, "exe": exe, "download": down,
+                     "upload": up, "pids": pids, "pid_count": len(pids),
+                     "unattributed": name.startswith("(")}
+                    for name, exe, down, up, pids in APPS
+                ],
+                "processes": RULES,
+            }
         if method == "list_profiles":
             return {"profiles": ["Standard", "University", "Evening"], "active": "Evening"}
         if method == "status":
             return {"monitoring": True, "daemon": "0.5.0"}
         if method == "get_budgets":
-            return {"enabled": True, "entries": []}
+            return {"enabled": True, "entries": [
+                {"scope": "global", "app": None, "window": "day",
+                 "used": 12.4e9, "limit": 20e9, "ratio": 0.62,
+                 "exceeded": False},
+                {"scope": "global", "app": None, "window": "week",
+                 "used": 78.0e9, "limit": 100e9, "ratio": 0.78,
+                 "exceeded": False},
+                {"scope": "app", "app": "Steam", "window": "day",
+                 "used": 31.2e9, "limit": 30e9, "ratio": 1.04,
+                 "exceeded": True},
+                {"scope": "app", "app": "Spotify", "window": "day",
+                 "used": 1.9e9, "limit": 2.0e9, "ratio": 0.95,
+                 "exceeded": False},
+            ]}
         if method == "get_stats":
             return {
                 "window": (params or {}).get("window", "minute"),
@@ -326,9 +351,24 @@ def main():
     stats_path = os.path.join(IMAGES, "stats.png")
     render(stats, stats_path)
     _draw_stats_graph_overlay(stats, stats_path)
+    # Der Dialog selbst ist fenstergross; die sichtbare Karte ist sein Kind.
+    crop_widget(stats_path, stats.get_child(), win, stats_path)
     stats.force_close()
     pump(4)
     print("Statistik-Screenshot geschrieben.")
+
+    # Budget-Editor: globales Volumen + Budgets pro App.
+    from throtl.gui.budget_dialog import BudgetDialog
+
+    budgets = BudgetDialog(win, FakeGui())
+    budgets.present()
+    pump(12)
+    budgets_path = os.path.join(IMAGES, "budgets.png")
+    render(budgets, budgets_path)
+    crop_widget(budgets_path, budgets.get_child(), win, budgets_path)
+    budgets.force_close()
+    pump(4)
+    print("Budget-Screenshot geschrieben.")
 
     # Demo-GIF: 30 Frames, Graph scrollt/animiert.
     tmp = tempfile.mkdtemp(prefix="throtl-gif-")

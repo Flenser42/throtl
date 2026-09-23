@@ -5,6 +5,39 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-09-23
+
+### Added
+
+- **Budget editor** — create, change and remove consumption budgets in the GUI
+  (main menu → **Budgets…**): daily and weekly volume limits, global or per
+  application, with the current usage per window. Until now budgets could only
+  be configured with `throtl-cli budget-set`; the GUI merely reported them.
+- **Update notice** — the app asks the GitHub release API once at start whether a
+  newer version exists and shows a banner with a **Download** button that opens
+  the release page. It never downloads or installs anything, needs no root, and
+  is switchable under **Updates → Check for updates on start**.
+
+### Changed
+
+- **The graph has a real time axis**: round ticks (−60s … now) with vertical
+  gridlines and two y-axis marks instead of a single floating peak value.
+- **The totals are two lines** — "Total traffic" above, "matched to apps (n)"
+  below — instead of six labels in one row that collided in a narrow window.
+- **The header bar lost two controls**: the display unit moved into the menu (it
+  is a set-once preference) and the redundant "Profile" label is gone.
+- **Statistics asks before resetting** — the button wipes recorded history and
+  can no longer be triggered by a single click.
+- A budget over its limit says "over budget" next to the red title, so the state
+  no longer depends on colour alone.
+
+### Fixed
+
+- The unit selection still applies to table, graph, limit fields and daemon after
+  moving into the menu.
+- The README's Statistics and Budgets images are captured tightly around the
+  dialog instead of the whole window.
+
 ## [0.8.0] - 2026-09-22
 
 ### Added
@@ -305,7 +338,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/Flenser42/throtl/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/Flenser42/throtl/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Flenser42/throtl/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Flenser42/throtl/compare/v0.5.2...v0.6.0

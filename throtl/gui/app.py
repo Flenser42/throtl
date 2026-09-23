@@ -23,6 +23,7 @@ guarded so they never fire daemon calls.
 
 import os
 import sys
+import threading
 
 import gi
 
@@ -31,7 +32,10 @@ gi.require_version("Adw", "1")
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
+from .. import __version__ as THROTL_VERSION
 from ..units import format_rate, format_rate_for_entry, parse_rate_in_unit
+from ..version import RELEASES_URL, fetch_latest, is_newer
+from .budget_dialog import BudgetDialog
 from .client import GuiClient
 from .graph import BandwidthGraph, theme_colors
 from .prefs import load_prefs, save_prefs
@@ -93,6 +97,13 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self._build_body()
         self._build_shortcuts()
 
+        # Versionscheck: Netzwerk, Browser und Abbruchstelle sind austauschbar,
+        # damit Tests ohne Netz und ohne Browser laufen.
+        self._update_check_running = False
+        self._update_version = None
+        self._fetch_latest = fetch_latest
+        self._open_uri = _open_uri
+
         # Graph-Farben folgen Hell/Dunkel-Wechseln.
         self._style_manager.connect("notify::dark",
                                     lambda *_a: self.graph.queue_draw())
@@ -122,11 +133,26 @@ class ThrotlWindow(Adw.ApplicationWindow):
         menu = Gio.Menu()
         menu.append("Reload", "win.reload")
         menu.append("Statistics…", "win.stats")
+        menu.append("Budgets…", "win.budgets")
         profile_menu = Gio.Menu()
         profile_menu.append("Save settings as profile…", "win.save-profile")
         profile_menu.append("Startup profile…", "win.start-profile")
         profile_menu.append("Delete profile", "win.delete-profile")
         menu.append_section("Profile", profile_menu)
+        unit_menu = Gio.Menu()
+        for unit_id, label in UNIT_CHOICES:
+            item = Gio.MenuItem.new(label, None)
+            item.set_action_and_target_value(
+                "win.unit", GLib.Variant.new_string(unit_id))
+            unit_menu.append_item(item)
+        menu.append_section("Display unit", unit_menu)
+        updates_menu = Gio.Menu()
+        updates_menu.append("Check for updates", "win.check-updates")
+        auto_item = Gio.MenuItem.new("Check for updates on start", None)
+        auto_item.set_action_and_target_value(
+            "win.check-updates-on-start", GLib.Variant.new_boolean(True))
+        updates_menu.append_item(auto_item)
+        menu.append_section("Updates", updates_menu)
         appearance_menu = Gio.Menu()
         for key, label in (("system", "Follow System"),
                            ("light", "Light"), ("dark", "Dark")):
@@ -140,24 +166,18 @@ class ThrotlWindow(Adw.ApplicationWindow):
         menu_btn.set_tooltip_text("Main menu")
         header.pack_end(menu_btn)
 
-        self.unit_dd = Gtk.DropDown(model=Gio.ListStore.new(Gtk.StringObject))
-        for _unit, label in UNIT_CHOICES:
-            self.unit_dd.get_model().append(Gtk.StringObject.new(label))
-        self.unit_dd.set_selected(0)
-        self.unit_dd.set_valign(Gtk.Align.CENTER)
-        self.unit_dd.set_tooltip_text("Display unit")
-        self.unit_dd.add_css_class("throtl-unit")
-        self.unit_dd.connect("notify::selected", self._on_unit)
-        header.pack_end(self.unit_dd)
-
         self._build_profile_controls(header)
 
     def _build_profile_controls(self, header):
-        """Profil-Auswahl in der Headerbar."""
+        """Profil-Auswahl in der Headerbar.
+
+        Ohne Textlabel: der Dropdown zeigt den aktiven Namen, der Tooltip
+        erklaert ihn (GNOME-Headerbars tragen wenige, klar benannte Elemente).
+        """
         box = Gtk.Box(spacing=6)
-        box.append(Gtk.Label(label="Profile"))
         self.profile_dd = Gtk.DropDown(model=Gio.ListStore.new(Gtk.StringObject))
-        self.profile_dd.set_tooltip_text("Active profile")
+        self.profile_dd.set_tooltip_text(
+            "Active profile (Ctrl+1…9 switches by position)")
         self.profile_dd.set_size_request(150, -1)
         self.profile_dd.set_valign(Gtk.Align.CENTER)
         self.profile_dd.connect("notify::selected", self._on_profile_selected)
@@ -171,10 +191,23 @@ class ThrotlWindow(Adw.ApplicationWindow):
             ("delete-profile", self._on_delete_profile),
             ("start-profile", self._on_start_profile),
             ("stats", self._on_show_stats),
+            ("budgets", self._on_show_budgets),
+            ("check-updates", self._on_check_updates),
         ):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", handler)
             self.add_action(action)
+        auto_update = Gio.SimpleAction.new_stateful(
+            "check-updates-on-start", GLib.VariantType.new("b"),
+            GLib.Variant.new_boolean(
+                bool(self._prefs.get("check_updates", True))))
+        auto_update.connect("activate", self._on_check_updates_on_start)
+        self.add_action(auto_update)
+        unit = Gio.SimpleAction.new_stateful(
+            "unit", GLib.VariantType.new("s"),
+            GLib.Variant.new_string(self.unit))
+        unit.connect("activate", self._on_unit_action)
+        self.add_action(unit)
         appearance = Gio.SimpleAction.new_stateful(
             "appearance", GLib.VariantType.new("s"),
             GLib.Variant.new_string(self._prefs.get("appearance", "system")))
@@ -233,26 +266,38 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self.global_ul_entry.connect("changed", self._on_global_ul)
         self.global_prio.connect("notify::selected", self._on_global_prio)
 
-        # --- Totals ---
-        self.totals_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
-                                  spacing=8)
+        # --- Totals: zwei Zeilen statt sechs Labels in einer Reihe ---
+        self.totals_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
+                                  spacing=2)
         self.totals_box.add_css_class("throtl-totals")
+
+        # Zeile 1: was die Leitung insgesamt macht.
+        self.total_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                                 spacing=8)
         self.total_label = Gtk.Label(xalign=0.0)
         self.total_label.add_css_class("throtl-total")
         self.total_down = Gtk.Label(xalign=0.0)
         self.total_down.add_css_class("rate-down")
         self.total_up = Gtk.Label(xalign=0.0)
         self.total_up.add_css_class("rate-up")
+        for widget in (self.total_label, self.total_down, self.total_up):
+            self.total_row.append(widget)
+
+        # Zeile 2: der Teil, der sich Anwendungen zuordnen liess.
+        self.meta_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                                spacing=8)
         self.total_meta = Gtk.Label(xalign=0.0)
         self.total_meta.add_css_class("dim-label")
         self.total_meta_down = Gtk.Label(xalign=0.0)
         self.total_meta_down.add_css_class("rate-down")
         self.total_meta_up = Gtk.Label(xalign=0.0)
         self.total_meta_up.add_css_class("rate-up")
-        for widget in (self.total_label, self.total_down, self.total_up,
-                       self.total_meta, self.total_meta_down,
+        for widget in (self.total_meta, self.total_meta_down,
                        self.total_meta_up):
-            self.totals_box.append(widget)
+            self.meta_row.append(widget)
+
+        self.totals_box.append(self.total_row)
+        self.totals_box.append(self.meta_row)
         self.total_label.set_tooltip_text(
             "Total traffic is everything the kernel measured on the network "
             "interface.\n"
@@ -480,6 +525,84 @@ class ThrotlWindow(Adw.ApplicationWindow):
     def _on_show_stats(self, *_args):
         StatsDialog(self, self.gui).present()
 
+    def _on_show_budgets(self, *_args):
+        BudgetDialog(self, self.gui).present()
+
+    # --- Versionscheck ----------------------------------------------------
+
+    def _should_check(self, manual: bool) -> bool:
+        """Manuell immer, automatisch nur wenn in den Prefs erlaubt."""
+        return manual or bool(self._prefs.get("check_updates", True))
+
+    def check_for_updates(self, manual: bool = False) -> None:
+        """Version im Hintergrund pruefen (nie blockierend, nie ein Dialog)."""
+        if not self._should_check(manual) or self._update_check_running:
+            return
+        self._update_check_running = True
+        threading.Thread(target=self._update_worker, args=(manual,),
+                         daemon=True).start()
+
+    def _update_worker(self, manual: bool) -> None:
+        try:
+            latest = self._fetch_latest()
+        except Exception:
+            latest = None
+        GLib.idle_add(self._finish_update_check, latest, manual)
+
+    def _finish_update_check(self, latest, manual: bool):
+        self._update_check_running = False
+        if latest is None:
+            if manual:
+                self.show_info("Could not check for updates — are you online?")
+            return False
+        self._on_update_available(latest, force=manual)
+        return False
+
+    def _on_update_available(self, latest: str, force: bool = False) -> None:
+        """Neue Version als Banner melden.
+
+        Die App installiert nichts: der Knopf oeffnet die Release-Seite. Eine
+        weggeklickte Version kommt nicht wieder, ein manueller Check ignoriert
+        das.
+        """
+        if not is_newer(THROTL_VERSION, latest):
+            if force:
+                self.show_info(f"Throtl {THROTL_VERSION} is up to date.")
+            return
+        if not force and self._prefs.get("dismissed_update") == latest:
+            return
+        self._update_version = latest
+        self._banner_action = self._open_release_page
+        self.banner.set_title(
+            f"Throtl {latest} is available (installed: {THROTL_VERSION}). "
+            "Throtl never installs updates by itself.")
+        self.banner.set_button_label("Download")
+        self.banner.set_revealed(True)
+
+    def _open_release_page(self) -> None:
+        """Release-Seite im Standardbrowser oeffnen (kein Root, kein Download)."""
+        if self._update_version:
+            self._prefs["dismissed_update"] = self._update_version
+            save_prefs(self._prefs)
+        uri = (f"{RELEASES_URL}/tag/v{self._update_version}"
+               if self._update_version else RELEASES_URL)
+        try:
+            self._open_uri(self, uri)
+        except Exception as error:
+            self.show_error(f"Could not open the release page: {error}")
+
+    def _on_check_updates(self, *_args):
+        self.check_for_updates(manual=True)
+
+    def _on_check_updates_on_start(self, action, param):
+        enabled = (param.get_boolean() if param is not None
+                   else not action.get_state().get_boolean())
+        action.set_state(GLib.Variant.new_boolean(enabled))
+        self._prefs["check_updates"] = enabled
+        save_prefs(self._prefs)
+        if enabled:
+            self.check_for_updates()
+
     def _on_start_profile(self, *_args):
         try:
             result = self.gui.call("list_profiles")
@@ -593,13 +716,9 @@ class ThrotlWindow(Adw.ApplicationWindow):
     def _sync_unit_widgets(self) -> None:
         self.table.set_unit(self.unit)
         self.graph.set_unit(self.unit)
-        idx = UNIT_IDS.index(self.unit)
-        if self.unit_dd.get_selected() != idx:
-            self._syncing = True
-            try:
-                self.unit_dd.set_selected(idx)
-            finally:
-                self._syncing = False
+        action = self.lookup_action("unit")
+        if action is not None:
+            action.set_state(GLib.Variant.new_string(self.unit))
         hint = f"limit in {UNIT_LABELS.get(self.unit, 'MB/s')}"
         for entry in (self.global_dl_entry, self.global_ul_entry):
             entry.set_placeholder_text(hint)
@@ -651,11 +770,9 @@ class ThrotlWindow(Adw.ApplicationWindow):
                 f"▲ {format_rate(g.get('upload'), self.unit, 1)}")
             if "apps" in state:
                 count = len(state.get("apps") or [])
-                unit_word = "apps"
             else:
                 count = len(processes)
-                unit_word = "processes"
-            self.total_meta.set_text(f"{count} {unit_word} · matched to apps")
+            self.total_meta.set_text(f"matched to apps ({count})")
             self.total_meta_down.set_text(
                 f"▼ {format_rate(a.get('download', 0.0), self.unit, 1)}")
             self.total_meta_up.set_text(
@@ -744,18 +861,26 @@ class ThrotlWindow(Adw.ApplicationWindow):
             self._syncing = False
         self.show_error(message)
 
-    def _on_unit(self, dd, *_args):
-        if self._syncing:
+    def _on_unit_action(self, action, param) -> None:
+        """Menue-Action "win.unit": Anzeigeeinheit wechseln."""
+        unit = param.get_string() if param is not None else "mBs"
+        if unit not in UNIT_IDS:
             return
-        idx = dd.get_selected()
-        if not (0 <= idx < len(UNIT_IDS)):
+        action.set_state(GLib.Variant.new_string(unit))
+        self._set_unit(unit)
+
+    def _set_unit(self, unit: str) -> None:
+        """Einheit auf Tabelle, Graph, Felder und Daemon anwenden."""
+        if unit not in UNIT_IDS:
             return
-        self.unit = UNIT_IDS[idx]
+        self.unit = unit
         self.table.set_unit(self.unit)
         self.graph.set_unit(self.unit)
         hint = f"limit in {UNIT_LABELS.get(self.unit, 'MB/s')}"
         for entry in (self.global_dl_entry, self.global_ul_entry):
             entry.set_placeholder_text(hint)
+        if self._syncing:
+            return
         # Global limit fields zeigen denselben Wert in der neuen Einheit
         try:
             cfg = self.gui.call("get_config")
@@ -819,6 +944,18 @@ class ThrotlWindow(Adw.ApplicationWindow):
 
 
 _BYTE_UNITS = ("B", "KB", "MB", "GB", "TB", "PB")
+
+
+def _open_uri(parent, uri: str) -> None:
+    """Externe URL im Standardbrowser oeffnen.
+
+    Die App laedt nichts herunter und installiert nichts — sie zeigt nur die
+    Release-Seite; das Update macht der Nutzer selbst.
+    """
+    try:
+        Gtk.UriLauncher.new(uri).launch(parent, None, None)
+    except Exception:
+        Gio.AppInfo.launch_default_for_uri(uri, None)
 
 
 def _plain_error(message: str) -> tuple[str, str, bool]:
@@ -1027,6 +1164,23 @@ class StatsDialog(Adw.Dialog):
         cr.show_text(_format_bytes(peak))
 
     def _on_reset(self, *_args):
+        """Zuruecksetzen loescht Verlauf — vorher nachfragen."""
+        dialog = Adw.AlertDialog(
+            heading="Reset statistics?",
+            body="This erases the recorded per-application history. Budgets "
+                 "and this view start from zero again. It cannot be undone.")
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("reset", "Reset")
+        dialog.set_response_appearance("reset",
+                                       Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", self._on_reset_response)
+        dialog.present(self)
+
+    def _on_reset_response(self, _dialog, response):
+        if response != "reset":
+            return
         self.gui.call_async(
             "reset_stats", {},
             on_done=lambda _r: self._refresh(),
@@ -1094,6 +1248,8 @@ class ThrotlApplication(Adw.Application):
         self.gui.start_polling(1.0)
         if self.gui.connected:
             self.window.reload()
+        # Erst wenn das Fenster steht: Versionstill im Hintergrund pruefen.
+        self.window.check_for_updates()
 
     def _on_daemon_connected(self):
         """Called (in the main loop) whenever the poller (re)connects."""

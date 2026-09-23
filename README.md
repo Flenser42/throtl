@@ -64,7 +64,10 @@ menu:
 - **Headless CLI** — everything the GUI can do, plus `monitor`, `top`,
   `watch` (a timed report with an optional alert threshold) and a simulation
   mode that needs neither root nor TrafficToll.
-- **Local only** — a Unix socket, no network port.
+- **Local only** — a Unix socket, no network port. The one outbound request is
+  the optional update check (below).
+- **Update notice** — tells you when a newer release exists and opens its page
+  in your browser. Throtl never installs anything by itself.
 
 ### Graph
 
@@ -201,6 +204,19 @@ is sent to the daemon automatically.
 | `Esc` | Clear the filter |
 | `Ctrl+1` … `Ctrl+9` | Activate the n-th profile |
 | `Alt+D` / `Alt+U` / `Alt+P` | Jump to the download limit, upload limit, priority field |
+
+### Updates
+
+On start, Throtl asks the public GitHub release API which version is current
+and shows a banner when yours is older — *“Throtl 0.9.0 is available (installed:
+0.8.0)”* — with a **Download** button that opens the release page in your
+browser. Throtl never downloads or installs anything, needs no root for this and
+asks nothing of the daemon.
+
+This is the only outbound request the app makes. It carries no account, no
+identifier and no usage data — just a GET for the latest tag. Switch it off in
+the main menu under **Updates → Check for updates on start**; **Check for
+updates** runs it once on demand.
 
 ### CLI
 

@@ -783,7 +783,7 @@ class WindowSmokeTest(unittest.TestCase):
             win.search_entry.set_text("")
             win._on_search(win.search_entry)
             win._on_toggle(win.toggle_switch, False)
-            win._on_unit(win.unit_dd)
+            win._set_unit("kBs")
             win._on_global_prio(win.global_prio)
             win._on_budgets({"enabled": True, "entries": []})
             win.on_state({"interface": "eth0", "enabled": True,
@@ -793,6 +793,52 @@ class WindowSmokeTest(unittest.TestCase):
             win._on_sort_change("name", False)
             self.assertIn("toggle_enabled", [c[0] for c in gui.calls])
             self.assertIn("set_unit", [c[0] for c in gui.calls])
+        finally:
+            win.destroy()
+
+    def test_totals_are_a_two_line_block(self):
+        """Total und „matched to apps" stehen in getrennten Zeilen."""
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gtk
+
+        gui = _FakeWindowGui()
+        win = self._window(gui)
+        try:
+            win.on_state({"interface": "eth0", "enabled": True,
+                          "processes": [], "apps": [], "rules": [],
+                          "global": {"download": 500.0, "upload": 50.0},
+                          "attributed": {"download": 400.0, "upload": 40.0}})
+            self.assertEqual(win.total_label.get_text(), "Total traffic")
+            self.assertIn("matched to apps", win.total_meta.get_text())
+            self.assertEqual(win.totals_box.get_orientation(),
+                             Gtk.Orientation.VERTICAL)
+            self.assertIsNot(win.total_row, win.meta_row)
+            self.assertEqual(win.total_row.get_parent(), win.totals_box)
+            self.assertEqual(win.meta_row.get_parent(), win.totals_box)
+        finally:
+            win.destroy()
+
+    def test_unit_is_a_menu_action_and_still_applies(self):
+        """Die Einheit liegt im Menue, wirkt aber wie vorher."""
+        import gi
+
+        gi.require_version("GLib", "2.0")
+        from gi.repository import GLib
+
+        gui = _FakeWindowGui()
+        win = self._window(gui)
+        try:
+            action = win.lookup_action("unit")
+            self.assertIsNotNone(action, "Einheit muss als Action existieren")
+            action.activate(GLib.Variant.new_string("mbps"))
+            self.assertEqual(win.unit, "mbps")
+            self.assertIn(("set_unit", {"unit": "mbps"}), gui.calls)
+            self.assertEqual(win.table.unit, "mbps")
+            self.assertEqual(win.graph.unit, "mbps")
+            self.assertFalse(hasattr(win, "unit_dd"),
+                             "der Header darf kein Einheiten-Dropdown mehr haben")
         finally:
             win.destroy()
 
@@ -818,6 +864,61 @@ class WindowSmokeTest(unittest.TestCase):
                 None, "cancel", _Dropdown(1), ["(none)", "Uni"])
         finally:
             win.destroy()
+
+
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class GraphTimeAxisTest(unittest.TestCase):
+    """Die Zeitachse des Graphen nutzt runde Abstaende und endet bei 'jetzt'."""
+
+    def test_ticks_are_round_and_include_now(self):
+        from throtl.gui.graph import time_ticks
+
+        self.assertEqual(time_ticks(60), [60.0, 45.0, 30.0, 15.0, 0.0])
+        self.assertEqual(time_ticks(30), [30.0, 20.0, 10.0, 0.0])
+        self.assertEqual(time_ticks(900), [900.0, 600.0, 300.0, 0.0])
+
+    def test_degenerate_span_still_yields_now(self):
+        from throtl.gui.graph import time_ticks
+
+        self.assertEqual(time_ticks(0), [0.0])
+        self.assertEqual(time_ticks(-5), [0.0])
+
+
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class StatsResetTest(unittest.TestCase):
+    """Statistics: Zuruecksetzen fragt vorher nach (Datenverlust)."""
+
+    def _dialog(self):
+        from throtl.gui.app import StatsDialog
+
+        calls = []
+
+        class _Gui:
+            def call(self, method, params=None, timeout=10):
+                if method == "get_stats":
+                    return {"window": "minute", "apps": [], "totals": {}}
+                if method == "get_stats_history":
+                    return {"window": "minute", "series": []}
+                return {}
+
+            def call_async(self, method, params=None, **kwargs):
+                calls.append((method, params))
+                if kwargs.get("on_done"):
+                    kwargs["on_done"]({})
+
+        return StatsDialog(None, _Gui()), calls
+
+    def test_reset_needs_confirmation(self):
+        dialog, calls = self._dialog()
+        try:
+            dialog._on_reset()
+            self.assertEqual([c for c in calls if c[0] == "reset_stats"], [])
+            dialog._on_reset_response(None, "cancel")
+            self.assertEqual([c for c in calls if c[0] == "reset_stats"], [])
+            dialog._on_reset_response(None, "reset")
+            self.assertIn("reset_stats", [c[0] for c in calls])
+        finally:
+            dialog.force_close()
 
 
 if __name__ == "__main__":
