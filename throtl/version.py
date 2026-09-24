@@ -17,8 +17,10 @@ import urllib.request
 from . import __version__
 
 REPOSITORY = "Flenser42/throtl"
+PROJECT_URL = f"https://github.com/{REPOSITORY}"
 LATEST_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
-RELEASES_URL = f"https://github.com/{REPOSITORY}/releases"
+RELEASES_URL = f"{PROJECT_URL}/releases"
+INSTALL_URL = f"{PROJECT_URL}#installation"
 TIMEOUT = 3.0
 
 

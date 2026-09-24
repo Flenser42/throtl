@@ -302,7 +302,7 @@ class ProcessTableGroupedTest(unittest.TestCase):
         self.assertEqual(t.visible_order(), ["legendary", "curl"])  # Download desc
         # Prozess-Spalte zeigt die Anzahl der PIDs
         row = t._rows["legendary"]
-        pid_label = row.box.get_first_child().get_first_child()
+        pid_label = row.line.get_first_child().get_first_child()
         self.assertEqual(pid_label.get_text(), "3 processes")
 
     def test_grouped_sorted_by_summed_rate(self):
@@ -642,8 +642,9 @@ class WindowButtonTest(unittest.TestCase):
 
     @staticmethod
     def _button(roww):
-        # Zelle 1 ist die Process-Spalte (Box: Label + Zeitfenster-Button)
-        name_box = roww.box.get_first_child().get_next_sibling()
+        # Zelle 1 ist die Process-Spalte (Box: Label + Zeitfenster-Button).
+        # ``box`` ist seit der Erklaerzeile der aeussere Zwei-Zeilen-Rahmen.
+        name_box = roww.line.get_first_child().get_next_sibling()
         return name_box.get_last_child()
 
     def test_not_armed_without_window(self):
@@ -796,6 +797,25 @@ class WindowSmokeTest(unittest.TestCase):
         finally:
             win.destroy()
 
+    def test_offline_error_switches_to_the_status_page(self):
+        win = self._window(_FakeWindowGui())
+        try:
+            win.show_error("Connection refused")
+            self.assertEqual(win.stack.get_visible_child_name(), "offline")
+            win.reload()
+            self.assertEqual(win.stack.get_visible_child_name(), "content")
+        finally:
+            win.destroy()
+
+    def test_other_errors_stay_a_banner(self):
+        win = self._window(_FakeWindowGui())
+        try:
+            win.show_error("Disk on fire")
+            self.assertEqual(win.stack.get_visible_child_name(), "content")
+            self.assertTrue(win.banner.get_revealed())
+        finally:
+            win.destroy()
+
     def test_totals_are_a_two_line_block(self):
         """Total und „matched to apps" stehen in getrennten Zeilen."""
         import gi
@@ -919,6 +939,80 @@ class StatsResetTest(unittest.TestCase):
             self.assertIn("reset_stats", [c[0] for c in calls])
         finally:
             dialog.force_close()
+
+
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class RowExplanationTest(unittest.TestCase):
+    """Jede Zeile sagt, welche Regel fuer diese App gilt."""
+
+    WINDOW = {"days": [0, 1, 2, 3, 4], "start": "20:00", "end": "00:00"}
+
+    class _Gui:
+        client = None
+
+        def show_error(self, m): pass
+        def show_info(self, m): pass
+
+    def _table(self, window=None, on_budget=None, download_limit=4000,
+               priority="normal"):
+        from throtl.gui.process_pane import ProcessTable
+
+        table = ProcessTable(self._Gui(), unit="mBs", on_budget=on_budget)
+        rule = {"key": "name:x", "name": "x", "match_type": "name",
+                "match_value": "x", "download_limit": download_limit,
+                "upload_limit": None, "priority": priority,
+                "recursive": False, "window": window}
+        table.set_state({"rules": [rule], "apps": [
+            {"name": "x", "exe": "/x", "download": 1.0, "upload": 1.0,
+             "pids": ["1"], "pid_count": 1, "unattributed": False}]})
+        return table
+
+    def test_row_states_its_own_limit(self):
+        table = self._table()
+        self.assertIn("0.5 MB/s", table._rows["x"].why.get_text())
+
+    def test_row_states_its_time_window(self):
+        table = self._table(window=self.WINDOW)
+        text = table._rows["x"].why.get_text()
+        self.assertIn("20:00-00:00", text)
+        self.assertIn("not active", text.lower())
+
+    def test_row_without_a_rule_has_no_explanation(self):
+        from throtl.gui.process_pane import ProcessTable
+
+        table = ProcessTable(self._Gui(), unit="mBs")
+        table.set_state({"rules": [], "apps": [
+            {"name": "x", "exe": "/x", "download": 1.0, "upload": 1.0,
+             "pids": ["1"], "pid_count": 1, "unattributed": False}]})
+        self.assertEqual(table._rows["x"].why.get_text(), "")
+
+    def test_limit_fields_follow_a_changed_rule(self):
+        """Profilwechsel: dieselbe App, andere Limits — die Felder muessen folgen.
+
+        Die Zeile wird nur einmal gebaut; ohne diesen Abgleich zeigte sie nach
+        einem Profil- oder CLI-Wechsel weiter die alten Werte.
+        """
+        table = self._table(download_limit=4000, priority="normal")
+        self.assertEqual(table._rows["x"].dl.get_text(), "0.5")
+
+        table._rules = [{"key": "name:x", "name": "x",
+                         "match_type": "name", "match_value": "x",
+                         "download_limit": 2000, "upload_limit": None,
+                         "priority": "hoch", "recursive": False,
+                         "window": None}]
+        table.set_state({"rules": table._rules, "apps": [
+            {"name": "x", "exe": "/x", "download": 1.0, "upload": 1.0,
+             "pids": ["1"], "pid_count": 1, "unattributed": False}]})
+
+        self.assertEqual(table._rows["x"].dl.get_text(), "0.25")
+        self.assertEqual(table._rows["x"].prio.get_priority_name(), "hoch")
+
+    def test_row_offers_a_budget_for_that_app(self):
+        seen = []
+        table = self._table(on_budget=seen.append)
+        row = table._rows["x"]
+        self.assertTrue(row.box.activate_action("row.set-budget"))
+        self.assertEqual(seen, ["x"])
 
 
 if __name__ == "__main__":

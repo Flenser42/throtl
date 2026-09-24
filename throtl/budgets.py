@@ -77,6 +77,33 @@ def budget_rows(payload: dict) -> dict:
     return rows
 
 
+# Fenster unterhalb dieser Auslastung melden nichts.
+WARN_RATIO = 0.8
+
+
+def warning_key(entry: dict) -> str:
+    """Eindeutiger Schluessel eines Budgets fuer die Vorwarnung."""
+    return f"{entry.get('scope')}:{entry.get('app')}:{entry.get('window')}"
+
+
+def pending_warnings(entries, warned, threshold: float = WARN_RATIO) -> list:
+    """Budgets, die knapp werden und noch nicht gemeldet wurden.
+
+    Ein bereits ueberschrittenes Budget meldet der bestehende Pfad; hier geht es
+    nur um den Moment davor, in dem man noch reagieren kann.
+    """
+    out = []
+    for entry in entries or []:
+        if entry.get("exceeded"):
+            continue
+        if (entry.get("ratio") or 0.0) < threshold:
+            continue
+        if warning_key(entry) in warned:
+            continue
+        out.append(entry)
+    return out
+
+
 def _entry(scope: str, app: str | None, window: str, used: float, limit: float) -> dict:
     ratio = (used / limit) if limit else 0.0
     return {

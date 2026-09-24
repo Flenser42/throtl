@@ -38,7 +38,7 @@ class AppBudgetRow:
 class BudgetDialog(Adw.Dialog):
     """Editor fuer Verbrauchs-Budgets."""
 
-    def __init__(self, parent, gui):
+    def __init__(self, parent, gui, preselect: str | None = None):
         super().__init__()
         self.gui = gui
         self._parent = parent
@@ -76,6 +76,26 @@ class BudgetDialog(Adw.Dialog):
         body.append(self._build_add_group())
 
         self._reload()
+        if preselect:
+            self._preselect(preselect)
+
+    def _preselect(self, app: str) -> None:
+        """Aus einer Tabellenzeile heraus eine App vorwaehlen.
+
+        Die App laeuft vielleicht gerade nicht mehr, ist aber der Grund, warum
+        der Dialog offen ist — also aufnehmen statt ignorieren.
+        """
+        if app and app not in self._apps:
+            self._apps.append(app)
+            self._apps.sort()
+            model = self.add_dd.get_model()
+            model.remove_all()
+            for name in self._apps:
+                model.append(Gtk.StringObject.new(name))
+        if app in self._apps:
+            self.add_dd.set_selected(self._apps.index(app))
+            self.add_dd.set_sensitive(True)
+            self.add_day.grab_focus()
 
     # --- Aufbau -----------------------------------------------------------
 

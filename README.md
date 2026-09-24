@@ -51,6 +51,14 @@ menu:
 - **Global switch** — turn all shaping on/off without losing your rules.
 - **Consumption budgets** — a rolling daily/weekly volume limit (global or per
   app); the GUI warns and shows a desktop notification when it is exceeded.
+- **Budgets, editable in the app** — main menu → **Budgets…** sets the global
+  daily/weekly volume and per-application budgets, showing how much is already
+  used. A warning arrives at 80 % of a budget, so there is still time to react.
+- **Explains itself** — every affected row says which rule applies (own limit,
+  global limit, time window and whether it is active right now).
+- **Knows when the service is missing** — if the daemon is not reachable, the
+  window shows a status page with **Try again** and **Setup guide** instead of an
+  empty table.
 - **Statistics** — persistent per-app history over 1 h / 2 days / 30 days,
   shown as a table and a graph.
 - **Profiles, schedules & startup profile** — save the current limits as named
@@ -185,10 +193,17 @@ Open **Throtl** from your launcher, or:
 /opt/throtl/bin/throtl-gui
 ```
 
-The window gives you a global on/off switch, the display unit, global limits and
-priority, the live graph and the per-app table. Type a limit into a row's
+The window gives you a global on/off switch, the active profile, global limits
+and priority, the live graph and the per-app table. Type a limit into a row's
 `DL limit` / `UL limit` field (empty = unlimited) and pick a priority; the change
 is sent to the daemon automatically.
+
+Each row explains itself: underneath an application that is affected by
+something, a quiet line says **why** — `Your rule: 0.5 MB/s download, 0.062 MB/s
+upload` or `Your rule: 0.04 MB/s download · Mon-Fri 20:00-00:00 (not active
+now)`. Rows that are unlimited stay one line, so only the interesting ones
+grow. The `⋯` button on a row opens its actions: set a budget for exactly that
+application, or edit its time window.
 
 > Limits are displayed and interpreted in the selected unit (MB/s, Mbit/s, KB/s,
 > kbit/s). An explicit suffix such as `2 kbps` always wins over the unit.
@@ -303,7 +318,7 @@ priority = "niedrig"
 
 [[schedule]]
 profile = "University"
-days = ["mo", "di", "mi", "do", "fr"]
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 start = "08:00"
 end = "14:00"
 ```
@@ -334,7 +349,7 @@ match_type = "exe"
 match_value = "/usr/lib/firefox/firefox"
 download_limit = 1024
 priority = "normal"
-window_days = ["mo", "di", "mi", "do", "fr"]
+window_days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 window_start = "20:00"
 window_end = "00:00"       # before start -> runs across midnight
 ```
@@ -475,6 +490,11 @@ the project follows [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) and has a
 ---
 
 ## Troubleshooting
+
+The window tells you when the service is missing instead of showing an empty
+table:
+
+![Throtl with the service unreachable](docs/images/offline.png)
 
 - **No process list in the GUI** — the daemon could not start `nethogs`. Check
   `throtl-cli status` (`Monitor error`) and `systemctl status throtl`.

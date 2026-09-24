@@ -266,12 +266,25 @@ class WindowTest(unittest.TestCase):
         self.assertEqual(
             config.format_window({"days": [0, 1, 2, 3, 4],
                                   "start": "09:00", "end": "17:00"}),
-            "mo,di,mi,do,fr 09:00-17:00")
+            "Mon-Fri 09:00-17:00")
         self.assertEqual(
             config.format_window({"days": list(range(7)),
                                   "start": "00:00", "end": "23:59"}),
             "daily 00:00-23:59")
         self.assertEqual(config.format_window(None), "")
+
+    def test_format_window_keeps_gaps(self):
+        """Nicht zusammenhaengende Tage bleiben einzeln."""
+        self.assertEqual(
+            config.format_window({"days": [0, 2], "start": "08:00",
+                                  "end": "09:00"}),
+            "Mon,Wed 08:00-09:00")
+
+    def test_format_window_uses_english_day_tokens(self):
+        """Die Oberflaeche ist englisch — die Wochentage auch."""
+        text = config.format_window({"days": [5, 6], "start": "10:00",
+                                     "end": "12:00"})
+        self.assertEqual(text, "Sat,Sun 10:00-12:00")
 
     def test_toml_roundtrip_flat_window(self):
         import tomllib

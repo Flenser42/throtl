@@ -5,6 +5,44 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-09-24
+
+### Added
+
+- **Every row explains itself.** Underneath an application that is affected by
+  something, a quiet line names the rule: own download/upload limits, global
+  limits, or a time window together with whether it is active right now. Rows
+  without anything to explain stay one line, so only the interesting ones grow.
+  This is the question the README used to answer alone.
+- **Row actions** (`⋯` per row): set a budget for exactly that application (the
+  Budgets dialog opens preselected), or edit its time window.
+- **Budget warning at 80 %** — a toast and a desktop notification arrive while
+  there is still time to react, instead of only when the volume is gone.
+- **A status page when the service is unreachable** — the window no longer shows
+  an empty table plus an error banner; it says what is wrong and offers **Try
+  again** and **Setup guide**.
+
+### Fixed
+
+- **Limit fields kept stale values after a profile switch.** Row widgets are
+  built once and only their rates were refreshed, so a limit changed elsewhere
+  (profile, CLI, global rule) kept showing the old number until the row was
+  rebuilt. Limits and priority now follow the rule on every poll — except in the
+  field that is currently being edited.
+- `format_window` printed German weekday tokens (`mo,di,mi,do,fr`) in an English
+  interface and CLI. Days are English now and consecutive days collapse into a
+  range (`Mon-Fri`, `daily`). Existing configs keep working — the parser accepts
+  both spellings.
+- Connection errors read "Connection refused Reconnecting automatically." — the
+  sentence break was missing.
+
+### Changed
+
+- `format_rate()` gained a `trim` option so configured limits read like the
+  input field (`0.5 MB/s`, not `0.50 MB/s`).
+- The README screenshots use a fixed window size, so they no longer change shape
+  with the compositor.
+
 ## [0.9.0] - 2026-09-23
 
 ### Added
@@ -338,7 +376,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/Flenser42/throtl/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Flenser42/throtl/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/Flenser42/throtl/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Flenser42/throtl/compare/v0.6.0...v0.7.0

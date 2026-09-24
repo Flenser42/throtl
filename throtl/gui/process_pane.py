@@ -26,10 +26,11 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Pango", "1.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Adw, GLib, Gtk, Pango
+from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from ..config import format_window, normalize_window
 from ..monitor import UNATTRIBUTED_NAME
+from ..rowinfo import explain
 from ..units import format_rate, format_rate_for_entry, parse_rate_in_unit
 from .widgets import UNIT_LABELS, PriorityDropdown, RateEntry
 
@@ -79,12 +80,15 @@ def _unescape(pattern: str) -> str:
 class ProcessTable(Gtk.Box):
     """Editable, sortable table of processes + their throttling settings."""
 
-    def __init__(self, gui, unit: str = "mBs", on_sort_change=None):
+    def __init__(self, gui, unit: str = "mBs", on_sort_change=None,
+                 on_budget=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.set_vexpand(True)
         self.gui = gui
         self.unit = unit
         self._on_sort_change = on_sort_change
+        self._on_budget = on_budget
+        self._global_limits = {}
         self._rows = {}          # pid -> RowWidgets
         self._procs = {}         # pid -> current blob (for sorting)
         self._last_state = None  # letzter Zustand (fuer Filter-Redraw)
@@ -231,6 +235,7 @@ class ProcessTable(Gtk.Box):
             self._sync_limit_entry(roww.ul, rule.get("upload_limit"), unit)
             roww.dl.set_unit_hint(unit)
             roww.ul.set_unit_hint(unit)
+            self._sync_why(roww, blob)
 
     def _sync_limit_entry(self, entry, kbit, unit) -> None:
         """Feldtext an Einheit/Regel anpassen — nie waehrend des Tippens."""
@@ -301,8 +306,10 @@ class ProcessTable(Gtk.Box):
                 self._update_row(self._rows[key], blob)
             else:
                 roww = self._build_row(key, blob)
+                self._sync_why(roww, blob)
                 self._rows[key] = roww
                 self._list.append(roww.box)
+                self._update_row(roww, blob)
 
         for key in list(self._rows):
             if key not in visible:
@@ -398,9 +405,33 @@ class ProcessTable(Gtk.Box):
         return {}
 
     def _update_row(self, roww, blob) -> None:
-        # Nur Raten — fokussierte/editierte Widgets bleiben unberuehrt.
+        # Raten immer aktualisieren; Limits/Prioritaet koennen sich ausserhalb der
+        # Zeile geaendert haben (Profilwechsel, CLI, globales Limit), also
+        # ebenfalls abgleichen — aber nie in ein Feld schreiben, in dem gerade
+        # getippt oder ausgewaehlt wird (_sync_limit_entry prueft das selbst).
+        rule = {} if blob.get("unattributed") else self._rule_for(blob)
         roww.down.set_text(format_rate(blob.get("download", 0.0), self.unit, 2))
         roww.up.set_text(format_rate(blob.get("upload", 0.0), self.unit, 2))
+        if not blob.get("unattributed"):
+            self._sync_limit_entry(roww.dl, rule.get("download_limit"), self.unit)
+            self._sync_limit_entry(roww.ul, rule.get("upload_limit"), self.unit)
+            if not roww.prio.has_focus():
+                name = rule.get("priority", "normal") or "normal"
+                if roww.prio.get_priority_name() != name:
+                    self._syncing = True
+                    try:
+                        roww.prio.set_priority_name(name)
+                    finally:
+                        self._syncing = False
+        self._sync_why(roww, blob)
+
+    def _sync_why(self, roww, blob) -> None:
+        """Erklaerzeile aktualisieren (Regel, Fenster, globales Limit)."""
+        rule = {} if blob.get("unattributed") else self._rule_for(blob)
+        text = explain(rule, self._global_limits, self.unit) or ""
+        if roww.why.get_text() != text:
+            roww.why.set_text(text)
+        roww.why.set_visible(bool(text))
 
     def _build_row(self, key: str, blob) -> "RowWidgets":
         # ``key`` ist der stabile Zeilen-Schluessel (App-Name bei gruppierten
@@ -419,10 +450,16 @@ class ProcessTable(Gtk.Box):
             pid_text = "—"
         unattributed = bool(blob.get("unattributed"))
         rule = {} if unattributed else self._rule_for(blob)
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        box.add_css_class("row")
+
+        # Zwei Zeilen pro App: oben die Werte, darunter (optional) ein Satz, der
+        # erklaert, welche Regel gilt. Damit beantwortet die Tabelle die Frage
+        # "warum ist das gedrosselt?", die sonst nur das README beantwortet.
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        outer.add_css_class("row")
         if unattributed:
-            box.add_css_class("unattributed")
+            outer.add_css_class("unattributed")
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        outer.append(box)
 
         pid_l = Gtk.Label(label=pid_text, xalign=0.0)
         pid_l.add_css_class("dim-label")
@@ -501,6 +538,20 @@ class ProcessTable(Gtk.Box):
         prio.connect("notify::selected", self._on_priority, key)
         box.append(self._cell(prio, _COLUMNS[6][2]))
 
+        menu_button = Gtk.MenuButton(icon_name="view-more-symbolic")
+        menu_button.add_css_class("flat")
+        menu_button.add_css_class("row-menu")
+        menu_button.set_menu_model(self._row_menu())
+        menu_button.set_tooltip_text(f"More actions for {app_name}")
+        box.append(menu_button)
+        outer.insert_action_group("row", self._row_actions(key, unattributed))
+
+        why = Gtk.Label(label="", xalign=0.0)
+        why.add_css_class("row-why")
+        why.set_margin_start(_COLUMNS[0][2] + 6)
+        why.set_ellipsize(Pango.EllipsizeMode.END)
+        outer.append(why)
+
         if unattributed:
             # Kein Prozess -> keine Regel moeglich. Felder nur anzeigen.
             for widget in (dl, ul, prio, sched):
@@ -510,7 +561,36 @@ class ProcessTable(Gtk.Box):
             name_l.set_tooltip_text("Traffic nethogs could not attribute "
                                     "(VPN, UDP, other users, short-lived sockets)")
 
-        return RowWidgets(box=box, pid=key, down=down, up=up, dl=dl, ul=ul, prio=prio)
+        return RowWidgets(box=outer, line=box, why=why, pid=key, down=down,
+                          up=up, dl=dl, ul=ul, prio=prio)
+
+    def _row_menu(self) -> Gio.Menu:
+        """Was man mit einer Zeile tun kann, ohne sie zuerst zu treffen."""
+        menu = Gio.Menu()
+        menu.append("Set a budget…", "row.set-budget")
+        menu.append("Edit time window…", "row.set-window")
+        return menu
+
+    def _row_actions(self, key: str, unattributed: bool) -> Gio.SimpleActionGroup:
+        group = Gio.SimpleActionGroup()
+        budget = Gio.SimpleAction.new("set-budget", None)
+        budget.connect("activate", lambda *_a: self._request_budget(key))
+        # Ohne Prozess gibt es keine App, an der ein Budget haengen koennte.
+        budget.set_enabled(not unattributed)
+        group.add_action(budget)
+        window = Gio.SimpleAction.new("set-window", None)
+        window.connect("activate", lambda *_a: self._on_edit_window(None, key))
+        window.set_enabled(not unattributed)
+        group.add_action(window)
+        return group
+
+    def _request_budget(self, key: str) -> None:
+        if self._on_budget is not None:
+            self._on_budget(key)
+
+    def set_global_limits(self, limits: dict) -> None:
+        """Konfigurierte globale Limits, damit die Erklaerzeile sie nennen kann."""
+        self._global_limits = limits or {}
 
     # --- Callbacks --------------------------------------------------------
 
@@ -612,8 +692,10 @@ class ProcessTable(Gtk.Box):
 class RowWidgets:
     """Per-row widgets, updated in place (never rebuilt on poll)."""
 
-    def __init__(self, box, pid, down, up, dl, ul, prio):
-        self.box = box
+    def __init__(self, box, line, why, pid, down, up, dl, ul, prio):
+        self.box = box        # outer: hover area, two lines
+        self.line = line      # the value line (cells)
+        self.why = why        # explanation line (may be empty)
         self.pid = pid
         self.down = down
         self.up = up

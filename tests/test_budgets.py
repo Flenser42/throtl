@@ -47,5 +47,48 @@ class BudgetStatusTest(unittest.TestCase):
         self.assertFalse(entries[0]["exceeded"])
 
 
+class BudgetWarningTest(unittest.TestCase):
+    """Vorwarnung, bevor das Volumen weg ist (Schwelle 80 %)."""
+
+    @staticmethod
+    def _entry(ratio, exceeded=False, app="steam"):
+        return {"scope": "app", "app": app, "window": "day",
+                "used": ratio * 100, "limit": 100, "ratio": ratio,
+                "exceeded": exceeded}
+
+    def test_warns_above_the_threshold(self):
+        from throtl.budgets import pending_warnings
+
+        warnings = pending_warnings([self._entry(0.82)], set())
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(warnings[0]["app"], "steam")
+
+    def test_stays_quiet_below_the_threshold(self):
+        from throtl.budgets import pending_warnings
+
+        self.assertEqual(pending_warnings([self._entry(0.5)], set()), [])
+
+    def test_exceeded_entries_are_not_warned_about(self):
+        """Ueberschritten meldet der bestehende Pfad — nicht doppelt."""
+        from throtl.budgets import pending_warnings
+
+        self.assertEqual(
+            pending_warnings([self._entry(1.1, exceeded=True)], set()), [])
+
+    def test_already_warned_is_not_repeated(self):
+        from throtl.budgets import pending_warnings, warning_key
+
+        entry = self._entry(0.82)
+        warned = {warning_key(entry)}
+        self.assertEqual(pending_warnings([entry], warned), [])
+
+    def test_key_separates_scope_app_and_window(self):
+        from throtl.budgets import warning_key
+
+        self.assertNotEqual(
+            warning_key({"scope": "app", "app": "steam", "window": "day"}),
+            warning_key({"scope": "app", "app": "steam", "window": "week"}))
+
+
 if __name__ == "__main__":
     unittest.main()

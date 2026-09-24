@@ -109,6 +109,7 @@ class FakeGui:
                     for name, exe, down, up, pids in APPS
                 ],
                 "processes": RULES,
+                "rules": RULES,
             }
         if method == "list_profiles":
             return {"profiles": ["Standard", "University", "Evening"], "active": "Evening"}
@@ -298,6 +299,9 @@ def main():
     _load_css()
     win = ThrotlWindow(app, FakeGui())
     win.set_default_size(WIDTH, HEIGHT)
+    # Die Groesse muss fuer die Bilder reproduzierbar sein; ein kachelnder
+    # Compositor wuerde sonst je nach Bildschirmlage eine andere Hoehe geben.
+    win.set_size_request(WIDTH, HEIGHT)
     pump(8)
     win.reload()
     pump(8)
@@ -369,6 +373,16 @@ def main():
     budgets.force_close()
     pump(4)
     print("Budget-Screenshot geschrieben.")
+
+    # Statusseite, wenn der Dienst nicht erreichbar ist.
+    win._show_offline("Connection refused")
+    pump(10)
+    offline_path = os.path.join(IMAGES, "offline.png")
+    render(win, offline_path)
+    trim_bottom(offline_path)
+    win._show_content()
+    pump(6)
+    print("Offline-Screenshot geschrieben.")
 
     # Demo-GIF: 30 Frames, Graph scrollt/animiert.
     tmp = tempfile.mkdtemp(prefix="throtl-gif-")

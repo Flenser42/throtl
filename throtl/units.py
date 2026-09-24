@@ -79,27 +79,33 @@ def parse_rate(value) -> int:
     return round(amount)
 
 
-def format_rate(kbit_per_s, unit: str = "auto", precision: int = 1) -> str:
+def format_rate(kbit_per_s, unit: str = "auto", precision: int = 1,
+                trim: bool = False) -> str:
     """Rate (kbit/s) fuer die Anzeige formatieren.
 
     unit: "kbps" | "mbps" | "kBs" | "mBs" | "auto"
+    trim: abschliessende Nullen weglassen (fuer konfigurierte Limits, die
+          genauso aussehen sollen wie im Eingabefeld: "0.5" statt "0.50").
     """
     if kbit_per_s is None:
         return "∞"
     value = float(kbit_per_s)
     if unit == "mBs":
-        mb = value * KB_PER_KBIT / 1000
-        return f"{mb:.{precision}f} MB/s"
-    if unit == "kBs":
-        return f"{value * KB_PER_KBIT:.{precision}f} KB/s"
-    if unit == "mbps":
-        return f"{value / 1000:.{precision}f} Mbit/s"
-    if unit == "kbps":
-        return f"{value:.{precision}f} kbit/s"
-    # auto: kompaktere Einheit waehlen
-    if value >= 1000:
-        return f"{value / 1000:.{precision}f} Mbit/s"
-    return f"{value:.{precision}f} kbit/s"
+        number, suffix = value * KB_PER_KBIT / 1000, "MB/s"
+    elif unit == "kBs":
+        number, suffix = value * KB_PER_KBIT, "KB/s"
+    elif unit == "mbps":
+        number, suffix = value / 1000, "Mbit/s"
+    elif unit == "kbps":
+        number, suffix = value, "kbit/s"
+    elif value >= 1000:
+        number, suffix = value / 1000, "Mbit/s"
+    else:
+        number, suffix = value, "kbit/s"
+    text = f"{number:.{precision}f}"
+    if trim:
+        text = text.rstrip("0").rstrip(".")
+    return f"{text} {suffix}"
 
 
 def parse_rate_lenient(value) -> int:

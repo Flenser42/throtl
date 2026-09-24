@@ -73,7 +73,7 @@ MAX_PRIORITY_INT = max(PRIORITY_TO_INT.values())
 # entspricht dem Top-Level-Zustand; profile_names() liefert ihn an Position 0.
 STANDARD_PROFILE = "Standard"
 MAX_PROFILE_NAME_LENGTH = 64
-WEEKDAY_TOKENS = ("mo", "di", "mi", "do", "fr", "sa", "so")
+WEEKDAY_TOKENS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 # Akzeptierte Schreibweisen fuer Wochentage (deutsch + englisch + Zahl).
 _WEEKDAY_ALIASES = {
     "mo": 0, "montag": 0, "mon": 0, "monday": 0, "0": 0,
@@ -582,17 +582,39 @@ def active_rules(processes, when=None) -> list:
     return [rule for rule in (processes or []) if rule_active(rule, when)]
 
 
+def _day_ranges(days) -> list:
+    """Aufeinanderfolgende Wochentage zu Bereichen buendeln: ``Mon-Fri``."""
+    valid = [day for day in days if isinstance(day, int) and 0 <= day <= 6]
+    ranges = []
+    start = prev = None
+    for day in valid:
+        if start is None:
+            start = prev = day
+        elif day == prev + 1:
+            prev = day
+        else:
+            ranges.append((start, prev))
+            start = prev = day
+    if start is not None:
+        ranges.append((start, prev))
+    tokens = []
+    for first, last in ranges:
+        if last >= first + 2:
+            tokens.append(f"{WEEKDAY_TOKENS[first]}-{WEEKDAY_TOKENS[last]}")
+        else:
+            tokens.extend(WEEKDAY_TOKENS[day] for day in range(first, last + 1))
+    return tokens
+
+
 def format_window(window) -> str:
-    """Zeitfenster kurz darstellen, z.B. ``"Mo-Fr 20:00-00:00"``."""
+    """Zeitfenster kurz darstellen, z.B. ``"Mon-Fri 20:00-00:00"``."""
     if not window:
         return ""
     days = sorted(set(window.get("days") or []))
     if len(days) == 7:
         day_text = "daily"
     else:
-        tokens = [WEEKDAY_TOKENS[day] for day in days
-                  if isinstance(day, int) and 0 <= day <= 6]
-        day_text = ",".join(tokens)
+        day_text = ",".join(_day_ranges(days))
     return f"{day_text} {window.get('start')}-{window.get('end')}".strip()
 
 

@@ -33,8 +33,9 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
 from .. import __version__ as THROTL_VERSION
+from ..budgets import pending_warnings, warning_key
 from ..units import format_rate, format_rate_for_entry, parse_rate_in_unit
-from ..version import RELEASES_URL, fetch_latest, is_newer
+from ..version import INSTALL_URL, RELEASES_URL, fetch_latest, is_newer
 from .budget_dialog import BudgetDialog
 from .client import GuiClient
 from .graph import BandwidthGraph, theme_colors
@@ -71,6 +72,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
         # Budget-Ueberwachung (gedrosselt gepollt) + Dedupe fuer Notifications.
         self._budget_counter = 0
         self._budget_notified = set()
+        self._budget_warned = set()
         self._profile_names = []
         self._prefs = load_prefs()
         self._style_manager = Adw.StyleManager.get_default()
@@ -236,7 +238,14 @@ class ThrotlWindow(Adw.ApplicationWindow):
         page.set_margin_bottom(12)
         page.set_margin_start(12)
         page.set_margin_end(12)
-        self.content.set_content(page)
+
+        # Entweder der Inhalt oder eine Statusseite: wenn der Dienst nicht
+        # erreichbar ist, sagt eine Seite was los ist — statt einer leeren
+        # Tabelle und eines Fehlertexts.
+        self.stack = Gtk.Stack()
+        self.stack.add_named(page, "content")
+        self.stack.add_named(self._build_offline_page(), "offline")
+        self.content.set_content(self.stack)
 
         # --- Global limits (compact card) ---
         globals_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
@@ -325,7 +334,8 @@ class ThrotlWindow(Adw.ApplicationWindow):
         page.append(self.search_entry)
 
         self.table = ProcessTable(self, unit=self.unit,
-                                  on_sort_change=self._on_sort_change)
+                                  on_sort_change=self._on_sort_change,
+                                  on_budget=self._on_row_budget)
         saved_sort = self._prefs.get("sort_key")
         if saved_sort in ("pid", "name", "download", "upload", "priority"):
             self.table.set_sort(saved_sort, bool(self._prefs.get("sort_desc", True)))
@@ -378,6 +388,43 @@ class ThrotlWindow(Adw.ApplicationWindow):
             return False
         self.profile_dd.set_selected(index)
         return True
+
+    def _build_offline_page(self) -> Adw.StatusPage:
+        """Was der Nutzer sieht, wenn der Dienst nicht antwortet."""
+        page = Adw.StatusPage()
+        page.set_icon_name("network-offline-symbolic")
+        page.set_title("Throtl can't reach its service")
+        page.set_description(
+            "The Throtl service runs in the background and needs root. "
+            "Throtl never starts it for you.")
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                          halign=Gtk.Align.CENTER)
+        retry = Gtk.Button(label="Try again")
+        retry.add_css_class("suggested-action")
+        retry.connect("clicked", lambda *_a: self._retry_connection())
+        guide = Gtk.Button(label="Setup guide")
+        guide.set_tooltip_text("Opens the installation section in your browser")
+        guide.connect("clicked", lambda *_a: self._open_uri(self, INSTALL_URL))
+        buttons.append(retry)
+        buttons.append(guide)
+        page.set_child(buttons)
+        self.offline_status = page
+        return page
+
+    def _show_offline(self, message: str) -> None:
+        """Statusseite statt Banner: sie erklaert den Zustand und bietet Hilfe."""
+        title, details, _offline = _plain_error(message)
+        self.offline_status.set_description(
+            f"{title}\n\nThe Throtl service runs in the background and needs "
+            "root. Throtl never starts it for you.")
+        self.offline_status.set_tooltip_text(details or None)
+        self.stack.set_visible_child_name("offline")
+        self.banner.set_revealed(False)
+        _debug(f"offline: {message}")
+
+    def _show_content(self) -> None:
+        if self.stack.get_visible_child_name() != "content":
+            self.stack.set_visible_child_name("content")
 
     def _on_search(self, entry) -> None:
         """Filtertext der Prozessliste anwenden und merken."""
@@ -526,7 +573,14 @@ class ThrotlWindow(Adw.ApplicationWindow):
         StatsDialog(self, self.gui).present()
 
     def _on_show_budgets(self, *_args):
-        BudgetDialog(self, self.gui).present()
+        self._open_budgets(None)
+
+    def _on_row_budget(self, app: str) -> None:
+        """Aus der Tabellenzeile heraus: Budget fuer genau diese App."""
+        self._open_budgets(app)
+
+    def _open_budgets(self, app) -> None:
+        BudgetDialog(self, self.gui, preselect=app).present()
 
     # --- Versionscheck ----------------------------------------------------
 
@@ -652,8 +706,9 @@ class ThrotlWindow(Adw.ApplicationWindow):
         Tooltip und (mit THROTL_DEBUG=1) im Log, damit sie nicht verloren geht.
         """
         title, details, offline = _plain_error(message)
-        if offline and action is None:
-            action_label, action = "Retry now", self._retry_connection
+        if offline:
+            self._show_offline(message)
+            return
         self._banner_action = action
         self.banner.set_title(title)
         self.banner.set_button_label(action_label)
@@ -696,6 +751,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
             self._apply_state(state)
             self._report_monitor_status()
             self._reload_profiles()
+            self._show_content()
         except Exception as error:
             self.show_error(str(error))
 
@@ -737,6 +793,8 @@ class ThrotlWindow(Adw.ApplicationWindow):
             prio = g.get("download_priority", "normal")
             if prio in PRIORITY_NAMES:
                 self.global_prio.set_priority_name(prio)
+            # Die Zeilen erklaeren auch globale Limits — also mitgeben.
+            self.table.set_global_limits(g)
         finally:
             self._syncing = False
 
@@ -793,7 +851,9 @@ class ThrotlWindow(Adw.ApplicationWindow):
 
     def _on_budgets(self, result: dict) -> None:
         """Ueberschrittene Budgets melden (Statusleiste + Desktop-Notification)."""
-        exceeded = [e for e in (result.get("entries") or []) if e.get("exceeded")]
+        exceeded = [e for e in (result.get("entries") or [])
+                    if e.get("exceeded")]
+        self._check_budget_warnings(result.get("entries") or [])
         current = {
             f"{e.get('scope')}:{e.get('app')}:{e.get('window')}" for e in exceeded
         }
@@ -822,6 +882,31 @@ class ThrotlWindow(Adw.ApplicationWindow):
             )
             try:
                 self.app.send_notification(f"throtl-budget-{key}", note)
+            except Exception:
+                pass
+
+    def _check_budget_warnings(self, entries: list) -> None:
+        """Rechtzeitig warnen (80 %), nicht erst wenn das Volumen weg ist.
+
+        Genau einmal pro Budget und Schwellwert; ein bereits ueberschrittenes
+        Budget meldet der Pfad darunter.
+        """
+        for entry in pending_warnings(entries, self._budget_warned):
+            key = warning_key(entry)
+            self._budget_warned.add(key)
+            scope = ("Global" if entry.get("scope") == "global"
+                     else str(entry.get("app")))
+            window = "today" if entry.get("window") == "day" else "this week"
+            percent = int(round((entry.get("ratio") or 0.0) * 100))
+            used = _format_bytes(entry.get("used"))
+            limit = _format_bytes(entry.get("limit"))
+            self.show_info(f"{scope} budget {percent}% used {window} — "
+                           f"{used} of {limit}")
+            note = Gio.Notification.new(
+                f"Throtl: {scope} budget at {percent}%")
+            note.set_body(f"{used} of {limit} {window}")
+            try:
+                self.app.send_notification(f"throtl-budget-warn-{key}", note)
             except Exception:
                 pass
 
@@ -976,8 +1061,10 @@ def _plain_error(message: str) -> tuple[str, str, bool]:
     if any(marker in low for marker in
            ("connection refused", "connection reset", "broken pipe",
             "no such file", "socket", "connect", "timed out", "timeout")):
-        return (f"{first or 'The Throtl service is not reachable.'} "
-                "Reconnecting automatically.", text, True)
+        head = first or "The Throtl service is not reachable."
+        if head[-1] not in ".!?":
+            head += "."
+        return (f"{head} Reconnecting automatically.", text, True)
     return (text or "Something went wrong.", "", False)
 
 
