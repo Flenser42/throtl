@@ -87,6 +87,32 @@ class ExplainTest(unittest.TestCase):
         self.assertIsNotNone(text)
         self.assertIn("20:00-00:00", text)
 
+    def test_priority_alone_is_worth_a_line(self):
+        """Eine gesetzte Prioritaet ist eine Aussage — auch ohne Limit."""
+        from throtl.rowinfo import explain
+
+        rule = {"download_limit": None, "upload_limit": None,
+                "priority": "hoch", "window": None}
+        text = explain(rule, {}, "mBs", NOON)
+        self.assertIsNotNone(text)
+        self.assertIn("High", text)
+
+    def test_normal_priority_alone_stays_silent(self):
+        from throtl.rowinfo import explain
+
+        rule = {"download_limit": None, "upload_limit": None,
+                "priority": "normal", "window": None}
+        self.assertIsNone(explain(rule, {}, "mBs", NOON))
+
+    def test_priority_is_appended_to_limits(self):
+        from throtl.rowinfo import explain
+
+        rule = {"download_limit": 4000, "upload_limit": None,
+                "priority": "niedrig", "window": None}
+        text = explain(rule, {}, "mBs", NOON)
+        self.assertIn("0.5 MB/s", text)
+        self.assertIn("Low", text)
+
 
 if __name__ == "__main__":
     unittest.main()

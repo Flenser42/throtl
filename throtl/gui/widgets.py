@@ -7,12 +7,9 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gio, Gtk
 
 PRIORITY_NAMES = ("kritisch", "hoch", "normal", "niedrig")
-PRIORITY_LABELS = {
-    "kritisch": "Critical",
-    "hoch": "High",
-    "normal": "Normal",
-    "niedrig": "Low",
-}
+# Anzeigenamen kommen aus der Konfiguration (dort sind sie GTK-frei, weil auch
+# die Erklaerzeile und der CLI sie brauchen).
+from ..config import PRIORITY_LABELS  # noqa: E402,F401
 
 # Anzeige-Einheiten: (Config-Wert, Label). Gemeinsam fuer app.py und Tabellen.
 UNIT_CHOICES = (

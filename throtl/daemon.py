@@ -51,6 +51,7 @@ from .config import (
     profile_names,
     rule_active,
     save_config,
+    unescape_pattern,
     validate_profile_name,
 )
 from .engine import SimEngine, TrafficTollEngine
@@ -1086,16 +1087,16 @@ def _match_rules(rules, name=None, pid=None) -> dict:
     """Erste passende Regel fuer einen nethogs-Prozessnamen/PID finden.
 
     nethogs liefert als "name" entweder den vollen exe-Pfad oder den
-    Prozessnamen. Wir treffen eine Anzeige-Zuordnung: die Regel passt, wenn
-    ihr ``name`` oder ihr literal aufbereiteter ``match_value`` mit dem
-    nethogs-Namen uebereinstimmt oder in ihm endet.
+    Prozessnamen. Gespeicherte ``match_value``-Muster sind fuer TrafficToll
+    regex-escaped — fuer den Vergleich hier muessen sie zurueckgewandelt
+    werden, sonst passt keine einzige Regel.
     """
     if not name:
         return {}
     for rule in rules:
         if rule.get("name") and rule["name"] == name:
             return rule
-        mv = rule.get("match_value")
+        mv = unescape_pattern(rule.get("match_value"))
         if mv and mv == name:
             return rule
         if mv and (name.startswith(mv) or name.endswith(mv.rstrip("/"))):

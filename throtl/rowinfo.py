@@ -5,7 +5,7 @@ Limit, ein globales, und ist ein Zeitfenster gerade aktiv? Bewusst ohne Widgets
 und ohne GTK, damit die Erklaerung ohne Display (und im CI) pruefbar bleibt.
 """
 
-from .config import format_window, rule_active
+from .config import PRIORITY_LABELS, format_window, rule_active
 from .units import format_rate
 
 # Reihenfolge der Nennung: erst das eigene Limit, dann das Fenster.
@@ -37,22 +37,37 @@ def _window(rule: dict, when) -> str | None:
     return f"{text} (not active now)"
 
 
+def _priority(rule: dict) -> str | None:
+    """Anzeigename, wenn eine Prioritaet gesetzt ist (Normal ist die Ruhe)."""
+    name = rule.get("priority") or "normal"
+    if name == "normal":
+        return None
+    return PRIORITY_LABELS.get(name, str(name))
+
+
 def explain(rule, global_limits, unit: str = "mBs", when=None) -> str | None:
     """Ein Satz, der den Zustand dieser Zeile erklaert.
 
-    ``None`` bedeutet: es gibt nichts zu erklaeren — kein Limit, kein Fenster.
-    Dann bleibt die Zeile still, statt in jeder Zeile "kein Limit" zu
-    wiederholen.
+    ``None`` bedeutet: es gibt nichts zu erklaeren — keine Prioritaet, kein
+    Limit, kein Fenster. Dann bleibt die Zeile still, statt in jeder Zeile
+    "kein Limit" zu wiederholen.
     """
     rule = rule or {}
     global_limits = global_limits or {}
     parts = _limits(rule, unit)
+    priority = _priority(rule)
     window = _window(rule, when)
     if parts:
         text = "Your rule: " + ", ".join(parts)
+        if priority:
+            text += f" · Priority {priority}"
         if window:
             text += " · " + window
         return text[:MAX_LENGTH]
+    if priority and window:
+        return f"Priority {priority} · {window}"[:MAX_LENGTH]
+    if priority:
+        return f"Priority {priority}"[:MAX_LENGTH]
     if window:
         return f"Time window: {window}"[:MAX_LENGTH]
     global_parts = _limits(global_limits, unit)

@@ -402,5 +402,48 @@ class BudgetsRpcTest(unittest.TestCase):
         self.assertEqual(len(result["series"]), 60)
 
 
+class MatchRulesTest(unittest.TestCase):
+    """Regeln wiederfinden: gespeicherte Muster sind regex-escaped.
+
+    ``make_rule`` escaped den match_value fuer TrafficToll (dort wird er als
+    Regex benutzt). Der Anzeige-Abgleich muss das rueckgaengig machen, sonst
+    passt keine einzige Regel und ``rule_name`` bleibt ueberall leer.
+    """
+
+    def test_matches_a_rule_stored_with_escapes(self):
+        from throtl.config import make_rule
+
+        rule = make_rule(name="yt-dlp", match_type="exe",
+                         match_value="/usr/bin/yt-dlp", priority="hoch")
+        self.assertIn("\\", rule["match_value"], "Vorbedingung: escaped")
+        self.assertEqual(
+            daemon._match_rules([rule], "/usr/bin/yt-dlp").get("name"),
+            "yt-dlp")
+
+    def test_matches_a_longer_command_line(self):
+        from throtl.config import make_rule
+
+        rule = make_rule(name="steam", match_type="exe",
+                         match_value="/opt/Steam/steam", priority="niedrig")
+        self.assertEqual(
+            daemon._match_rules([rule], "/opt/Steam/steam --silent").get("name"),
+            "steam")
+
+    def test_name_rule_matches_the_process_name(self):
+        from throtl.config import make_rule
+
+        rule = make_rule(name="Agent.exe", match_type="name",
+                         match_value="Agent.exe", priority="normal")
+        self.assertEqual(daemon._match_rules([rule], "Agent.exe").get("name"),
+                         "Agent.exe")
+
+    def test_unrelated_process_does_not_match(self):
+        from throtl.config import make_rule
+
+        rule = make_rule(name="steam", match_type="exe",
+                         match_value="/opt/Steam/steam", priority="normal")
+        self.assertEqual(daemon._match_rules([rule], "/usr/bin/mpv"), {})
+
+
 if __name__ == "__main__":
     unittest.main()

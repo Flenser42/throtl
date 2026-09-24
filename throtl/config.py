@@ -65,6 +65,13 @@ _LAST_CONFIG_WARNING: str | None = None
 PRIORITY_NAMES = ("kritisch", "hoch", "normal", "niedrig")
 PRIORITY_TO_INT = {"kritisch": 0, "hoch": 1, "normal": 2, "niedrig": 3}
 PRIORITY_INT_TO_NAME = {value: name for name, value in PRIORITY_TO_INT.items()}
+# Anzeigenamen fuer die Oberflaeche (englisch); die Schluessel sind stabil.
+PRIORITY_LABELS = {
+    "kritisch": "Critical",
+    "hoch": "High",
+    "normal": "Normal",
+    "niedrig": "Low",
+}
 
 VALID_MATCH_TYPES = ("exe", "name", "cmdline")
 MAX_PRIORITY_INT = max(PRIORITY_TO_INT.values())
@@ -160,6 +167,19 @@ def _build_rule(
         # Optionales Zeitfenster (None = immer aktiv).
         "window": normalize_window(window),
     }
+
+
+def unescape_pattern(pattern) -> str:
+    """``re.escape`` rueckgaengig machen.
+
+    Gespeicherte ``match_value``-Muster sind fuer TrafficToll escaped (dort
+    werden sie als Regex benutzt). Wer sie mit einem echten Pfad oder
+    Prozessnamen vergleichen will, muss sie vorher zurueckwandeln.
+    """
+    try:
+        return re.sub(r"\\(.)", r"\1", pattern or "")
+    except re.error:
+        return pattern or ""
 
 
 def make_rule(

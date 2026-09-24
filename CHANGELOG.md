@@ -5,6 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-09-24
+
+### Fixed
+
+- **Prioritisation looked broken because the app never said it needs a global
+  cap.** Priorities decide who is served first while the link is saturated;
+  without a global download/upload limit TrafficToll runs at line rate and there
+  is no queue to put in order. The app now says so the moment a priority is set,
+  and a row that has a priority but nothing else shows `Priority High` instead
+  of staying silent. Priorities are not limits — "Low" does not cap an
+  application.
+- **The daemon never matched a single rule.** Stored `match_value` patterns are
+  regex-escaped for TrafficToll, and the daemon compared the escaped form
+  against the literal exe/process name, so `rule_name` came back empty for every
+  application (the CLI printed `-` where a rule applies). Daemon and GUI now
+  undo the escaping through one shared helper, `config.unescape_pattern`.
+
 ## [0.10.0] - 2026-09-24
 
 ### Added
@@ -376,7 +393,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/Flenser42/throtl/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/Flenser42/throtl/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Flenser42/throtl/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/Flenser42/throtl/compare/v0.7.0...v0.8.0

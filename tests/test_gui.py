@@ -1014,6 +1014,54 @@ class RowExplanationTest(unittest.TestCase):
         self.assertTrue(row.box.activate_action("row.set-budget"))
         self.assertEqual(seen, ["x"])
 
+    def test_priority_without_a_global_cap_says_so(self):
+        """Prioritaeten wirken nur mit globalem Limit — das muss man erfahren.
+
+        Ohne diesen Hinweis setzt man Prioritaeten und sieht nie eine Wirkung.
+        """
+        from throtl.gui.process_pane import ProcessTable
+
+        infos = []
+
+        class _Client:
+            def call_async(self, *args, **kwargs):
+                pass
+
+        class _Gui(self._Gui):
+            client = _Client()
+
+            def show_info(self, m): infos.append(m)
+
+        table = ProcessTable(_Gui(), unit="mBs")
+        table.set_state({"rules": [], "apps": [
+            {"name": "x", "exe": "/x", "download": 1.0, "upload": 1.0,
+             "pids": ["1"], "pid_count": 1, "unattributed": False}]})
+        table._on_priority(table._rows["x"].prio, None, "x")
+        self.assertTrue(infos)
+        self.assertIn("global", infos[-1].lower())
+
+    def test_no_hint_when_a_global_cap_exists(self):
+        from throtl.gui.process_pane import ProcessTable
+
+        infos = []
+
+        class _Client:
+            def call_async(self, *args, **kwargs):
+                pass
+
+        class _Gui(self._Gui):
+            client = _Client()
+
+            def show_info(self, m): infos.append(m)
+
+        table = ProcessTable(_Gui(), unit="mBs")
+        table.set_global_limits({"download_limit": 80000})
+        table.set_state({"rules": [], "apps": [
+            {"name": "x", "exe": "/x", "download": 1.0, "upload": 1.0,
+             "pids": ["1"], "pid_count": 1, "unattributed": False}]})
+        table._on_priority(table._rows["x"].prio, None, "x")
+        self.assertFalse(infos)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,7 +17,6 @@ Design notes:
   daemon RPCs.
 """
 
-import re
 import time
 
 import gi
@@ -28,7 +27,7 @@ gi.require_version("Adw", "1")
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
-from ..config import format_window, normalize_window
+from ..config import format_window, normalize_window, unescape_pattern
 from ..monitor import UNATTRIBUTED_NAME
 from ..rowinfo import explain
 from ..units import format_rate, format_rate_for_entry, parse_rate_in_unit
@@ -71,10 +70,7 @@ def _short_name(raw: str, limit: int = 26) -> str:
 
 def _unescape(pattern: str) -> str:
     """re.escape()-Rueckgaengig machen (Regeln speichern exe-Pfade escaped)."""
-    try:
-        return re.sub(r"\\(.)", r"\1", pattern or "")
-    except re.error:
-        return pattern or ""
+    return unescape_pattern(pattern)
 
 
 class ProcessTable(Gtk.Box):
@@ -621,6 +617,25 @@ class ProcessTable(Gtk.Box):
         if self._syncing:
             return
         self._set_rule_field(row_key, "priority", dd.get_priority_name())
+        self._hint_priority_needs_a_cap()
+
+    def _hint_priority_needs_a_cap(self) -> None:
+        """Sagen, dass Prioritaeten nur mit globalem Limit etwas bewirken.
+
+        Prioritaeten ordnen, wer bei gesaettigter Leitung zuerst bedient wird.
+        Ohne globales Limit gibt es keine Schlange — dann sieht der Nutzer nie
+        eine Wirkung und sucht den Fehler bei sich.
+        """
+        limits = self._global_limits or {}
+        if limits.get("download_limit") or limits.get("upload_limit"):
+            return
+        try:
+            self.gui.show_info(
+                "Priority saved. Priorities only decide who goes first while a "
+                "global limit keeps the link saturated — set a download or "
+                "upload limit above.")
+        except Exception:
+            pass
 
     def _set_rule_field(self, row_key: str, field: str, value) -> None:
         blob = self._procs.get(row_key)  # Key: App-Name (gruppiert) oder PID
