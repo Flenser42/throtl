@@ -34,10 +34,20 @@ GLOBAL_MINIMUM_UPLOAD = 10
 
 
 def format_rate_kbps(kbit_per_s) -> str:
-    """Rate (kbit/s) als TrafficToll-/tc-tauglichen String (z.B. '512kbps')."""
+    """Rate (kbit/s) als TrafficToll-/tc-tauglichen String.
+
+    Ausschliesslich die Bit-Formen von iproute2 verwenden (``kbit``/``mbit``).
+    ``kbps`` wird von ``tc`` ohne Ruecksicht auf die Schreibweise als ``KBps``
+    gelesen — also als Kilobyte pro Sekunde. Ein Limit von 8000 kbit/s landete
+    damit als 8000 KB/s = 64 Mbit/s in der Klasse: jedes Limit war 8x zu hoch.
+    """
     if kbit_per_s is None:
         return None
-    return f"{round(kbit_per_s)}kbps"
+    value = round(kbit_per_s)
+    if value >= 1_000_000:
+        text = f"{value / 1_000_000:.3f}".rstrip("0").rstrip(".")
+        return f"{text}mbit"
+    return f"{value}kbit"
 
 
 def yaml_quote(value: str) -> str:

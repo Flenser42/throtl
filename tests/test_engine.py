@@ -18,6 +18,28 @@ def _cfg(processes=None, global_=None, interface=None):
     return cfg
 
 
+class RateUnitTest(unittest.TestCase):
+    """tc-Raten muessen in BITS ausgedrueckt werden.
+
+    iproute2 kennt ``kbit`` (Bits) und ``KBps`` (Bytes) und matcht Suffixe
+    ohne Ruecksicht auf Gross-/Kleinschreibung. Ein ``8000kbps`` landet damit
+    als 8000 Kilobyte/s in der Klasse — 64 Mbit/s statt 8 Mbit/s, also 8x zu
+    hoch. Deshalb wird ausschliesslich die Bit-Form geschrieben.
+    """
+
+    def test_uses_bits_not_bytes(self):
+        self.assertEqual(engine.format_rate_kbps(8000), "8000kbit")
+        self.assertEqual(engine.format_rate_kbps(1), "1kbit")
+        self.assertNotIn("kbps", engine.format_rate_kbps(8000))
+
+    def test_large_values_switch_to_mbit(self):
+        self.assertEqual(engine.format_rate_kbps(8_000_000), "8mbit")
+        self.assertEqual(engine.format_rate_kbps(1_500_000), "1.5mbit")
+
+    def test_none_stays_none(self):
+        self.assertIsNone(engine.format_rate_kbps(None))
+
+
 class RenderTest(unittest.TestCase):
     def test_disabled_renders_empty(self):
         cfg = _cfg(global_={"enabled": False})
@@ -29,10 +51,10 @@ class RenderTest(unittest.TestCase):
     def test_global_limits(self):
         cfg = _cfg(global_={"download_limit": 10_000, "upload_limit": 2000})
         text = engine.render_tt_config(cfg)
-        self.assertIn("download: 10000kbps", text)
-        self.assertIn("upload: 2000kbps", text)
-        self.assertIn("download-minimum: 100kbps", text)
-        self.assertIn("upload-minimum: 10kbps", text)
+        self.assertIn("download: 10000kbit", text)
+        self.assertIn("upload: 2000kbit", text)
+        self.assertIn("download-minimum: 100kbit", text)
+        self.assertIn("upload-minimum: 10kbit", text)
         self.assertIn("download-priority: 2", text)  # default: normal=2
 
     def test_unlimited_omits_keys(self):
@@ -48,8 +70,8 @@ class RenderTest(unittest.TestCase):
         ]
         text = engine.render_tt_config(_cfg(processes=rules))
         self.assertIn('  "Firefox":', text)
-        self.assertIn("    download: 2048kbps", text)
-        self.assertIn("    upload: 512kbps", text)
+        self.assertIn("    download: 2048kbit", text)
+        self.assertIn("    upload: 512kbit", text)
         self.assertIn("    download-priority: 0", text)  # kritisch
         self.assertIn("    upload-priority: 0", text)
         self.assertIn('      - exe: "/usr/lib/firefox/firefox"', text)
@@ -76,7 +98,7 @@ class RenderTest(unittest.TestCase):
         self.assertIn('"Nights"', engine.render_tt_config(cfg, when=night))
 
     def test_format_rate(self):
-        self.assertEqual(engine.format_rate_kbps(512), "512kbps")
+        self.assertEqual(engine.format_rate_kbps(512), "512kbit")
         self.assertIsNone(engine.format_rate_kbps(None))
 
 

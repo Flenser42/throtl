@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2026-09-24
+
+### Fixed
+
+- **Every limit was eight times too high.** Limits are stored in kbit/s, and the
+  engine wrote them to TrafficToll as `8000kbps`. In `tc`, `bps`/`kbps`/`mbps`
+  mean **bytes** per second; only `bit`/`kbit`/`mbit` mean bits (`man 8 tc`). A
+  limit of 8000 kbit/s (1 MB/s, which is what the GUI shows) therefore ended up
+  as 8000 kilobytes/s = 64 Mbit/s in the class — indistinguishable from "no
+  limit" on most connections. Measured on the live system: `10kbps` → `80Kbit`,
+  `100kbps` → `800Kbit`, `8000kbps` → `64Mbit`. Rates are now written as
+  `kbit`/`mbit`, which matches the unit the interface promises.
+
+  The same factor applied to the global minimum rates, so the priority queues
+  were mis-sized as well.
+
 ## [0.10.1] - 2026-09-24
 
 ### Fixed
@@ -393,7 +409,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.10.2...HEAD
+[0.10.2]: https://github.com/Flenser42/throtl/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/Flenser42/throtl/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/Flenser42/throtl/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Flenser42/throtl/compare/v0.8.0...v0.9.0
