@@ -280,8 +280,12 @@ def normalize(data: dict) -> dict:
     g["enabled"] = bool(raw_global.get("enabled", True))
     g["download_limit"] = _rate_or_none(raw_global.get("download_limit"))
     g["upload_limit"] = _rate_or_none(raw_global.get("upload_limit"))
-    g["download_minimum"] = _rate_or_none(raw_global.get("download_minimum")) or 100
-    g["upload_minimum"] = _rate_or_none(raw_global.get("upload_minimum")) or 10
+    # ``0`` ist ein gueltiger Wert ("kein Minimum"); nur None faellt auf den
+    # Default zurueck. Truthiness (``or 100``) hat 0 still zu 100/10 gemacht.
+    download_minimum = _rate_or_none(raw_global.get("download_minimum"))
+    g["download_minimum"] = 100 if download_minimum is None else download_minimum
+    upload_minimum = _rate_or_none(raw_global.get("upload_minimum"))
+    g["upload_minimum"] = 10 if upload_minimum is None else upload_minimum
     g["download_priority"] = _priority_or_error(raw_global.get("download_priority", "normal"))
     g["upload_priority"] = _priority_or_error(raw_global.get("upload_priority", "normal"))
 

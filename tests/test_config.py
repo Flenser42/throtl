@@ -191,6 +191,16 @@ class LoadConfigRobustnessTest(unittest.TestCase):
         cfg = self._load('[global]\ndownload_priority = "bogus"\n')
         self.assertEqual(cfg["global"]["download_priority"], "normal")
 
+    def test_explicit_zero_minimum_is_preserved(self):
+        cfg = self._load("[global]\ndownload_minimum = 0\nupload_minimum = 0\n")
+        self.assertEqual(cfg["global"]["download_minimum"], 0)
+        self.assertEqual(cfg["global"]["upload_minimum"], 0)
+
+    def test_missing_minimum_uses_default(self):
+        cfg = self._load("[global]\n")
+        self.assertEqual(cfg["global"]["download_minimum"], 100)
+        self.assertEqual(cfg["global"]["upload_minimum"], 10)
+
     def test_wrong_type_for_section_falls_back_to_defaults(self):
         # Typverwechselte Tabelle (global = "x") darf nicht crashen.
         cfg = self._load('global = "not a table"\n')
