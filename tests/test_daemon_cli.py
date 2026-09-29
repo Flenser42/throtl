@@ -445,6 +445,53 @@ class MatchRulesTest(unittest.TestCase):
         self.assertEqual(daemon._match_rules([rule], "/usr/bin/mpv"), {})
 
 
+class DaemonSocketLivenessTest(unittest.TestCase):
+    """Ein zweiter Daemon darf einen laufenden nicht enterben."""
+
+    def _bare(self, path):
+        from throtl.daemon import Daemon
+
+        d = Daemon.__new__(Daemon)
+        d.socket_path = path
+        return d
+
+    def test_prepare_refuses_a_live_daemon(self):
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "d.sock")
+            open(path, "w").close()
+            d = self._bare(path)
+            with mock.patch.object(d, "_socket_is_live", return_value=True):
+                with self.assertRaises(RuntimeError):
+                    d._prepare_socket_path()
+            self.assertTrue(os.path.exists(path))  # nicht entfernt
+
+    def test_prepare_removes_a_stale_socket(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "d.sock")
+            open(path, "w").close()
+            d = self._bare(path)
+            d._socket_is_live = lambda: False
+            d._prepare_socket_path()
+            self.assertFalse(os.path.exists(path))
+
+    def test_socket_is_live_false_for_missing_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._bare(os.path.join(tmp, "nope.sock"))
+            self.assertFalse(d._socket_is_live())
+
+    def test_socket_is_live_true_against_running_daemon(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            harness = DaemonHarness(tmp)
+            harness.start()
+            try:
+                d = self._bare(harness.socket_path)
+                self.assertTrue(d._socket_is_live())
+            finally:
+                harness.stop()
+
+
 class DaemonProtocolErrorTest(unittest.TestCase):
     """Ein kaputter Frame darf nur die Verbindung beenden, nicht den Thread."""
 

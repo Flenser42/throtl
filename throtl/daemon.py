@@ -26,6 +26,7 @@ import argparse
 import atexit
 import copy
 import os
+import sys
 import signal
 import socket
 import threading
@@ -323,7 +324,41 @@ class Daemon:
 
     # --- Lifecycle ---
 
+    def _socket_is_live(self) -> bool:
+        """Lauscht auf dem Socket-Pfad ein erreichbarer Daemon?"""
+        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        probe.settimeout(0.3)
+        try:
+            probe.connect(self.socket_path)
+        except OSError:
+            return False
+        finally:
+            probe.close()
+        return True
+
+    def _prepare_socket_path(self) -> None:
+        """Stale Socket-Datei entfernen; bei laufendem Daemon abbrechen.
+
+        Ein blosses unlink() wuerde den Socket eines laufenden Daemons stehlen:
+        der bliebe root und mit tt/tc aktiv, waere aber nicht mehr erreichbar,
+        und ein zweiter Daemon wuerde auf denselben Zustand losgehen.
+        """
+        if not os.path.exists(self.socket_path):
+            return
+        if self._socket_is_live():
+            raise RuntimeError(
+                f"Auf {self.socket_path} laeuft bereits ein Throtl-Daemon. "
+                "Start abgebrochen, um ihn nicht unerreichbar zu machen."
+            )
+        try:
+            os.unlink(self.socket_path)
+        except OSError as error:
+            print(f"Warnung: Socket-Vorbereitung: {error}")
+
     def start(self) -> None:
+        # ZUERST pruefen (vor Engine/Monitor-Seiteneffekten), ob schon ein
+        # Daemon auf dem Pfad lauscht.
+        self._prepare_socket_path()
         # Ein konfiguriertes Start-Profil vor dem ersten Apply aktivieren.
         self._apply_start_profile()
         # Initiale Config synchron anwenden, danach uebernimmt der Worker.
@@ -333,8 +368,6 @@ class Daemon:
         self._server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             os.makedirs(os.path.dirname(self.socket_path), exist_ok=True)
-            if os.path.exists(self.socket_path):
-                os.unlink(self.socket_path)
         except OSError as error:
             print(f"Warnung: Socket-Vorbereitung: {error}")
         self._server.bind(self.socket_path)
@@ -1203,7 +1236,13 @@ def main(argv=None) -> int:
     signal.signal(signal.SIGTERM, _request_stop)
     signal.signal(signal.SIGINT, _request_stop)
 
-    daemon.start()
+    try:
+        daemon.start()
+    except RuntimeError as error:
+        # z. B. ein zweiter Daemon auf demselben Socket: sauber melden.
+        print(f"Fehler: {error}", file=sys.stderr)
+        daemon.shutdown()
+        return 1
     try:
         daemon.serve_forever()
     finally:
