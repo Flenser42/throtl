@@ -39,7 +39,10 @@ from gi.repository import Adw, GLib, Graphene, Gsk, Gtk  # noqa: E402
 from throtl.gui.app import StatsDialog, ThrotlWindow, _load_css  # noqa: E402
 
 IMAGES = os.path.join(REPO, "docs", "images")
-WIDTH, HEIGHT = 1060, 780
+# Fullscreen-Format: die App rendert ihren eigenen Hintergrund und zentriert
+# die Arbeitsflaeche per Adw.Clamp, daher sieht der Offscreen-Render genauso
+# aus wie ein echter 1920x1080-Fullscreen-Screenshot (README-tauglich).
+WIDTH, HEIGHT = 1920, 1080
 GRAPH_BASE = 1000.0  # synthetische Zeitbasis (stabil, kein Epoch-Mix)
 
 # Ein einziger Renderer fuer den ganzen Lauf; beim Verwerfen eines realisierten
@@ -398,7 +401,7 @@ def main():
     print(f"{frames} GIF-Frames gerendert.")
 
     gif = os.path.join(IMAGES, "demo.gif")
-    vf = ("fps=10,scale=720:-1:flags=lanczos,split[s0][s1];"
+    vf = ("fps=10,scale=1200:-1:flags=lanczos,split[s0][s1];"
           "[s0]palettegen[p];[s1][p]paletteuse")
     subprocess.run(
         ["ffmpeg", "-y", "-loglevel", "error", "-framerate", "10",

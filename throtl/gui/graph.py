@@ -377,6 +377,10 @@ class BandwidthGraph(Gtk.Box):
         cr.move_to(6, 8.0 + (bottom - 8.0) / 2 + 4)
         cr.show_text(format_rate(y_max / 2, self._unit, 1))
 
+        # Sanfte Verlaufsflaeche unter jeder Kurve: gibt der Messung Gewicht,
+        # ohne die Kurven zu übertönen (nach unten ausblendend).
+        self._fill_curve(cr, x_of, y_of, 1, colors["down"], bottom)
+        self._fill_curve(cr, x_of, y_of, 2, colors["up"], bottom)
         self._stroke_curve(cr, x_of, y_of, 1, colors["down"])
         self._stroke_curve(cr, x_of, y_of, 2, colors["up"])
 
@@ -431,6 +435,26 @@ class BandwidthGraph(Gtk.Box):
         # sanfte Anpassung, damit die Skala nicht springt
         self._baseline = max(self._baseline * 0.94, target * 0.9, 100.0)
         return max(target, 100.0)
+
+    def _fill_curve(self, cr, x_of, y_of, index, color, bottom) -> None:
+        """Flaechenfuellung unter einer Kurve (vertikaler Verlauf -> transparent)."""
+        if len(self._samples) < 2:
+            return
+        import cairo
+
+        r, g, b, a = color
+        top = min(y_of(sample[index]) for sample in self._samples)
+        grad = cairo.LinearGradient(0, top, 0, bottom)
+        grad.add_color_stop_rgba(0.0, r, g, b, min(0.30, a * 0.42))
+        grad.add_color_stop_rgba(1.0, r, g, b, 0.0)
+        cr.set_source(grad)
+        cr.move_to(x_of(0), bottom)
+        cr.line_to(x_of(0), y_of(self._samples[0][index]))
+        for i in range(1, len(self._samples)):
+            cr.line_to(x_of(i), y_of(self._samples[i][index]))
+        cr.line_to(x_of(len(self._samples) - 1), bottom)
+        cr.close_path()
+        cr.fill()
 
     def _stroke_curve(self, cr, x_of, y_of, index, color) -> None:
         if not self._samples:

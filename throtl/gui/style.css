@@ -10,9 +10,25 @@
     color: @window_fg_color;
 }
 
-/* --- Totals ---------------------------------------------------------- */
+/* --- Live monitor: hero rates + graph in one instrument card -------- */
+
+.throtl-monitor {
+    padding: 12px 12px 6px 12px;
+}
+
+.throtl-totals {
+    margin: 0 0 8px 2px;
+}
 
 .throtl-total {
+    font-weight: 600;
+    font-size: 0.82em;
+    color: alpha(@window_fg_color, 0.62);
+}
+
+/* Hero numbers: the live rates are the focal point of the window. */
+.throtl-metric {
+    font-size: 1.5em;
     font-weight: 700;
 }
 
@@ -25,10 +41,6 @@
 
 .throtl-globals {
     padding: 10px 16px;
-}
-
-.throtl-graph-card {
-    padding: 4px;
 }
 
 .throtl-graph {
@@ -70,6 +82,7 @@
     padding: 4px 8px;
     min-height: 32px;
     color: @window_fg_color;
+    transition: background-color 120ms ease-out;
 }
 
 /* Zweite Zeile pro App: erklaert, welche Regel gilt. Ruhig und optional. */

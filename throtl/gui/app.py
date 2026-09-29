@@ -236,18 +236,26 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self._style_manager.set_color_scheme(scheme)
 
     def _build_body(self):
-        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         page.add_css_class("throtl-page")
-        page.set_margin_top(12)
-        page.set_margin_bottom(12)
-        page.set_margin_start(12)
-        page.set_margin_end(12)
+        page.set_margin_top(16)
+        page.set_margin_bottom(16)
+        page.set_margin_start(16)
+        page.set_margin_end(16)
 
         # Entweder der Inhalt oder eine Statusseite: wenn der Dienst nicht
         # erreichbar ist, sagt eine Seite was los ist — statt einer leeren
         # Tabelle und eines Fehlertexts.
         self.stack = Gtk.Stack()
-        self.stack.add_named(page, "content")
+        # Auf breiten/fullscreen-Fenstern die Arbeitsflaeche auf eine ruhige
+        # Lesebreite begrenzen und zentrieren (statt die Process-Spalte ins
+        # Leere zu ziehen) — so bleibt das Layout auch auf 1920px komponiert.
+        page_clamp = Adw.Clamp()
+        page_clamp.set_maximum_size(1180)
+        page_clamp.set_tightening_threshold(900)
+        page_clamp.set_vexpand(True)
+        page_clamp.set_child(page)
+        self.stack.add_named(page_clamp, "content")
         self.stack.add_named(self._build_offline_page(), "offline")
         self.content.set_content(self.stack)
 
@@ -284,17 +292,19 @@ class ThrotlWindow(Adw.ApplicationWindow):
                                   spacing=2)
         self.totals_box.add_css_class("throtl-totals")
 
-        # Zeile 1: was die Leitung insgesamt macht.
-        self.total_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
-                                 spacing=8)
+        # Caption + Hero-Werte: die zwei Raten sind der Fokus des Instruments.
         self.total_label = Gtk.Label(xalign=0.0)
         self.total_label.add_css_class("throtl-total")
         self.total_down = Gtk.Label(xalign=0.0)
         self.total_down.add_css_class("rate-down")
+        self.total_down.add_css_class("throtl-metric")
         self.total_up = Gtk.Label(xalign=0.0)
         self.total_up.add_css_class("rate-up")
-        for widget in (self.total_label, self.total_down, self.total_up):
-            self.total_row.append(widget)
+        self.total_up.add_css_class("throtl-metric")
+        self.total_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                                 spacing=14)
+        self.total_row.append(self.total_down)
+        self.total_row.append(self.total_up)
 
         # Zeile 2: der Teil, der sich Anwendungen zuordnen liess.
         self.meta_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
@@ -309,18 +319,19 @@ class ThrotlWindow(Adw.ApplicationWindow):
                        self.total_meta_up):
             self.meta_row.append(widget)
 
+        self.totals_box.append(self.total_label)
         self.totals_box.append(self.total_row)
         self.totals_box.append(self.meta_row)
         self.total_label.set_tooltip_text(
             "Total traffic is everything the kernel measured on the network "
             "interface.\n"
             "“matched to apps” is the part that could be mapped to a process.")
-        page.append(self.totals_box)
 
-        # --- Graph card ---
+        # --- Live monitor: hero rates + graph in ONE instrument card ---
         graph_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         graph_card.add_css_class("card")
-        graph_card.add_css_class("throtl-graph-card")
+        graph_card.add_css_class("throtl-monitor")
+        graph_card.append(self.totals_box)
         self.graph = BandwidthGraph(max_samples=900, unit=self.unit)
         self.graph.set_vexpand(False)
         graph_card.append(self.graph)
