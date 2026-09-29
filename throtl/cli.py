@@ -435,7 +435,11 @@ def cmd_top(client, args):
     bold = "\033[1m" if colors else ""
     reset = "\033[0m" if colors else ""
     sort_key = args.sort
-    interval = max(0.3, float(args.interval))
+    try:
+        interval = max(0.3, float(args.interval))
+    except (TypeError, ValueError):
+        sys.stderr.write("--interval muss eine Zahl sein.\n")
+        return 2
 
     def sort_value(app):
         if sort_key == "name":
@@ -494,7 +498,11 @@ def cmd_watch(client, args):
     except (TypeError, ValueError):
         sys.stderr.write("--duration muss eine Zahl sein.\n")
         return 2
-    interval = max(0.2, float(args.interval))
+    try:
+        interval = max(0.2, float(args.interval))
+    except (TypeError, ValueError):
+        sys.stderr.write("--interval muss eine Zahl sein.\n")
+        return 2
     alert = None
     if args.alert:
         try:

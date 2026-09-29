@@ -110,6 +110,38 @@ class WatchCommandTest(unittest.TestCase):
             rc = cli.cmd_watch(_SeqClient([]), self._args(alert="nonsense"))
         self.assertEqual(rc, 2)
 
+    def test_invalid_interval_is_rejected(self):
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cli.cmd_watch(_SeqClient([]), self._args(interval="abc"))
+        self.assertEqual(rc, 2)
+
+
+class TopCommandTest(unittest.TestCase):
+    def test_invalid_interval_is_rejected(self):
+        import argparse
+        import io
+        from unittest import mock
+
+        class _Tty:
+            def isatty(self):
+                return True
+
+            def write(self, text):
+                pass
+
+            def flush(self):
+                pass
+
+        args = argparse.Namespace(interval="abc", sort="download")
+        with mock.patch.object(cli.sys, "stdout", _Tty()), \
+             mock.patch.object(cli.sys, "stderr", io.StringIO()):
+            rc = cli.cmd_top(_FakeClient({}), args)
+        self.assertEqual(rc, 2)
+
 
 class SelfTestGuardTest(unittest.TestCase):
     def _args(self, **overrides):
