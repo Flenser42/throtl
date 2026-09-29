@@ -445,6 +445,29 @@ class MatchRulesTest(unittest.TestCase):
         self.assertEqual(daemon._match_rules([rule], "/usr/bin/mpv"), {})
 
 
+class DaemonProtocolErrorTest(unittest.TestCase):
+    """Ein kaputter Frame darf nur die Verbindung beenden, nicht den Thread."""
+
+    def test_malformed_frame_does_not_escape_connection_handler(self):
+        from unittest import mock
+
+        from throtl.daemon import Daemon
+        from throtl.protocol import ProtocolError
+
+        d = Daemon.__new__(Daemon)
+
+        class _Conn:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        with mock.patch("throtl.daemon.iter_messages",
+                        side_effect=ProtocolError("bad frame")):
+            d._handle_connection(_Conn())  # darf nicht werfen
+
+
 class DaemonMonitorResilienceTest(unittest.TestCase):
     """Ein fehlerhafter Tick darf den Monitor-Thread nicht toeten."""
 

@@ -64,6 +64,7 @@ from .monitor import (
 from .protocol import (
     INVALID_PARAMS,
     METHOD_NOT_FOUND,
+    ProtocolError,
     iter_messages,
     make_error,
     send_message,
@@ -751,15 +752,21 @@ class Daemon:
 
     def _handle_connection(self, conn) -> None:
         with conn:
-            for message in iter_messages(conn):
-                if message is None:
-                    break
-                response = self._dispatch(message)
-                if response is not None:
-                    try:
-                        send_message(conn, response)
-                    except OSError:
+            try:
+                for message in iter_messages(conn):
+                    if message is None:
                         break
+                    response = self._dispatch(message)
+                    if response is not None:
+                        try:
+                            send_message(conn, response)
+                        except OSError:
+                            break
+            except ProtocolError:
+                # Ein kaputter/zu grosser/unvollstaendiger Frame beendet nur
+                # diese Verbindung — frueher entkam die Exception als Traceback
+                # aus dem Thread (Log-Spam, billiger lokaler DoS).
+                pass
 
     def _dispatch(self, message: dict) -> dict:
         method = message.get("method")
