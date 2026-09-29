@@ -1026,6 +1026,11 @@ def main(argv=None) -> int:
     except TimeoutError_:
         sys.stderr.write("Timeout: Daemon reagiert nicht.\n")
         return 1
+    except ConnectionError as error:
+        # Der Daemon ist waehrend eines langen Befehls (monitor/top/watch)
+        # weggebrochen: sauber melden statt Traceback.
+        sys.stderr.write(f"Verbindung zum Daemon verloren: {error}\n")
+        return 1
     finally:
         try:
             client.close()

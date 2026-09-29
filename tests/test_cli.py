@@ -120,6 +120,27 @@ class WatchCommandTest(unittest.TestCase):
         self.assertEqual(rc, 2)
 
 
+class MainConnectionErrorTest(unittest.TestCase):
+    def test_daemon_loss_is_reported_not_raised(self):
+        import contextlib
+        import io
+        from unittest import mock
+
+        class Client:
+            def call(self, *args, **kwargs):
+                raise ConnectionError("daemon went away")
+
+            def close(self):
+                pass
+
+        err = io.StringIO()
+        with mock.patch.object(cli, "_client", return_value=Client()), \
+             contextlib.redirect_stderr(err):
+            rc = cli.main(["status"])
+        self.assertEqual(rc, 1)
+        self.assertIn("Verbindung", err.getvalue())
+
+
 class TopCommandTest(unittest.TestCase):
     def test_invalid_interval_is_rejected(self):
         import argparse
