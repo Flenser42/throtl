@@ -1,6 +1,6 @@
 # Maintainer: Flenser42 <https://github.com/Flenser42>
 pkgname=throtl
-pkgver=0.1.0
+pkgver=0.10.2
 pkgrel=1
 pkgdesc="Per-application bandwidth limits and traffic prioritisation (GTK4 + TrafficToll)"
 arch=('any')
@@ -9,7 +9,10 @@ license=('GPL-3.0-or-later')
 depends=('python' 'python-gobject' 'python-cairo' 'gtk4' 'libadwaita' 'nethogs' 'iproute2')
 optdepends=('traffictoll: TrafficToll shaping backend (provides the tt binary)')
 makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools')
+install=throtl.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+# TODO: vor dem Upload 'updpkgsums' ausfuehren — 'SKIP' deaktiviert die
+# Integritaetspruefung des Release-Tarballs (Supply-Chain-Risiko).
 sha256sums=('SKIP')
 
 build() {

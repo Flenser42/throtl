@@ -28,6 +28,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Statistics are now written under a lock.** The monitor thread and RPC
   threads (after rule changes) could record to the same buckets concurrently,
   losing bytes or letting `json.dumps` run during a mutation.
+- **An explicit minimum rate of `0` is kept.** `normalize` used `value or 100`,
+  so `download_minimum = 0` / `upload_minimum = 0` silently became 100/10 on
+  the next load.
+- **The GUI units `kBs`/`mBs` are accepted as input suffixes.** `parse_rate`
+  lowercases to `kbs`/`mbs`, but only `kb/s`/`mb/s` were known, so a value
+  written in the displayed unit was rejected.
+- **`selftest` no longer leaves a permanent throttle rule behind**, and
+  `selftest --limit garbage` reports a clean error (exit 2) instead of a
+  traceback.
+- **The update check compares pre-releases.** `1.0.0` is newer than
+  `1.0.0-rc1`, pre-release identifiers are ordered, and `+build` metadata is
+  ignored.
+- **The budget dialog’s empty-state row is no longer re-added/removed** on
+  every rebuild (Adwaita logged `CRITICAL` for a widget with a parent / a
+  non-child).
+- **“Check for updates on start” is a real toggle again**; the menu item had a
+  fixed target of `true` and could never be switched off.
+- **`GuiClient` closes replaced connections and no longer drops a fresh one**
+  when the poll thread cleans up a failed connection.
+- **The monitor keeps the rate shape after the stream ends** instead of
+  overwriting it with raw `sent_kB`/`recv_kB` data.
+- **`top`/`watch --interval` reject non-numeric values**, and the CLI reports a
+  lost daemon connection instead of crashing with a traceback.
+- **A malformed protocol frame only ends its own connection** instead of
+  escaping as a traceback from the connection thread.
+
+### Packaging
+
+- The AUR package creates the `throtl` group and `/etc/throtl`, and its
+  `pkgver` was corrected from `0.1.0` to the actual release.
+- `install.sh` continues with the desktop/icon/autostart step even if the
+  daemon fails to start, instead of aborting half-way under `set -e`.
+- `.gitattributes` marks the generated images under the correct `docs/images/`
+  path.
 
 ## [0.10.2] - 2026-09-24
 

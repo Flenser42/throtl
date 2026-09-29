@@ -1,0 +1,33 @@
+# pacman hook script for the AUR package.
+#
+# The daemon restricts its Unix socket to root:throtl (mode 0660). Without the
+# group the socket would have to fall back to a mode every local user can use,
+# so the group and the config directory must exist before the service starts.
+
+_throtl_setup() {
+  if ! getent group throtl >/dev/null 2>&1; then
+    groupadd --system throtl
+  fi
+  mkdir -p /etc/throtl
+  echo "==> Add your user to the 'throtl' group to control the daemon:"
+  echo "      sudo usermod -aG throtl <user>"
+  echo "    Log out and back in (or run 'newgrp throtl'), then:"
+  echo "      sudo systemctl enable --now throtl"
+}
+
+post_install() {
+  _throtl_setup
+}
+
+post_upgrade() {
+  _throtl_setup
+}
+
+pre_remove() {
+  if systemctl --quiet is-enabled throtl.service 2>/dev/null; then
+    systemctl disable throtl.service || true
+  fi
+  if systemctl --quiet is-active throtl.service 2>/dev/null; then
+    systemctl stop throtl.service || true
+  fi
+}

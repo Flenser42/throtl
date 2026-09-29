@@ -75,7 +75,13 @@ sudo systemctl daemon-reload
 # Restart-Zaehler leeren (falls die Unit zuvor in einer Start-Loop steckte)
 sudo systemctl reset-failed throtl 2>/dev/null || true
 sudo systemctl enable throtl
-sudo systemctl restart throtl
+# Nicht mit set -e abbrechen, wenn der Daemon nicht startet: sonst laufen
+# Desktop-Datei/Icon/Autostart (Schritt 6) nie durch und die Installation
+# bleibt halbfertig.
+if ! sudo systemctl restart throtl; then
+  echo "   Warnung: Daemon startet nicht. Ursache pruefen:"
+  echo "            journalctl -u throtl -n 50 --no-pager"
+fi
 echo "   Daemon-Service: throtl  (Status: systemctl status throtl)"
 
 echo "=== [6/6] Desktop-Datei + Icon + Autostart ==="
