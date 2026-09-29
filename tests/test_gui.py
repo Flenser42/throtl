@@ -121,7 +121,7 @@ class GuiClientStateTest(unittest.TestCase):
             gui.shutdown()
 
 
-@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+@unittest.skipUnless(_gi_available(), "PyGObject (gi) fehlt")
 class GuiClientReconnectTest(unittest.TestCase):
     """Reconnect darf weder Sockets leaken noch neue Verbindungen schliessen."""
 
@@ -170,6 +170,7 @@ class GuiClientReconnectTest(unittest.TestCase):
         stale.close.assert_called_once()
 
 
+@unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
 class GuiWidgetTest(unittest.TestCase):
     def test_priority_dropdown_mapping(self):
         from throtl.gui.widgets import PriorityDropdown
