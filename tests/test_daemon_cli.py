@@ -445,5 +445,128 @@ class MatchRulesTest(unittest.TestCase):
         self.assertEqual(daemon._match_rules([rule], "/usr/bin/mpv"), {})
 
 
+class DaemonMonitorResilienceTest(unittest.TestCase):
+    """Ein fehlerhafter Tick darf den Monitor-Thread nicht toeten."""
+
+    def test_monitor_loop_survives_tick_exception(self):
+        from throtl.daemon import Daemon
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Daemon(socket_path=os.path.join(tmp, "d.sock"), config_dir=tmp,
+                       engine=SimEngine("lo"), interval=0.02,
+                       monitor_factory=None)
+            ticks = []
+
+            def flaky():
+                ticks.append(1)
+                if len(ticks) == 1:
+                    raise RuntimeError("tick boom")
+
+            d._tick_monitor = flaky
+            d._running = True
+            thread = threading.Thread(target=d._monitor_loop, daemon=True)
+            thread.start()
+            deadline = time.monotonic() + 2.0
+            while len(ticks) < 3 and time.monotonic() < deadline:
+                time.sleep(0.01)
+            d._running = False
+            thread.join(1.0)
+        self.assertGreaterEqual(len(ticks), 3)
+
+
+class DaemonTickSerializationTest(unittest.TestCase):
+    """RPC-Thread und Monitor-Thread duerfen nicht gleichzeitig ticken."""
+
+    def test_concurrent_ticks_do_not_overlap(self):
+        from throtl.daemon import Daemon
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Daemon(socket_path=os.path.join(tmp, "d.sock"), config_dir=tmp,
+                       engine=SimEngine("lo"), interval=0.05,
+                       monitor_factory=None)
+            entered = threading.Event()
+            release = threading.Event()
+            state = {"inside": 0, "max": 0}
+            guard = threading.Lock()
+
+            def slow_collect(record_stats=False):
+                with guard:
+                    state["inside"] += 1
+                    state["max"] = max(state["max"], state["inside"])
+                entered.set()
+                release.wait(2.0)
+                with guard:
+                    state["inside"] -= 1
+                return {"apps": [], "processes": [], "rules": []}
+
+            d._collect_snapshot = slow_collect
+            first = threading.Thread(target=d._tick_monitor)
+            first.start()
+            self.assertTrue(entered.wait(2.0))
+            second = threading.Thread(target=d._tick_monitor)
+            second.start()
+            time.sleep(0.2)
+            self.assertTrue(second.is_alive(), "zweiter Tick lief parallel")
+            release.set()
+            first.join(2.0)
+            second.join(2.0)
+            self.assertEqual(state["max"], 1)
+
+
+class DaemonEngineRecoveryTest(unittest.TestCase):
+    """Ein gestorbener tt-Prozess wird automatisch neu angewendet."""
+
+    class _Engine:
+        simulated = True
+
+        def __init__(self):
+            self.device = "test0"
+            self.running = False
+            self.applied = 0
+
+        def apply(self, config):
+            self.applied += 1
+            self.running = bool(config["global"].get("enabled", True))
+
+        def is_running(self):
+            return self.running
+
+        def stop(self):
+            self.running = False
+
+        def status(self):
+            return {"running": self.running, "device": self.device}
+
+    def _daemon(self, tmp):
+        from throtl.daemon import Daemon
+
+        return Daemon(socket_path=os.path.join(tmp, "d.sock"), config_dir=tmp,
+                      engine=self._Engine(), interval=0.05, monitor_factory=None)
+
+    def test_dead_engine_schedules_apply_when_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._daemon(tmp)
+            d._apply_event.clear()
+            d._tick_monitor()
+            self.assertTrue(d._apply_event.is_set())
+
+    def test_running_engine_is_not_restarted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._daemon(tmp)
+            d.engine.running = True
+            d._apply_event.clear()
+            d._tick_monitor()
+            self.assertFalse(d._apply_event.is_set())
+
+    def test_disabled_shaping_is_not_restarted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._daemon(tmp)
+            with d._state_lock:
+                d.store.get()["global"]["enabled"] = False
+            d._apply_event.clear()
+            d._tick_monitor()
+            self.assertFalse(d._apply_event.is_set())
+
+
 if __name__ == "__main__":
     unittest.main()

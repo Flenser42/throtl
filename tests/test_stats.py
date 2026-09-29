@@ -3,6 +3,8 @@
 import json
 import os
 import tempfile
+import threading
+import time
 import unittest
 
 from throtl.stats import StatsStore
@@ -145,6 +147,38 @@ class RecentAndSeriesTest(unittest.TestCase):
         recent = store.recent_totals("hour", 1, now=50 * 3600.0 + 10)
         self.assertNotIn("a", recent)
         self.assertIn("b", recent)
+
+    def test_records_are_serialized(self):
+        """record() muss threadsicher sein: zwei Ticks duerfen sich nicht
+        im Read-Modify-Write der Buckets ueberlappen (sonst gehen Bytes
+        verloren und json.dumps kann waehrend einer Mutation laufen)."""
+        store = StatsStore()
+        original_expire = store._expire_old
+        guard = threading.Lock()
+        state = {"inside": 0, "max": 0}
+        barrier = threading.Barrier(2)
+
+        def probe(ring, bucket_id):
+            with guard:
+                state["inside"] += 1
+                state["max"] = max(state["max"], state["inside"])
+            time.sleep(0.02)
+            with guard:
+                state["inside"] -= 1
+            return original_expire(ring, bucket_id)
+
+        store._expire_old = probe
+
+        def work():
+            barrier.wait()
+            store.record("app", download_kbit=8.0, now=1000.0, interval=1.0)
+
+        threads = [threading.Thread(target=work) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(state["max"], 1)
 
     def test_series_has_all_buckets(self):
         store = StatsStore()

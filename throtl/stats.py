@@ -43,8 +43,10 @@ Das Modul kommt bewusst ohne Third-Party-Dependencies aus; die Zeit kommt aus
 ``time.time()`` und ist ueber den ``now``-Parameter injizierbar (Tests).
 """
 
+import functools
 import json
 import os
+import threading
 import time
 
 from . import write_text_atomic
@@ -60,6 +62,23 @@ RESOLUTIONS = {
     "day": (86400, 30),
 }
 VALID_WINDOWS = tuple(RESOLUTIONS)
+
+
+def _synchronized(method):
+    """Serialisiert einen StatsStore-Zugriff ueber ``self._lock``.
+
+    Der Monitor-Thread schreibt, waehrend RPC-Threads (GUI/CLI) lesen. Ohne
+    Lock koennen sich Read-Modify-Write der Buckets ueberlappen (verlorene
+    Bytes) und ``json.dumps`` waehrend einer Mutation laufen. Reentrant, weil
+    z. B. ``record`` intern ``flush`` aufruft.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 class StatsStore:
@@ -78,6 +97,7 @@ class StatsStore:
         if path is None and config_dir is not None:
             path = os.path.join(config_dir, STATS_FILE_NAME)
         self.path = path
+        self._lock = threading.RLock()
         self._ticks = 0
         self._rings = {
             name: {
@@ -167,6 +187,7 @@ class StatsStore:
             },
         }
 
+    @_synchronized
     def flush(self) -> None:
         """Aktuellen Stand atomar schreiben und Tick-Zaehler zuruecksetzen."""
         self._ticks = 0
@@ -178,6 +199,7 @@ class StatsStore:
 
     # --- Aufzeichnen ------------------------------------------------------
 
+    @_synchronized
     def record(self, app_name: str, download_kbit: float = 0.0,
                upload_kbit: float = 0.0, now: float | None = None,
                interval: float | None = None) -> None:
@@ -238,6 +260,7 @@ class StatsStore:
                 f"(erlaubt: {', '.join(VALID_WINDOWS)})"
             ) from None
 
+    @_synchronized
     def snapshot(self, window: str = "minute") -> list:
         """Aggregierte Bytes pro App im Fenster, absteigend nach Gesamtvolumen."""
         ring = self._ring(window)
@@ -256,6 +279,7 @@ class StatsStore:
         result.sort(key=lambda item: item["download"] + item["upload"], reverse=True)
         return result
 
+    @_synchronized
     def totals(self, window: str = "minute") -> dict:
         download = upload = 0.0
         for item in self.snapshot(window):
@@ -263,6 +287,7 @@ class StatsStore:
             upload += item["upload"]
         return {"download": download, "upload": upload}
 
+    @_synchronized
     def recent_totals(self, window: str, buckets: int,
                       now: float | None = None) -> dict:
         """Bytes pro App ueber die letzten ``buckets`` Buckets (rollierend).
@@ -284,6 +309,7 @@ class StatsStore:
                 entry["upload"] += values.get("upload", 0.0)
         return totals
 
+    @_synchronized
     def series(self, window: str, now: float | None = None) -> list:
         """Bucket-Zeitreihe (aelteste zuerst) fuer den Statistik-Graph."""
         ring = self._ring(window)
@@ -300,6 +326,7 @@ class StatsStore:
             result.append({"id": slot_id, "download": download, "upload": upload})
         return result
 
+    @_synchronized
     def reset(self, persist: bool = True) -> None:
         """Alle Buckets leeren. Standardmaessig wird der leere Stand geschrieben."""
         self._reset_rings()

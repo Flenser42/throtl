@@ -272,6 +272,9 @@ class Daemon:
         self.config_dir = config_dir or config_dir_default()
         self.store = ConfigStore(self.config_dir)
         self._state_lock = threading.RLock()
+        # Serialisiert Monitor-Ticks: der Ticker-Thread und RPC-Threads (nach
+        # Regel-Aenderungen) duerfen nicht parallel Stats schreiben.
+        self._tick_lock = threading.Lock()
         self.interval = interval
         # Persistente Bandbreiten-Statistik (Punkt 5): Ringpuffer neben der
         # config.toml, wird im Monitor-Tick gefuettert.
@@ -437,6 +440,9 @@ class Daemon:
         self._apply_schedule()
         # Zeitfenster-Regeln: Engine neu anwenden, wenn ein Fenster kippt.
         self._apply_time_windows()
+        # tt abgestuerzt? Dann automatisch neu anwenden (sonst bliebe Shaping
+        # still aus, bis der Nutzer zufaellig eine Regel aendert).
+        self._recover_engine()
         # Echter Monitoring-Tick: Statistik fortschreiben. RPC-Snapshots
         # (list_processes) duerfen NICHT zusaetzlich zaehlen, sonst wuerde der
         # GUI-Poll die Raten doppelt verbuchen.
@@ -688,6 +694,22 @@ class Daemon:
     def _schedule_engine_apply(self) -> None:
         """Engine-Apply anfordern: nicht blockierend und coalesced."""
         self._apply_event.set()
+
+    def _recover_engine(self) -> None:
+        """Einen gestorbenen tt-Prozess automatisch neu anwenden.
+
+        Nur wenn Shaping ueberhaupt aktiv sein soll (``enabled``); ein bewusst
+        deaktivierter Zustand wird nicht endlos neu gestartet.
+        """
+        try:
+            running = bool(self.engine.status().get("running"))
+        except Exception:
+            return
+        if running:
+            return
+        if not self._snapshot_config()["global"].get("enabled", True):
+            return
+        self._schedule_engine_apply()
 
     def _start_monitor(self) -> None:
         if self._monitor_factory is None:
@@ -1068,8 +1090,9 @@ class Daemon:
     def _emit_rules_changed(self) -> None:
         # Nach einer Aenderung sofort einen frischen Snapshot ziehen, damit die
         # naechste Abfrage aktuelle Raten liefert und der /proc-Sample-Delta
-        # nicht veraltet.
-        self._tick_monitor()
+        # nicht veraltet. _safe_: eine kaputte Regel darf den Aufruf nicht
+        # mit einer Exception aus dem RPC-Handler werfen.
+        self._safe_tick_monitor()
 
     # --- Shutdown ---
 
