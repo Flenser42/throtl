@@ -485,6 +485,33 @@ class StatsDialogTest(unittest.TestCase):
         self.assertIsInstance(dialog, Adw.Dialog)
         dialog.force_close()
 
+    def test_closing_disconnects_the_theme_handler(self):
+        from throtl.gui.app import StatsDialog
+
+        class _Gui:
+            def call(self, method, params=None):
+                if method == "get_stats":
+                    return {"window": "minute", "apps": [], "totals": {}}
+                if method == "get_stats_history":
+                    return {"window": "minute", "series": []}
+                return {}
+
+            def call_async(self, *args, **kwargs):
+                return None
+
+        import gi
+
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        dialog = StatsDialog(None, _Gui())
+        handler = dialog._style_handler
+        manager = Adw.StyleManager.get_default()
+        self.assertTrue(manager.handler_is_connected(handler))
+        dialog.force_close()
+        # Der globale StyleManager darf den Dialog nicht festhalten.
+        self.assertFalse(manager.handler_is_connected(handler))
+
 
 @unittest.skipUnless(_gi_available(), "PyGObject nicht verfuegbar")
 class PlainErrorTest(unittest.TestCase):

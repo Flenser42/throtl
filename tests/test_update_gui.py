@@ -175,6 +175,19 @@ class UpdateBannerTest(unittest.TestCase):
         finally:
             win.destroy()
 
+    def test_destroy_disconnects_the_theme_handler(self):
+        import gi
+
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        win = self._window()
+        handler = win._style_handler
+        manager = win._style_manager
+        self.assertTrue(manager.handler_is_connected(handler))
+        win.destroy()
+        self.assertFalse(manager.handler_is_connected(handler))
+
     def test_manual_check_action_exists(self):
         win = self._window()
         try:

@@ -106,9 +106,11 @@ class ThrotlWindow(Adw.ApplicationWindow):
         self._fetch_latest = fetch_latest
         self._open_uri = _open_uri
 
-        # Graph-Farben folgen Hell/Dunkel-Wechseln.
-        self._style_manager.connect("notify::dark",
-                                    lambda *_a: self.graph.queue_draw())
+        # Graph-Farben folgen Hell/Dunkel-Wechseln. Handler merken und beim
+        # Zerstoeren trennen: der globale StyleManager wuerde das Fenster sonst
+        # dauerhaft festhalten.
+        self._style_handler = self._style_manager.connect(
+            "notify::dark", lambda *_a: self.graph.queue_draw())
 
         self.connect("destroy", self._on_destroy)
         self.present()
@@ -1020,7 +1022,20 @@ class ThrotlWindow(Adw.ApplicationWindow):
             on_error=self.show_error,
         )
 
+    def _disconnect_style(self):
+        handler = getattr(self, "_style_handler", None)
+        if handler is not None:
+            if self._style_manager.handler_is_connected(handler):
+                self._style_manager.disconnect(handler)
+            self._style_handler = None
+
+    def destroy(self):  # noqa: D102 - Gtk.Window.destroy
+        # Synchron trennen: das destroy-Signal kommt ohne Mainloop verzoegert.
+        self._disconnect_style()
+        super().destroy()
+
     def _on_destroy(self, *args):
+        self._disconnect_style()
         if hasattr(self, "gui"):
             self.gui.shutdown()
 
@@ -1157,10 +1172,28 @@ class StatsDialog(Adw.Dialog):
         body.append(scroll)
 
         # Graphfarben folgen Hell/Dunkel-Wechseln (wie der Live-Graph).
-        Adw.StyleManager.get_default().connect(
+        # Handler auf dem globalen StyleManager beim Schliessen trennen, sonst
+        # haelt er jeden geoeffneten Dialog fest.
+        self._style_manager = Adw.StyleManager.get_default()
+        self._style_handler = self._style_manager.connect(
             "notify::dark", lambda *_a: self.graph.queue_draw())
+        self.connect("closed", self._on_closed)
 
         self._refresh()
+
+    def _disconnect_style(self):
+        handler = getattr(self, "_style_handler", None)
+        if handler is not None:
+            if self._style_manager.handler_is_connected(handler):
+                self._style_manager.disconnect(handler)
+            self._style_handler = None
+
+    def _on_closed(self, *_args):
+        self._disconnect_style()
+
+    def force_close(self):  # noqa: D102 - Adw.Dialog.force_close
+        self._disconnect_style()
+        super().force_close()
 
     def present(self):  # noqa: D102 - Adw.Dialog.present(parent)
         Adw.Dialog.present(self, self._parent)
