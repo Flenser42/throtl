@@ -356,9 +356,10 @@ class Daemon:
         Jetzt: ``chown root:throtl`` + Modus 0660. Nur Mitglieder der Gruppe
         (per ``usermod -aG throtl $USER``) erreichen den Daemon.
 
-        Fehlt die Gruppe (z. B. manueller Start ohne install.sh), bleiben wir
-        funktionsfaehig und weichen auf 0666 aus — aber mit deutlicher Warnung,
-        damit die Abschwaechung nicht unbemerkt bleibt.
+        Fehlt die Gruppe (z. B. manueller Start ohne install.sh), wird der
+        Socket NICHT mehr fuer alle geoeffnet: er bleibt eigentuemer-only
+        (0600). Frueher wurde hier 0666 gesetzt, was jedem lokalen Konto
+        vollen Zugriff auf den root-Daemon gab (fail open).
         """
         import grp
 
@@ -369,9 +370,10 @@ class Daemon:
             except KeyError:
                 print(
                     f"Warnung: Gruppe '{SOCKET_GROUP}' existiert nicht — der "
-                    "Daemon-Socket ist fuer alle lokalen Nutzer zugaenglich. "
-                    f"Abhilfe: 'groupadd {SOCKET_GROUP}' und "
-                    f"'usermod -aG {SOCKET_GROUP} $USER' (install.sh macht das).",
+                    "Daemon-Socket bleibt gesperrt (nur root). Abhilfe: "
+                    f"'groupadd {SOCKET_GROUP}', "
+                    f"'usermod -aG {SOCKET_GROUP} $USER', dann Daemon neu "
+                    "starten (install.sh macht das).",
                     flush=True,
                 )
         try:
@@ -379,18 +381,35 @@ class Daemon:
                 os.chown(self.socket_path, 0, gid)
                 os.chmod(self.socket_path, SOCKET_MODE)
             else:
-                # Kein root oder keine Gruppe: Zugriff ermoeglichen, aber
-                # sichtbar machen, dass das nicht der sichere Modus ist.
-                os.chmod(self.socket_path, 0o666)
+                # Fail closed: Gruppe fehlt oder kein root. Nur der Eigentuemer
+                # darf zugreifen. Kein 0666-Fallback fuer den root-Daemon.
+                os.chmod(self.socket_path, 0o600)
         except OSError as error:
             print(f"Warnung: Socket-Rechte nicht setzbar: {error}", flush=True)
 
     def _monitor_loop(self) -> None:
         while self._running:
-            self._tick_monitor()
+            # Ein fehlerhafter Tick darf den Ticker nicht dauerhaft toeten:
+            # sonst hoeren Monitoring, Schedules, Zeitfenster und Statistik auf.
+            self._safe_tick_monitor()
             time.sleep(self.interval)
 
+    def _safe_tick_monitor(self) -> None:
+        """Tick ausfuehren, der den Aufrufer nie mit einer Exception verlaesst."""
+        try:
+            self._tick_monitor()
+        except Exception as error:
+            print(
+                f"Warnung: Monitor-Tick fehlgeschlagen: "
+                f"{type(error).__name__}: {error}",
+                flush=True,
+            )
+
     def _tick_monitor(self) -> None:
+        with self._tick_lock:
+            self._tick_monitor_locked()
+
+    def _tick_monitor_locked(self) -> None:
         # Toten Monitor erkennen (nethogs beendet/abgestuerzt): Fehler merken,
         # aufraeumen; die Retry-Logik unten startet ihn dann neu. Monitor-Stubs
         # ohne is_alive() werden konservativ als lebendig behandelt.
