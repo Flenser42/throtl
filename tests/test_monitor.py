@@ -169,6 +169,17 @@ class NethogsMonitorTest(unittest.TestCase):
         mon.stop()  # darf nicht werfen
         self.assertFalse(mon.is_alive())
 
+    def test_stream_end_keeps_rate_shape(self):
+        """Nach EOF darf snapshot() kein rohes kB-Schema (sent_kB/recv_kB)
+        liefern, sondern weiter download/upload."""
+        mon = NethogsMonitor("lo", inject=io.StringIO(""))
+        mon._running = True
+        mon._read_stream(io.StringIO(TRACE.decode()))
+        snap = mon.snapshot()
+        self.assertIn("1457", snap)
+        self.assertIn("download", snap["1457"])
+        self.assertIn("upload", snap["1457"])
+
     def test_injected_stream_reports_alive_until_stopped(self):
         mon = NethogsMonitor("lo", inject=io.StringIO(TRACE.decode()))
         mon.start()

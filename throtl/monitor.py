@@ -336,8 +336,10 @@ class NethogsMonitor:
                         self._latest = rates
             except Exception:
                 continue
-        with self._lock:
-            self._latest = self._parser.finish()
+        # Stream zu Ende. _latest NICHT mit parser.finish() ueberschreiben:
+        # der liefert rohe kumulative kBytes (sent_kB/recv_kB) statt der
+        # dokumentierten download/upload-Raten. Die letzten Raten bleiben so
+        # erhalten, statt auf ein falsches Schema zu kippen.
         # Stream zu Ende: wenn wir nicht selbst gestoppt haben, ist nethogs
         # gestorben. Prozess reapen (kein Zombie) und Grund merken.
         proc = self._proc
