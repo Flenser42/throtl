@@ -11,9 +11,8 @@ optdepends=('traffictoll: TrafficToll shaping backend (provides the tt binary)')
 makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools')
 install=throtl.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-# TODO: vor dem Upload 'updpkgsums' ausfuehren — 'SKIP' deaktiviert die
-# Integritaetspruefung des Release-Tarballs (Supply-Chain-Risiko).
-sha256sums=('SKIP')
+# Bei jedem Versionssprung mit 'updpkgsums' aktualisieren.
+sha256sums=('f9f8b5b03003af165dcc44797713fefb887399ef1d816cd965ec2acddbd2ecf7')
 
 build() {
   cd "$pkgname-$pkgver"
