@@ -141,6 +141,40 @@ class UpdateBannerTest(unittest.TestCase):
         finally:
             win.destroy()
 
+    def test_auto_check_menu_item_has_no_fixed_target(self):
+        import gi
+
+        gi.require_version("GLib", "2.0")
+        from gi.repository import GLib, Gio
+
+        win = self._window()
+        try:
+            found = []
+
+            def walk(menu):
+                for i in range(menu.get_n_items()):
+                    label = menu.get_item_attribute_value(
+                        i, "label", GLib.VariantType.new("s"))
+                    action = menu.get_item_attribute_value(
+                        i, "action", GLib.VariantType.new("s"))
+                    target = menu.get_item_attribute_value(i, "target", None)
+                    found.append((label.get_string() if label else None,
+                                  action.get_string() if action else None,
+                                  target))
+                    section = menu.get_item_link(i, Gio.MENU_LINK_SECTION)
+                    if section is not None:
+                        walk(section)
+
+            walk(win.main_menu)
+            matches = [f for f in found
+                       if f[0] == "Check for updates on start"]
+            self.assertEqual(len(matches), 1)
+            self.assertEqual(matches[0][1], "win.check-updates-on-start")
+            # Ein festes target=True macht den Schalter zur Einbahnstrasse.
+            self.assertIsNone(matches[0][2])
+        finally:
+            win.destroy()
+
     def test_manual_check_action_exists(self):
         win = self._window()
         try:

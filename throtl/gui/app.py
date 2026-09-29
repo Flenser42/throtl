@@ -150,9 +150,10 @@ class ThrotlWindow(Adw.ApplicationWindow):
         menu.append_section("Display unit", unit_menu)
         updates_menu = Gio.Menu()
         updates_menu.append("Check for updates", "win.check-updates")
-        auto_item = Gio.MenuItem.new("Check for updates on start", None)
-        auto_item.set_action_and_target_value(
-            "win.check-updates-on-start", GLib.Variant.new_boolean(True))
+        # Kein festes target: ein stateful Action-Menuepunkt wird sonst bei
+        # jedem Klick auf True gesetzt und liesse sich nie mehr ausschalten.
+        auto_item = Gio.MenuItem.new("Check for updates on start",
+                                     "win.check-updates-on-start")
         updates_menu.append_item(auto_item)
         menu.append_section("Updates", updates_menu)
         appearance_menu = Gio.Menu()
@@ -163,6 +164,7 @@ class ThrotlWindow(Adw.ApplicationWindow):
                 "win.appearance", GLib.Variant.new_string(key))
             appearance_menu.append_item(item)
         menu.append_section("Appearance", appearance_menu)
+        self.main_menu = menu  # fuer Tests/Introspektion zugaenglich
         menu_btn = Gtk.MenuButton(icon_name="open-menu-symbolic")
         menu_btn.set_menu_model(menu)
         menu_btn.set_tooltip_text("Main menu")
