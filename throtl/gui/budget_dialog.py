@@ -223,9 +223,15 @@ class BudgetDialog(Adw.Dialog):
             self.apps_group.remove(holder.row)
         self.app_rows = []
         if not apps:
-            self.apps_group.add(self.empty_row)
+            # Nur adden, wenn die Zeile nicht schon ein Kind ist: Adw/Gtk
+            # loggen sonst "tried to add a widget with a parent" (CRITICAL).
+            if self.empty_row.get_parent() is None:
+                self.apps_group.add(self.empty_row)
             return
-        self.apps_group.remove(self.empty_row)
+        # Nur entfernen, wenn sie tatsaechlich ein Kind ist: sonst
+        # "tried to remove non-child" (CRITICAL).
+        if self.empty_row.get_parent() is not None:
+            self.apps_group.remove(self.empty_row)
         for entry in apps:
             row = self._app_row(entry)
             self.apps_group.add(row)

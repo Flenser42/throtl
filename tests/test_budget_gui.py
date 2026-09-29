@@ -197,6 +197,36 @@ class BudgetDialogTest(unittest.TestCase):
         finally:
             dialog.force_close()
 
+    def test_rebuild_does_not_reparent_rows(self):
+        from unittest import mock
+
+        dialog, _ = self._dialog({"enabled": True, "entries": []})
+        group = dialog.apps_group
+        real_add, real_remove = group.add, group.remove
+        ops = []
+
+        def add(widget):
+            ops.append(("add", widget.get_parent()))
+            return real_add(widget)
+
+        def remove(widget):
+            ops.append(("remove", widget.get_parent()))
+            return real_remove(widget)
+
+        try:
+            with mock.patch.object(group, "add", side_effect=add), \
+                 mock.patch.object(group, "remove", side_effect=remove):
+                # zweimal Leerzustand: darf das empty_row nicht erneut adden
+                dialog._rebuild_app_rows([])
+                dialog._rebuild_app_rows([])
+        finally:
+            dialog.force_close()
+        for kind, parent in ops:
+            if kind == "add":
+                self.assertIsNone(parent, "Widget mit Parent erneut add() gerufen")
+            else:
+                self.assertIsNotNone(parent, "Nicht-Kind entfernt")
+
     def test_adding_an_app_budget(self):
         dialog, calls = self._dialog({"enabled": True, "entries": []})
         try:
