@@ -112,9 +112,11 @@ class WatchCommandTest(unittest.TestCase):
 
 
 class SelfTestGuardTest(unittest.TestCase):
-    def _args(self):
-        return argparse.Namespace(limit="2mbps", url="http://x", time=6.0,
-                                  warmup=4.0, measure=5.0)
+    def _args(self, **overrides):
+        base = dict(limit="2mbps", url="http://x", time=6.0,
+                    warmup=4.0, measure=5.0)
+        base.update(overrides)
+        return argparse.Namespace(**base)
 
     def test_simulated_daemon_is_rejected(self):
         rc = cli.cmd_selftest(_FakeClient({"status": {"simulated": True}}), self._args())
@@ -124,6 +126,59 @@ class SelfTestGuardTest(unittest.TestCase):
         status = {"simulated": False, "enabled": False, "monitoring": True}
         rc = cli.cmd_selftest(_FakeClient({"status": status}), self._args())
         self.assertEqual(rc, 2)
+
+    def test_invalid_limit_is_rejected(self):
+        from unittest import mock
+
+        status = {"simulated": False, "enabled": True, "monitoring": True}
+        with mock.patch("shutil.which", return_value="/usr/bin/curl"):
+            rc = cli.cmd_selftest(_FakeClient({"status": status}),
+                                  self._args(limit="garbage"))
+        self.assertEqual(rc, 2)
+
+
+class SelfTestCleanupTest(unittest.TestCase):
+    """Der Selftest darf keine Drossel-Regel hinterlassen."""
+
+    def _args(self):
+        return argparse.Namespace(limit="2mbps", url="http://x", time=1.0,
+                                  warmup=0.0, measure=1)
+
+    def test_removes_its_rule_when_existing_key_differs(self):
+        import contextlib
+        import io
+        from unittest import mock
+
+        calls = []
+
+        class Client:
+            def call(self, method, params=None, timeout=10):
+                calls.append((method, params))
+                if method == "status":
+                    return {"simulated": False, "enabled": True, "monitoring": True}
+                if method == "get_config":
+                    return {"processes": [
+                        {"name": "curl", "match_type": "exe",
+                         "match_value": "curl", "key": "exe:curl"}]}
+                if method == "set_process":
+                    return {"key": "exe:/usr/bin/curl",
+                            "match_value": "/usr/bin/curl"}
+                if method == "list_processes":
+                    return {"apps": [{"name": "curl", "download": 100.0}]}
+                return {}
+
+        measured = mock.Mock()
+        measured.stdout = "100000"
+        with mock.patch("shutil.which", return_value="/usr/bin/curl"), \
+             mock.patch("subprocess.run", return_value=measured), \
+             mock.patch("subprocess.Popen", return_value=mock.Mock()), \
+             mock.patch.object(cli.time, "sleep", return_value=None), \
+             mock.patch.object(cli, "_wait_engine", return_value=None), \
+             contextlib.redirect_stdout(io.StringIO()):
+            cli.cmd_selftest(Client(), self._args())
+
+        removed = [str(p.get("key")) for m, p in calls if m == "remove_process"]
+        self.assertIn("exe:/usr/bin/curl", removed)
 
 
 if __name__ == "__main__":

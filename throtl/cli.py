@@ -636,7 +636,10 @@ def cmd_selftest(client, args):
     if not status.get("monitoring"):
         return fail("Monitoring ist aus — der Selftest braucht nethogs-Raten.", 2)
 
-    limit_kbit = parse_rate(args.limit)
+    try:
+        limit_kbit = parse_rate(args.limit)
+    except ValueError:
+        limit_kbit = None
     if not limit_kbit:
         return fail(f"Ungueltiges Limit: {args.limit!r}", 2)
     limit_bps = limit_kbit * 1000.0 / 8.0
@@ -692,11 +695,14 @@ def cmd_selftest(client, args):
             except subprocess.TimeoutExpired:
                 proc.kill()
     finally:
+        # Die Selftest-Regel immer entfernen: ihr Key ist der volle curl-Pfad
+        # und kann sich von einer bereits vorhandenen curl-Regel unterscheiden.
+        # Frueher wurde nur set_process(existing) gerufen, wodurch die
+        # Selftest-Regel als zweite, dauerhaft aktive Drossel stehenblieb.
         if rule is not None:
-            if existing is not None:
-                client.call("set_process", existing)
-            else:
-                client.call("remove_process", {"key": rule.get("key")})
+            client.call("remove_process", {"key": rule.get("key")})
+        if existing is not None:
+            client.call("set_process", existing)
         _wait_engine(client)
 
     limit_kbit_measured = statistics.median(samples) if samples else None
