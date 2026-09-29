@@ -145,7 +145,7 @@ class UpdateBannerTest(unittest.TestCase):
         import gi
 
         gi.require_version("GLib", "2.0")
-        from gi.repository import GLib, Gio
+        from gi.repository import Gio, GLib
 
         win = self._window()
         try:
@@ -179,7 +179,6 @@ class UpdateBannerTest(unittest.TestCase):
         import gi
 
         gi.require_version("Adw", "1")
-        from gi.repository import Adw
 
         win = self._window()
         handler = win._style_handler

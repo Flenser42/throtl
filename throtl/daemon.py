@@ -26,9 +26,9 @@ import argparse
 import atexit
 import copy
 import os
-import sys
 import signal
 import socket
+import sys
 import threading
 import time
 
