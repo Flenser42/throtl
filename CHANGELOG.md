@@ -53,6 +53,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lost daemon connection instead of crashing with a traceback.
 - **A malformed protocol frame only ends its own connection** instead of
   escaping as a traceback from the connection thread.
+- **A second daemon no longer steals a running daemon's socket.** `start()`
+  probes the path first and aborts if a daemon answers, instead of unlinking
+  the live socket and leaving the first daemon unreachable.
+- **Rolling budget windows count the running bucket.** The “last 7 days”
+  window used to cover only 6–7 days and could undercount usage.
+- **The global `Adw.StyleManager` no longer retains closed windows/dialogs**;
+  the theme handler is disconnected on teardown.
 
 ### Packaging
 
