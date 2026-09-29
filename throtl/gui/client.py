@@ -51,10 +51,19 @@ class GuiClient:
     def _open(self, timeout: float) -> None:
         cl = Client(self.socket_path, connect_timeout=timeout)
         cl.connect()
+        # Zuweisung und Statuswechsel unter dem Lock: zwei Threads (Poll +
+        # Nutzeraktion) duerfen nicht beide verbinden, und die ersetzte
+        # Verbindung muss geschlossen werden, sonst leakt ein Socket+Thread.
         with self._client_lock:
+            previous = self._client
             self._client = cl
-        self.connected = True
-        self.last_error = None
+            self.connected = True
+            self.last_error = None
+        if previous is not None and previous is not cl:
+            try:
+                previous.close()
+            except Exception:
+                pass
 
     def connect(self, timeout: float = 2.0) -> None:
         """Initial connect; raises ConnectionError (and reports it) on failure."""
@@ -72,13 +81,21 @@ class GuiClient:
             )
             raise
 
-    def _close_client(self) -> None:
+    def _close_client(self, client=None) -> None:
+        """Verbindung schliessen.
+
+        Mit ``client`` wird genau diese (evtl. schon veraltete) Verbindung
+        geschlossen und nur dann aus ``self._client`` entfernt, wenn sie noch
+        die aktuelle ist. So kann der Poll-Thread eine fehlgeschlagene
+        Verbindung aufraeumen, ohne eine frisch aufgebaute zu schliessen.
+        """
         with self._client_lock:
-            cl = self._client
-            self._client = None
-        if cl is not None:
+            target = self._client if client is None else client
+            if self._client is target:
+                self._client = None
+        if target is not None:
             try:
-                cl.close()
+                target.close()
             except Exception:
                 pass
 
@@ -118,7 +135,7 @@ class GuiClient:
             except Exception as error:
                 self.connected = False
                 self.last_error = str(error)
-                self._close_client()
+                self._close_client(client)
                 self._notify_error(f"Lost connection to daemon ({error}); reconnecting…")
                 self._stop.wait(self._interval)
                 continue

@@ -122,6 +122,54 @@ class GuiClientStateTest(unittest.TestCase):
 
 
 @unittest.skipUnless(_display_available(), "kein GTK-Display verfuegbar")
+class GuiClientReconnectTest(unittest.TestCase):
+    """Reconnect darf weder Sockets leaken noch neue Verbindungen schliessen."""
+
+    def _client(self):
+        from throtl.gui.client import GuiClient
+
+        return GuiClient(socket_path="/tmp/nonexistent-throtl.sock")
+
+    def test_opening_a_new_connection_closes_the_previous_one(self):
+        from unittest import mock
+
+        gui = self._client()
+        created = []
+
+        class FakeClient:
+            def __init__(self, path, connect_timeout=2.0):
+                self.path = path
+                self.closed = False
+                created.append(self)
+
+            def connect(self):
+                pass
+
+            def close(self):
+                self.closed = True
+
+        with mock.patch("throtl.gui.client.Client", FakeClient):
+            gui._open(1.0)
+            first = gui._client
+            gui._open(1.0)
+            second = gui._client
+        self.assertIsNot(first, second)
+        self.assertTrue(first.closed, "alte Verbindung wurde nicht geschlossen")
+
+    def test_stale_close_does_not_drop_a_newer_connection(self):
+        from unittest import mock
+
+        gui = self._client()
+        stale = mock.Mock()
+        fresh = mock.Mock()
+        gui._client = stale
+        gui._client = fresh
+        gui._close_client(stale)
+        self.assertIs(gui._client, fresh)
+        fresh.close.assert_not_called()
+        stale.close.assert_called_once()
+
+
 class GuiWidgetTest(unittest.TestCase):
     def test_priority_dropdown_mapping(self):
         from throtl.gui.widgets import PriorityDropdown
