@@ -68,6 +68,27 @@ class IsNewerTest(unittest.TestCase):
         self.assertFalse(is_newer("0.8.0", ""))
         self.assertFalse(is_newer("0.8.0", None))
 
+    def test_prerelease_is_older_than_its_release(self):
+        from throtl.version import is_newer
+
+        self.assertTrue(is_newer("2.0.0-rc1", "2.0.0"))
+        self.assertFalse(is_newer("2.0.0", "2.0.0-rc1"))
+
+    def test_prerelease_ordering(self):
+        from throtl.version import is_newer
+
+        self.assertTrue(is_newer("1.0.0-alpha", "1.0.0-beta"))
+        self.assertTrue(is_newer("1.0.0-alpha", "1.0.0-alpha.1"))
+        self.assertTrue(is_newer("1.0.0-rc.1", "1.0.0-rc.2"))
+        self.assertFalse(is_newer("1.0.0-rc.2", "1.0.0-rc.1"))
+        self.assertFalse(is_newer("1.0.0-beta", "1.0.0-alpha"))
+
+    def test_build_metadata_is_ignored(self):
+        from throtl.version import is_newer
+
+        self.assertFalse(is_newer("1.0.0", "1.0.0+build.5"))
+        self.assertFalse(is_newer("1.0.0+build.5", "1.0.0"))
+
 
 class FetchLatestTest(unittest.TestCase):
     def test_reads_the_tag_from_the_api(self):

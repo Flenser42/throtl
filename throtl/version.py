@@ -34,20 +34,37 @@ def parse_tag(payload) -> str | None:
     return tag[1:] if tag[:1] in ("v", "V") else tag
 
 
-def _parts(version) -> tuple[int, ...] | None:
-    """Version in Zahlen zerlegen; None, wenn sie nicht lesbar ist."""
+def _version_key(version):
+    """Version in eine vergleichbare Form zerlegen (Semver-artig).
+
+    Ergebnis ``(numerische_teile, ist_release, prerelease_teile)`` oder None.
+    ``ist_release`` ist 1 fuer eine finale Version und 0 fuer eine
+    Vorabversion, damit ``1.0.0`` neuer ist als ``1.0.0-rc1``. Build-Metadaten
+    nach ``+`` werden ignoriert.
+    """
     if not version:
         return None
     text = str(version).strip().lstrip("vV")
     if not text:
         return None
+    core = text.split("+", 1)[0]
+    if "-" in core:
+        numeric, prerelease = core.split("-", 1)
+        is_release = 0
+        identifiers = tuple(
+            (0, int(part)) if part.isdigit() else (1, part)
+            for part in prerelease.split(".") if part != ""
+        )
+    else:
+        numeric, is_release, identifiers = core, 1, ()
     parts = []
-    for chunk in text.split("."):
-        head = chunk.split("-")[0].split("+")[0]
-        if not head.isdigit():
+    for chunk in numeric.split("."):
+        if not chunk.isdigit():
             return None
-        parts.append(int(head))
-    return tuple(parts) or None
+        parts.append(int(chunk))
+    if not parts:
+        return None
+    return (tuple(parts), is_release, identifiers)
 
 
 def is_newer(current, latest) -> bool:
@@ -57,13 +74,13 @@ def is_newer(current, latest) -> bool:
     Eine unlesbare Version zaehlt als "nicht neuer" — lieber kein Hinweis als
     ein falscher.
     """
-    cur, new = _parts(current), _parts(latest)
+    cur, new = _version_key(current), _version_key(latest)
     if cur is None or new is None:
         return False
-    width = max(len(cur), len(new))
-    cur += (0,) * (width - len(cur))
-    new += (0,) * (width - len(new))
-    return new > cur
+    width = max(len(cur[0]), len(new[0]))
+    cur_nums = cur[0] + (0,) * (width - len(cur[0]))
+    new_nums = new[0] + (0,) * (width - len(new[0]))
+    return (new_nums, new[1], new[2]) > (cur_nums, cur[1], cur[2])
 
 
 def fetch_latest(timeout: float = TIMEOUT, opener=None) -> str | None:
