@@ -29,6 +29,11 @@ _PARSERS = {
     "kb": 8.0,
     "gb/s": 8_000_000.0,
     "gb": 8_000_000.0,
+    # Die GUI-eigenen Einheiten-Tokens (DISPLAY_UNITS) auch als Suffix.
+    # parse_rate() lowercased "mBs" -> "mbs"; ohne diese Eintraege wurden
+    # Werte in der angezeigten Einheit abgelehnt.
+    "mbs": 8000.0,
+    "kbs": 8.0,
     # mbps/kbps kurz ohne slash (fuer parse_rate_lenient)
 }
 
@@ -137,7 +142,7 @@ _UNIT_TO_KBIT = {
 
 _UNIT_SUFFIXES = (
     "kbps", "mbps", "gbps", "kbit/s", "mbit/s", "gbit/s", "kbit", "mbit", "gbit",
-    "kb/s", "mb/s", "gb/s", "kb", "mb", "gb",
+    "kb/s", "mb/s", "gb/s", "kb", "mb", "gb", "kbs", "mbs",
 )
 
 

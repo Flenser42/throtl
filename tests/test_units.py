@@ -23,6 +23,11 @@ class ParseRateTest(unittest.TestCase):
     def test_case_and_spaces(self):
         self.assertEqual(units.parse_rate(" 1.5 Mbps "), 1500)
 
+    def test_display_unit_tokens(self):
+        # Die GUI-eigenen Einheiten kBs/mBs muessen auch als Suffix gehen.
+        self.assertEqual(units.parse_rate("5kBs"), 40)
+        self.assertEqual(units.parse_rate("5mBs"), 40000)
+
     def test_none(self):
         self.assertIsNone(units.parse_rate(None))
 
@@ -74,6 +79,12 @@ class UnitAwareEntryTest(unittest.TestCase):
         self.assertEqual(units.parse_rate_in_unit("2", "mbps"), 2000)
         self.assertEqual(units.parse_rate_in_unit("2", "kBs"), 16)
         self.assertEqual(units.parse_rate_in_unit("2", "kbps"), 2)
+
+    def test_display_unit_suffix(self):
+        from throtl import units
+
+        self.assertEqual(units.parse_rate_in_unit("5 mBs", "kbps"), 40000)
+        self.assertEqual(units.parse_rate_in_unit("2 kBs", "mBs"), 16)
 
     def test_explicit_suffix_wins(self):
         from throtl import units
