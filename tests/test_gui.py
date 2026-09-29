@@ -1023,7 +1023,23 @@ class RowExplanationTest(unittest.TestCase):
         table = self._table(window=self.WINDOW)
         text = table._rows["x"].why.get_text()
         self.assertIn("20:00-00:00", text)
-        self.assertIn("not active", text.lower())
+        # Ob das Fenster JETZT aktiv ist, haengt von der Uhrzeit ab; hier wird
+        # nur die Verdrahtung geprueft, die Zustandslogik deterministisch
+        # separat (test_explanation_state_depends_on_when).
+        self.assertRegex(text.lower(), r"(active now|not active now)")
+
+    def test_explanation_state_depends_on_when(self):
+        from datetime import datetime
+
+        from throtl.rowinfo import explain
+
+        rule = {"download_limit": 4000, "window": self.WINDOW}
+        monday_inside = datetime(2026, 9, 28, 21, 0)   # Mo 21:00
+        monday_outside = datetime(2026, 9, 28, 12, 0)  # Mo 12:00
+        self.assertIn("active now",
+                      explain(rule, {}, when=monday_inside).lower())
+        self.assertIn("not active",
+                      explain(rule, {}, when=monday_outside).lower())
 
     def test_row_without_a_rule_has_no_explanation(self):
         from throtl.gui.process_pane import ProcessTable
