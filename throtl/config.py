@@ -771,7 +771,19 @@ def load_config(path) -> dict:
         )
         print(f"Warnung: {_LAST_CONFIG_WARNING}", flush=True)
         return default_config()
-    return normalize(data)
+    try:
+        return normalize(data)
+    except (ConfigError, ValueError, TypeError, KeyError, AttributeError,
+            IndexError) as error:
+        # Syntaktisch gueltig, aber inhaltlich kaputt (ungueltige Einheit,
+        # Rate oder Prioritaet). Auch das darf den Daemon nicht unstartbar
+        # machen: Defaults verwenden und den Grund sichtbar melden.
+        _LAST_CONFIG_WARNING = (
+            f"Config {path} konnte nicht geladen werden "
+            f"({type(error).__name__}: {error}) — es gelten die Defaults."
+        )
+        print(f"Warnung: {_LAST_CONFIG_WARNING}", flush=True)
+        return default_config()
 
 
 def last_config_warning() -> str | None:

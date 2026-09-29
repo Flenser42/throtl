@@ -5,6 +5,30 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A broken or hand-edited config can no longer make the daemon unstartable.**
+  `load_config` only guarded the TOML parse; a syntactically valid but
+  semantically broken config (invalid `unit`, a non-numeric/negative rate, an
+  unknown priority, or a wrong type such as `global = "x"`) raised out of
+  `normalize` and killed the daemon at startup. All of these now fall back to
+  the defaults and are reported through `last_config_warning()`.
+- **The daemon socket is no longer opened to every local user when the
+  `throtl` group is missing.** The previous fallback set mode `0666` on the
+  root daemon's socket; it now stays owner-only (`0600`) and fails closed.
+- **A crashed TrafficToll process is now restarted automatically.** The monitor
+  tick checks the engine and re-applies the config when shaping should be on
+  but `tt` is gone, instead of silently leaving shaping off until the next rule
+  change.
+- **A failing monitor tick no longer kills the monitor thread.** One exception
+  used to stop monitoring, schedule switching, time-window re-application and
+  statistics for good.
+- **Statistics are now written under a lock.** The monitor thread and RPC
+  threads (after rule changes) could record to the same buckets concurrently,
+  losing bytes or letting `json.dumps` run during a mutation.
+
 ## [0.10.2] - 2026-09-24
 
 ### Fixed

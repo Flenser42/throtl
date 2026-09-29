@@ -163,6 +163,41 @@ class TomlRoundtripTest(unittest.TestCase):
         self.assertEqual(cfg["processes"], [])
 
 
+class LoadConfigRobustnessTest(unittest.TestCase):
+    """A hand-edited config must never make the daemon unstartable."""
+
+    def _load(self, body):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "config.toml")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(body)
+            return config.load_config(path)
+
+    def test_invalid_unit_falls_back_to_defaults(self):
+        cfg = self._load('unit = "MB/s"\n')
+        self.assertEqual(cfg["unit"], "kbps")
+        self.assertIsNotNone(config.last_config_warning())
+
+    def test_invalid_global_rate_falls_back_to_defaults(self):
+        cfg = self._load('[global]\ndownload_limit = "unlimited"\n')
+        self.assertIsNone(cfg["global"]["download_limit"])
+        self.assertIsNotNone(config.last_config_warning())
+
+    def test_negative_global_rate_falls_back_to_defaults(self):
+        cfg = self._load("[global]\ndownload_limit = -5\n")
+        self.assertIsNone(cfg["global"]["download_limit"])
+
+    def test_invalid_priority_falls_back_to_defaults(self):
+        cfg = self._load('[global]\ndownload_priority = "bogus"\n')
+        self.assertEqual(cfg["global"]["download_priority"], "normal")
+
+    def test_wrong_type_for_section_falls_back_to_defaults(self):
+        # Typverwechselte Tabelle (global = "x") darf nicht crashen.
+        cfg = self._load('global = "not a table"\n')
+        self.assertEqual(cfg["global"]["download_priority"], "normal")
+        self.assertIsNotNone(config.last_config_warning())
+
+
 class InterfaceDetectionTest(unittest.TestCase):
     def test_returns_string_or_none(self):
         result = config.detect_default_interface()
