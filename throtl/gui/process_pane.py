@@ -106,8 +106,11 @@ class ProcessTable(Gtk.Box):
         header.add_css_class("table-header-row")
         for index, (key, title, width) in enumerate(_COLUMNS):
             expand = index == 1          # nur "Process" waechst mit
+            # Raten rechtsbuendig: die Zahlen stehen untereinander an der
+            # Kommastelle, statt links zu flattern.
+            numeric = key in ("download", "upload")
             if key is None:
-                label = Gtk.Label(label=title, xalign=0.0)
+                label = Gtk.Label(label=title, xalign=1.0 if numeric else 0.0)
                 label.add_css_class("table-header")
                 header.append(self._cell(label, width, expand))
             else:
@@ -115,6 +118,9 @@ class ProcessTable(Gtk.Box):
                 button.add_css_class("table-header")
                 button.add_css_class("flat")
                 button.set_halign(Gtk.Align.FILL)
+                child = button.get_child()
+                if numeric and child is not None:
+                    child.set_xalign(1.0)
                 button.connect("clicked", self._on_sort_clicked, key)
                 self._sort_labels[key] = (button, title)
                 header.append(self._cell(button, width, expand))
@@ -506,12 +512,12 @@ class ProcessTable(Gtk.Box):
         box.append(name_box)
 
         down = Gtk.Label(label=format_rate(blob.get("download", 0.0), self.unit, 2),
-                         xalign=0.0)
+                         xalign=1.0)
         down.add_css_class("rate-down")
         box.append(self._cell(down, _COLUMNS[2][2]))
 
         up = Gtk.Label(label=format_rate(blob.get("upload", 0.0), self.unit, 2),
-                       xalign=0.0)
+                       xalign=1.0)
         up.add_css_class("rate-up")
         box.append(self._cell(up, _COLUMNS[3][2]))
 
