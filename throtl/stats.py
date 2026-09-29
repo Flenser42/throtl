@@ -290,15 +290,17 @@ class StatsStore:
     @_synchronized
     def recent_totals(self, window: str, buckets: int,
                       now: float | None = None) -> dict:
-        """Bytes pro App ueber die letzten ``buckets`` Buckets (rollierend).
+        """Bytes pro App ueber die letzten ``buckets`` Zeiteinheiten (rollierend).
 
-        Fuer Budgets: "letzte 24 h" = 24 Stundenbuckets, "letzte 7 Tage" = 7
-        Tagesbuckets — passend zu den vorhandenen Aufloesungen.
+        Fuer Budgets: "letzte 24 h" = 24 volle Stundenbuckets + der laufende
+        (partielle) Bucket, "letzte 7 Tage" = 7 Tagesbuckets + der laufende.
+        Der laufende Bucket zaehlt mit, damit ein rollierendes Fenster nie
+        unterzaehlt (die Grenze schneidet sonst bis zu einen Bucket ab).
         """
         ring = self._ring(window)
         timestamp = int(now if now is not None else time.time())
         now_id = timestamp // ring["size"]
-        lower = now_id - max(1, int(buckets)) + 1
+        lower = now_id - max(1, int(buckets))
         totals: dict = {}
         for slot_id, bucket in zip(ring["ids"], ring["buckets"]):
             if slot_id is None or slot_id < lower:

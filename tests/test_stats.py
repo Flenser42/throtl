@@ -148,6 +148,16 @@ class RecentAndSeriesTest(unittest.TestCase):
         self.assertNotIn("a", recent)
         self.assertIn("b", recent)
 
+    def test_rolling_window_includes_the_current_bucket(self):
+        store = StatsStore()
+        # Bucket 0 (t=10) und Bucket 2 (t=130); jetzt ist Bucket 2.
+        store.record("a", download_kbit=8, now=10.0)
+        store.record("a", download_kbit=8, now=130.0)
+        # "letzte 2 Minuten" um t=130 muss den laufenden Bucket plus die zwei
+        # vollen Buckets davor umfassen, sonst unterzaehlt das Budget.
+        recent = store.recent_totals("minute", 2, now=130.0)
+        self.assertAlmostEqual(recent["a"]["download"], 2000.0)
+
     def test_records_are_serialized(self):
         """record() muss threadsicher sein: zwei Ticks duerfen sich nicht
         im Read-Modify-Write der Buckets ueberlappen (sonst gehen Bytes
