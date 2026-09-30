@@ -32,6 +32,13 @@ Light mode follows your system style (toggle with `L`, or pin it in Settings):
 
 ![Throtl dashboard, light](docs/images/dashboard-light.png)
 
+Statistics and budgets open as right-side sheets (Settings too — theme, density
+and daemon info):
+
+![Statistics sheet](docs/images/dashboard-stats.png)
+
+![Budgets sheet](docs/images/dashboard-budgets.png)
+
 The dashboard is the new GUI: a **Tauri 2 + React + TypeScript + Tailwind v4**
 app in [`throtl-app/`](throtl-app/) whose Rust shell talks to the same root
 daemon over the Unix socket. It reuses the daemon, CLI and socket protocol
@@ -201,10 +208,15 @@ Uninstall with `sudo ./setup/uninstall.sh` (add `--purge` to also remove code
 and configuration); remove the dashboard with
 `rm -rf ~/.local/opt/throtl ~/.local/bin/throtl-app ~/.local/share/applications/throtl-app.desktop`.
 
-> **Prebuilt artifacts / distro packages:** Throtl is pure Python, so there is
-> nothing to compile. Every release carries an sdist, a wheel and a **Debian
-> `.deb`** (build it locally with `make deb`), and there is an AUR `PKGBUILD`
-> for Arch/Omarchy. See [`packaging/README.md`](packaging/README.md).
+> **Prebuilt artifacts / distro packages:** The backend is pure Python, so
+> there is nothing to compile for the daemon or CLI. Every release carries an
+> sdist, a wheel, a **Debian `.deb`** for the backend (build it locally with
+> `make deb`) and, since the dashboard exists, a **Tauri `.deb`** for the GUI
+> (`make app-build`); there is an AUR `PKGBUILD` for Arch/Omarchy. See
+> [`packaging/README.md`](packaging/README.md).
+>
+> CI lints and tests the Python backend (ruff + unittest + GTK/Xvfb), builds the
+> frontend (`npm run build`) and denies Rust warnings (`cargo clippy -D warnings`).
 
 > The daemon and engine need root, so Throtl installs system-wide. The frontend
 > (GUI/CLI) runs as your user and talks to the daemon over the Unix socket.

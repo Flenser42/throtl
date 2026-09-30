@@ -72,6 +72,26 @@ Categories=Network;System;Monitor;
 StartupNotify=true
 EOF
 
+# Single "Throtl" in the menu: hide the classic GTK entry. If a previous
+# install wrote the old /usr/share/applications/throtl.desktop (Throtl), a
+# user-level shadow with NoDisplay hides it without needing sudo.
+if [[ -f /usr/share/applications/throtl.desktop ]]; then
+  cat > "$APPS/throtl.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Throtl (Classic)
+GenericName=Network Bandwidth Manager
+Comment=Classic GTK4 GUI for Throtl (hidden — launch with throtl-gui)
+Exec=/usr/bin/python3 /opt/throtl/bin/throtl-gui
+Icon=throtl
+Terminal=false
+Categories=Network;System;Utility;
+NoDisplay=true
+EOF
+else
+  rm -f "$APPS/throtl.desktop"
+fi
+
 command -v update-desktop-database >/dev/null 2>&1 && \
   update-desktop-database "$APPS" 2>/dev/null || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && \

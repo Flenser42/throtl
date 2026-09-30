@@ -86,7 +86,10 @@ echo "   Daemon-Service: throtl  (Status: systemctl status throtl)"
 
 echo "=== [6/7] Desktop-Datei + Icon + Autostart ==="
 sudo install -Dm 0755 -d /usr/share/applications
-sudo install -m 0644 "$SELF_DIR"/throtl.desktop /usr/share/applications/throtl.desktop
+# The classic GTK GUI is a hidden, clearly named entry; the new dashboard owns
+# the visible "Throtl" name (otherwise the menu shows "Throtl" twice).
+sudo install -m 0644 "$SELF_DIR"/throtl.desktop /usr/share/applications/throtl-classic.desktop
+sudo rm -f /usr/share/applications/throtl.desktop
 # Desktop-Datenbank aktualisieren, damit der Launcher die neue Exec-Zeile sofort
 # sieht (Qt/GNOME/wofi/rofi-caches aktualisieren hier sonst nicht).
 if command -v update-desktop-database >/dev/null 2>&1; then

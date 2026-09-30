@@ -47,3 +47,45 @@ jobs:
             python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 xvfb
       - name: GUI widget/table tests
         run: xvfb-run -a /usr/bin/python3 -m unittest tests.test_gui -v
+
+  frontend:
+    name: Dashboard frontend (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: throtl-app/package-lock.json
+      - name: Install
+        working-directory: throtl-app
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck + build
+        working-directory: throtl-app
+        run: npm run build
+
+  rust-shell:
+    name: Rust shell (Tauri bridge)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: throtl-app/package-lock.json
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libssl-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Build frontend (tauri-build reads ../dist)
+        working-directory: throtl-app
+        run: npm ci --no-audit --no-fund && npm run build
+      - name: Clippy (deny warnings)
+        run: cargo clippy --manifest-path throtl-app/src-tauri/Cargo.toml --all-targets -- -D warnings

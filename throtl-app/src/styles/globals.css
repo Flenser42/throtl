@@ -547,6 +547,7 @@ body {
     min-width: 150px;
     backdrop-filter: blur(12px);
     pointer-events: none;
+    animation: fade-in 0.12s ease-out;
   }
   .tooltip .tt-time {
     font-size: 11px;
@@ -671,6 +672,7 @@ body {
     padding: 10px 12px;
     border-radius: var(--r-md);
     transition: background 0.12s ease;
+    animation: row-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   .row + .row {
     border-top: 1px solid var(--hairline);
@@ -1191,6 +1193,19 @@ body {
   }
   :root[data-density="compact"] .metric-value {
     font-size: 36px;
+  }
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
   }
 }
 

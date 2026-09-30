@@ -1,8 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=Throtl
-Comment=Per-application bandwidth limits and traffic prioritisation
+Name=Throtl (Classic)
+Comment=Classic GTK4 GUI for Throtl (the new dashboard is the 'Throtl' entry)
 GenericName=Network Bandwidth Manager
+NoDisplay=true
 Categories=Network;System;Utility;
 Keywords=bandwidth;limit;qos;network;traffic;
 Exec=/usr/bin/python3 /opt/throtl/bin/throtl-gui
