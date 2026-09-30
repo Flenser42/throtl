@@ -1,6 +1,6 @@
 # Maintainer: Flenser42 <https://github.com/Flenser42>
 pkgname=throtl
-pkgver=0.10.2
+pkgver=0.10.3
 pkgrel=1
 pkgdesc="Per-application bandwidth limits and traffic prioritisation (GTK4 + TrafficToll)"
 arch=('any')
@@ -12,7 +12,7 @@ makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools
 install=throtl.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 # Bei jedem Versionssprung mit 'updpkgsums' aktualisieren.
-sha256sums=('f9f8b5b03003af165dcc44797713fefb887399ef1d816cd965ec2acddbd2ecf7')
+sha256sums=('f37e9e87650738f44578b26a02ecafd038cad54db5855db3b62487ed87742029')
 
 build() {
   cd "$pkgname-$pkgver"
