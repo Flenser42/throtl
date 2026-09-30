@@ -7,6 +7,8 @@ mod socket;
 
 use std::path::PathBuf;
 
+use tauri::Manager;
+
 use socket::Bridge;
 
 pub fn run() {

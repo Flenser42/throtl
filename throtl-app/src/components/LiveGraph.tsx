@@ -27,20 +27,27 @@ interface Props {
 export function LiveGraph({ history, matchedApps, windowSumBytes, peakApp }: Props) {
   const [win, setWin] = useState("1m");
   const [hover, setHover] = useState<number | null>(null);
-  const [pinned, setPinned] = useState<number | null>(null);
+  // `?pin=N` pins a sample for deterministic screenshots; otherwise the
+  // crosshair only appears under the cursor / after a click.
+  const [pinned, setPinned] = useState<number | null>(() => {
+    const raw = new URLSearchParams(location.search).get("pin");
+    const n = raw == null ? NaN : Number(raw);
+    return Number.isFinite(n) ? n : null;
+  });
   const wrapRef = useRef<HTMLDivElement>(null);
   const areaId = useId();
 
   const data = useMemo(() => {
     const seconds = WINDOWS.find((w) => w.id === win)?.seconds ?? 60;
     if (!Number.isFinite(seconds)) return history;
-    return history.slice(-Math.max(2, seconds));
+    // +1 so the window includes its left boundary sample (1 Hz data).
+    return history.slice(-Math.max(2, seconds + 1));
   }, [history, win]);
 
   const metrics = useMemo(() => {
     const downs = data.map((d) => d.down);
     const max = Math.max(1, ...data.map((d) => Math.max(d.down, d.up)));
-    const yMax = max * 1.02;
+    const yMax = max;
     const min = downs.length ? Math.min(...downs) : 0;
     const avg = downs.length ? downs.reduce((a, b) => a + b, 0) / downs.length : 0;
     return { yMax, min, avg, max };
@@ -55,9 +62,9 @@ export function LiveGraph({ history, matchedApps, windowSumBytes, peakApp }: Pro
   const upLine = line("up");
   const downArea = `${downLine} L${W},${H} L0,${H} Z`;
 
-  const active = hover ?? pinned ?? Math.round((data.length - 1) * 0.54);
-  const activePoint = data[active];
-  const secondsAgo = data.length - 1 - active;
+  const active = hover ?? pinned;
+  const activePoint = active != null ? data[active] : undefined;
+  const secondsAgo = active != null ? data.length - 1 - active : 0;
 
   const onMove = (event: ReactMouseEvent) => {
     const rect = wrapRef.current?.getBoundingClientRect();
@@ -109,7 +116,7 @@ export function LiveGraph({ history, matchedApps, windowSumBytes, peakApp }: Pro
         ref={wrapRef}
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
-        onClick={() => setPinned(hover)}
+        onClick={() => setPinned((prev) => (prev === hover ? null : hover))}
       >
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
           <defs>
@@ -143,7 +150,7 @@ export function LiveGraph({ history, matchedApps, windowSumBytes, peakApp }: Pro
             strokeLinejoin="round"
           />
 
-          {activePoint && (
+          {activePoint && active != null && (
             <>
               <line
                 x1={x(active)}
@@ -187,23 +194,22 @@ export function LiveGraph({ history, matchedApps, windowSumBytes, peakApp }: Pro
             <text x="4" y="162">
               0
             </text>
-            <text x={W - 72} y="192">
+            <text x={W - 6} y="192" textAnchor="end">
               now
             </text>
-            <text x={W - 180} y="192">
-              -30s
+            <text x={W / 2} y="192" textAnchor="middle">
+              -{Math.round((data.length - 1) / 2)}s
             </text>
-            <text x={W - 300} y="192">
-              -60s
-            </text>
+            {(data.length > 1) && (
+              <text x="6" y="192">
+                -{data.length - 1}s
+              </text>
+            )}
           </g>
         </svg>
 
-        {activePoint && (
-          <div
-            className="tooltip"
-            style={{ left: `${(x(active) / W) * 100}%` }}
-          >
+        {activePoint && active != null && (
+          <div className="tooltip" style={{ left: `${(x(active) / W) * 100}%` }}>
             <div className="tt-time mono">-{secondsAgo}s · {clockLabel(secondsAgo)}</div>
             <div className="tt-row">
               <i className="swatch" style={{ background: "var(--down)" }} />

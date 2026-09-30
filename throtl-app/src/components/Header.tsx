@@ -33,14 +33,27 @@ export function Header({ enabled, profile, onToggle, onSettings, onStats }: Prop
           type="button"
           className="icon-btn"
           title={enabled ? "Pause shaping" : "Resume shaping"}
+          aria-label={enabled ? "Pause shaping" : "Resume shaping"}
           onClick={() => onToggle(!enabled)}
         >
           {enabled ? <Pause /> : <Play />}
         </button>
-        <button type="button" className="icon-btn" title="Statistics" onClick={onStats}>
+        <button
+          type="button"
+          className="icon-btn"
+          title="Statistics"
+          aria-label="Statistics"
+          onClick={onStats}
+        >
           <ChartLine />
         </button>
-        <button type="button" className="icon-btn" title="Settings" onClick={onSettings}>
+        <button
+          type="button"
+          className="icon-btn"
+          title="Settings"
+          aria-label="Settings"
+          onClick={onSettings}
+        >
           <Settings />
         </button>
         <div className="win-ctrl" aria-hidden="true">

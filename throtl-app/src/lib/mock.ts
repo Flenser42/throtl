@@ -60,15 +60,19 @@ function history(): HistoryPoint[] {
   const rawUp: number[] = [];
   for (let i = 0; i < n; i += 1) {
     const p = i / (n - 1);
-    rawDown.push(Math.max(0.1, 3.0 + p * 9.4 + Math.sin(i * 0.55) * 1.6 + Math.sin(i * 1.9) * 0.7));
+    rawDown.push(
+      Math.max(0.1, 2.0 + Math.pow(p, 0.6) * 10 + Math.sin(i * 0.55) * 1.6 + Math.sin(i * 1.9) * 0.7),
+    );
     rawUp.push(0.3 + Math.abs(Math.sin(i * 0.4)) * 0.12);
   }
-  // Normalise so the mock graph matches the approved mockup (peak 13.4 MB/s).
+  // Normalise so the mock graph matches the approved mockup: min 0.2, max
+  // 13.4 MB/s and an average near 7.8 MB/s.
+  const dMin = Math.min(...rawDown);
   const dMax = Math.max(...rawDown);
   const uMax = Math.max(...rawUp);
   return rawDown.map((d, i) => ({
     t: i,
-    down: (d / dMax) * 13.4 * MBPS,
+    down: (0.2 + ((d - dMin) / (dMax - dMin)) * (13.4 - 0.2)) * MBPS,
     up: (rawUp[i] / uMax) * 0.42 * MBPS,
   }));
 }

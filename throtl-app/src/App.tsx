@@ -18,13 +18,20 @@ function currentTheme(): Theme {
 }
 
 export function App() {
-  const { model, state, error, toggle, sortKey, setSort } = useDaemon();
+  const { model, state, error, toggle, toggleArm, sortKey, setSort } = useDaemon();
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        !!target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
       if (
+        !typing &&
         event.key.toLowerCase() === "l" &&
         !event.metaKey &&
         !event.ctrlKey &&
@@ -149,13 +156,14 @@ export function App() {
             apps={apps}
             unit={model.unit}
             sortKey={sortKey}
+            onToggleArm={toggleArm}
             groupsVisible={apps.length}
             groupsTotal={model.groupsTotal}
           />
         </div>
 
         <div className="hint">
-          Rates are 1-minute rolling averages. · Press <span className="kbd">L</span> for light/dark.
+          Press <span className="kbd">L</span> for light/dark · <span className="kbd">Ctrl/⌘ K</span> to filter.
         </div>
       </main>
     </div>

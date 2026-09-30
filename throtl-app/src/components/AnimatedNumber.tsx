@@ -38,8 +38,8 @@ export function useCountUp(value: number, duration = 400): number {
     }
 
     const from = fromRef.current;
-    fromRef.current = value;
     if (from === value) {
+      fromRef.current = value;
       setDisplay(value);
       return;
     }
@@ -48,12 +48,17 @@ export function useCountUp(value: number, duration = 400): number {
     const step = (now: number) => {
       const p = Math.min(1, Math.max(0, (now - start) / duration));
       const eased = 1 - Math.pow(1 - p, 3);
-      setDisplay(p < 1 ? from + (value - from) * eased : value);
+      const current = p < 1 ? from + (value - from) * eased : value;
+      fromRef.current = current; // origin for a mid-flight retarget
+      setDisplay(current);
       if (p < 1) rafRef.current = requestAnimationFrame(step);
     };
     rafRef.current = requestAnimationFrame(step);
     // Safety net: if rAF is throttled (headless/background), snap to the target.
-    timerRef.current = window.setTimeout(() => setDisplay(value), duration + 80);
+    timerRef.current = window.setTimeout(() => {
+      fromRef.current = value;
+      setDisplay(value);
+    }, duration + 80);
 
     return cancel;
   }, [value, duration]);

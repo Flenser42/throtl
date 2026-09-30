@@ -48,10 +48,18 @@ impl Bridge {
             })
             .await
             .map_err(|_| "daemon bridge is closed".to_string())?;
-        rx.await
-            .map_err(|_| "daemon bridge dropped the request".to_string())?
+        match tokio::time::timeout(CALL_TIMEOUT, rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err("daemon bridge dropped the request".to_string()),
+            Err(_) => Err("daemon request timed out".to_string()),
+        }
     }
 }
+
+/// No single RPC may hang the UI forever.
+const CALL_TIMEOUT: Duration = Duration::from_secs(10);
+/// Matches the daemon's protocol.py MAX_MESSAGE_SIZE (1 MiB).
+const MAX_MESSAGE_SIZE: usize = 1 << 20;
 
 async fn connection_loop(app: AppHandle, socket_path: PathBuf, mut rx: mpsc::Receiver<Request>) {
     let mut backoff = Duration::from_millis(500);
@@ -60,8 +68,13 @@ async fn connection_loop(app: AppHandle, socket_path: PathBuf, mut rx: mpsc::Rec
             Ok(stream) => {
                 backoff = Duration::from_millis(500);
                 let _ = app.emit("daemon:state", "connected");
-                if let Err(error) = run_connection(&app, stream, &mut rx).await {
-                    let _ = app.emit("daemon:error", error);
+                match run_connection(&app, stream, &mut rx).await {
+                    Ok(true) => {}
+                    // All senders dropped (app teardown): stop reconnecting.
+                    Ok(false) => return,
+                    Err(error) => {
+                        let _ = app.emit("daemon:error", error);
+                    }
                 }
                 let _ = app.emit("daemon:state", "offline");
             }
@@ -83,7 +96,7 @@ async fn run_connection(
     app: &AppHandle,
     stream: UnixStream,
     rx: &mut mpsc::Receiver<Request>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let (read_half, mut write_half) = stream.into_split();
     let mut reader = BufReader::new(read_half);
     let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
@@ -105,13 +118,16 @@ async fn run_connection(
                             .await?;
                     }
                     // All senders dropped: nothing left to serve.
-                    None => return Ok(()),
+                    None => return Ok(false),
                 }
             }
             read = reader.read_line(&mut line) => {
                 let n = read.map_err(|e| e.to_string())?;
                 if n == 0 {
                     return Err("daemon closed the connection".into());
+                }
+                if line.len() > MAX_MESSAGE_SIZE {
+                    return Err("daemon sent an oversized message".into());
                 }
                 if let Ok(value) = serde_json::from_str::<Value>(line.trim()) {
                     dispatch(app, &pending, value).await;

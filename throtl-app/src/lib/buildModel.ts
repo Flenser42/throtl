@@ -3,25 +3,31 @@ import { gradientFor, initialFor } from "./mock";
 import type { AppRow, DashboardModel, HistoryPoint, Talker } from "./model";
 import type { AppEntry, BudgetEntry, Budgets, Config, ProcessState, Rule } from "./types";
 
+function toMinutes(text: string): number {
+  const [h, m] = text.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
 export function ruleActive(
   win: { days: number[]; start: string; end: string },
   now = new Date(),
 ): boolean {
   const day = (now.getDay() + 6) % 7; // Monday = 0
-  if (!win.days.includes(day)) {
-    // overnight windows may start on the previous day
-    const prev = (day + 6) % 7;
-    if (!(win.end < win.start && win.days.includes(prev))) return false;
-  }
   const minutes = now.getHours() * 60 + now.getMinutes();
-  const toMin = (s: string) => {
-    const [h, m] = s.split(":").map(Number);
-    return (h || 0) * 60 + (m || 0);
-  };
-  const start = toMin(win.start);
-  const end = toMin(win.end);
-  if (start <= end) return minutes >= start && minutes < end;
-  return minutes >= start || minutes < end;
+  const start = toMinutes(win.start);
+  const end = toMinutes(win.end);
+  const overnight = start > end;
+
+  if (win.days.includes(day)) {
+    // Starts today; on an overnight window it runs until tomorrow's end time.
+    return overnight ? minutes >= start : minutes >= start && minutes < end;
+  }
+  if (overnight) {
+    // Reached via the previous day's start: only the tail (< end) applies.
+    const prev = (day + 6) % 7;
+    if (win.days.includes(prev)) return minutes < end;
+  }
+  return false;
 }
 
 function findRule(rules: Rule[], app: AppEntry): Rule | undefined {
@@ -31,7 +37,11 @@ function findRule(rules: Rule[], app: AppEntry): Rule | undefined {
     if (r.name && r.name === app.name) return true;
     const value = (r.match_value || "").replace(/\\(.)/g, "$1");
     if (!value) return false;
-    if (r.match_type === "exe") return value === exe || exe.endsWith(value.replace(/\/$/, ""));
+    if (r.match_type === "exe") {
+      // Compare full path or basename, never a bare substring (sh != bash).
+      const valueBase = value.replace(/\/$/, "").split("/").pop() || value;
+      return value === exe || valueBase === base;
+    }
     if (r.match_type === "name") return value === base;
     return false;
   });
@@ -95,6 +105,8 @@ export function buildModel(input: {
     ratio: (t.downKbit + t.upKbit) / peak,
   }));
 
+  // Integral of the 1 Hz samples (kbit/s -> bytes) for the shown window.
+  const windowSumBytes = (history.reduce((sum, p) => sum + p.down + p.up, 0) * 1000) / 8;
   const scheduled = rules.filter((r) => r.window).length;
   const active = rules.filter(
     (r) => r.download_limit != null || r.upload_limit != null,
@@ -116,7 +128,7 @@ export function buildModel(input: {
     globalUpLimit: config.global.upload_limit,
     globalPriority: config.global.download_priority,
     history,
-    windowSumBytes: 0,
+    windowSumBytes,
     apps,
     topTalkers,
     groupsVisible: apps.length,

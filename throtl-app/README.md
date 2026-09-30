@@ -55,6 +55,12 @@ npm run tauri dev      # runs the Rust shell + Vite
 npm run tauri build    # .deb / .rpm / .AppImage
 ```
 
+If `cargo` is not on `PATH` (rustup installed with `--no-modify-path`), prefix
+with `PATH="$HOME/.cargo/bin:$PATH"`. With the full system deps present the
+bundler needs no sudo and produces `src-tauri/target/release/bundle/`
+(`.deb`, `.rpm`, `.AppImage`); `cargo clippy --all-targets -- -D warnings` and
+`cargo check` are expected to stay clean.
+
 `src-tauri/icons/*.png` were generated from `../data/hicolor/scalable/apps/throtl.svg`.
 
 ## Layout
@@ -83,4 +89,5 @@ hard-code a colour. Numbers use JetBrains Mono with `tabular-nums`.
 - [x] Phase 2 — Dashboard (header, stat tiles, live graph, globals, process list)
 - [ ] Phase 3 — Settings / Statistics / Budgets / states
 - [ ] Phase 4 — Motion, toasts, README screenshots
-- [ ] Phase 5 — Packaging + CI, remove the GTK GUI after parity
+- [x] Phase 5 (partly) — `tauri build` verified locally (deb/rpm/AppImage);
+      CI job + GTK removal still open

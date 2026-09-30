@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 import { formatBytes, splitRate } from "../lib/format";
 import type { AppRow } from "../lib/model";
 import type { Unit } from "../lib/types";
@@ -41,12 +39,14 @@ function ProcessRow({
   app,
   unit,
   series,
+  onToggleArm,
 }: {
   app: AppRow;
   unit: Unit;
   series: "download" | "upload";
+  onToggleArm: (key: string, armed: boolean) => void;
 }) {
-  const [armed, setArmed] = useState(app.armed);
+  const armed = app.armed;
   const sparkColor = series === "upload" ? "var(--up)" : "var(--down)";
 
   return (
@@ -137,7 +137,7 @@ function ProcessRow({
               role="switch"
               aria-checked={armed}
               aria-label={`Limit ${app.name}`}
-              onClick={() => setArmed((v) => !v)}
+              onClick={() => onToggleArm(app.key, !armed)}
             />
             <button type="button" className="overflow" aria-label={`More actions for ${app.name}`}>
               <EllipsisVertical size={16} />
@@ -153,11 +153,19 @@ interface Props {
   apps: AppRow[];
   unit: Unit;
   sortKey: "download" | "upload" | "name";
+  onToggleArm: (key: string, armed: boolean) => void;
   groupsVisible: number;
   groupsTotal: number;
 }
 
-export function ProcessList({ apps, unit, sortKey, groupsVisible, groupsTotal }: Props) {
+export function ProcessList({
+  apps,
+  unit,
+  sortKey,
+  onToggleArm,
+  groupsVisible,
+  groupsTotal,
+}: Props) {
   const sorted = [...apps].sort((a, b) => {
     if (sortKey === "name") return a.name.localeCompare(b.name);
     if (sortKey === "upload") return b.upKbit - a.upKbit;
@@ -172,6 +180,7 @@ export function ProcessList({ apps, unit, sortKey, groupsVisible, groupsTotal }:
           app={app}
           unit={unit}
           series={sortKey === "upload" ? "upload" : "download"}
+          onToggleArm={onToggleArm}
         />
       ))}
       <div className="hint">

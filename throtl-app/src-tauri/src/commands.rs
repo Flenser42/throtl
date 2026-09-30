@@ -10,14 +10,16 @@ use crate::socket::Bridge;
 
 type CmdResult = Result<Value, String>;
 
-/// Generic escape hatch: `invoke("daemon_call", { method, params })`.
+/// Generic escape hatch: `invoke("daemon_call", { params: { method, params } })`.
 #[tauri::command]
-pub async fn daemon_call(
-    bridge: State<'_, Arc<Bridge>>,
-    method: String,
-    params: Option<Value>,
-) -> CmdResult {
-    bridge.call(&method, params.unwrap_or_else(|| json!({}))).await
+pub async fn daemon_call(bridge: State<'_, Arc<Bridge>>, params: Option<Value>) -> CmdResult {
+    let payload = params.unwrap_or_else(|| json!({}));
+    let method = payload
+        .get("method")
+        .and_then(Value::as_str)
+        .ok_or("daemon_call requires a 'method'")?;
+    let args = payload.get("params").cloned().unwrap_or_else(|| json!({}));
+    bridge.call(method, args).await
 }
 
 macro_rules! commands_without_params {
