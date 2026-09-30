@@ -10,8 +10,9 @@
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational.svg)](#requirements)
 
 Throtl brings fine-grained bandwidth control to Linux/Omarchy: set per-application
-download/upload limits and traffic priorities from a native GTK4 + libadwaita
-app, or from a scriptable CLI — without reinventing the shaping engine.
+download/upload limits and traffic priorities from a modern desktop dashboard
+(Tauri 2 + React) or the scriptable CLI — without reinventing the shaping engine.
+A classic GTK4 + libadwaita window still ships alongside it.
 
 It is a thin, well-behaved layer on top of two proven tools:
 
@@ -20,16 +21,26 @@ It is a thin, well-behaved layer on top of two proven tools:
 - **[nethogs](https://github.com/raboof/nethogs)** in trace mode provides live
   per-process bandwidth.
 
-![Throtl in action](docs/images/demo.gif)
+### The dashboard
 
-*Live view: per-app rates, editable limits and priority, auto-scrolling graph.*
+One **monitor** surface (live download/upload rates, the graph and a compact
+status line) above the application list — no window clutter:
 
-### Light & dark
+![Throtl dashboard, dark](docs/images/dashboard-dark.png)
 
-Throtl follows your system style by default and can be pinned from the main
-menu:
+Light mode follows your system style (toggle with `L`, or pin it in Settings):
 
-![Throtl in light mode](docs/images/screenshot-light.png)
+![Throtl dashboard, light](docs/images/dashboard-light.png)
+
+The dashboard is the new GUI: a **Tauri 2 + React + TypeScript + Tailwind v4**
+app in [`throtl-app/`](throtl-app/) whose Rust shell talks to the same root
+daemon over the Unix socket. It reuses the daemon, CLI and socket protocol
+unchanged. The classic GTK4 window (`throtl-gui`) still ships until the new
+GUI reaches feature parity.
+
+![Classic GTK4 GUI](docs/images/demo.gif)
+
+*The classic GTK4 GUI, for comparison.*
 
 ---
 
@@ -146,9 +157,13 @@ as a synthetic `(unattributed)` row instead of being dropped.
 - [`traffictoll`](https://github.com/cryzed/TrafficToll) — installed by the setup
   script into a venv under `/opt/throtl`
 - `tc` and the `ifb` kernel module (for ingress shaping)
+- For the **new dashboard**: `webkit2gtk-4.1` at runtime (already pulled in by
+  `gtk4`/Adwaita on most systems). Building it additionally needs **Node 20+**
+  and **Rust** (see [Development](#development)); the CLI and GTK GUI need
+  neither.
 
-The backend itself has **no third-party Python dependencies**; the GUI uses the
-system PyGObject.
+The backend itself has **no third-party Python dependencies**; the classic GTK
+GUI uses the system PyGObject.
 
 ---
 
@@ -168,10 +183,23 @@ The script:
    `throtl-cli` / `throtl-gui` / `throtl-daemon` into `/usr/local/bin`),
 4. creates `/etc/throtl/config.toml` and `/run/throtl`,
 5. installs and starts the `throtl` systemd service,
-6. installs the desktop entry, the icon and offers autostart.
+6. installs the desktop entry, the icon and offers autostart,
+7. **installs the new dashboard GUI** for your user (builds the AppImage once
+   if needed, then installs it under `~/.local`). Use `--no-app` to skip it, or
+   run it separately later.
+
+That is the whole install — daemon + GUI in one command:
+
+```bash
+sudo ./setup/install.sh              # everything
+sudo ./setup/install.sh --no-app     # daemon + classic GTK GUI only
+./setup/install-app.sh               # new dashboard only (no root)
+make install                         # same as the first line
+```
 
 Uninstall with `sudo ./setup/uninstall.sh` (add `--purge` to also remove code
-and configuration).
+and configuration); remove the dashboard with
+`rm -rf ~/.local/opt/throtl ~/.local/bin/throtl-app ~/.local/share/applications/throtl-app.desktop`.
 
 > **Prebuilt artifacts / distro packages:** Throtl is pure Python, so there is
 > nothing to compile. Every release carries an sdist, a wheel and a **Debian
@@ -185,9 +213,35 @@ and configuration).
 
 ## Usage
 
-### GUI
+### Dashboard (new GUI)
 
 Open **Throtl** from your launcher, or:
+
+```bash
+throtl-app
+```
+
+The window is one **monitor** surface — the live download/upload rates, the
+bandwidth graph and a compact status line (active rules, global caps, profile)
+— above the application list:
+
+- **Graph** — hover for a crosshair and a tooltip with the exact values at that
+  moment, click to pin it; switch the window with `30s / 1m / 5m / 15m / all`.
+  Below it: `min / avg / max` and the peak application.
+- **Applications** — sortable and filterable. Each row shows the rates and, on
+  the second line, chips for the **limit** (`◧ 3.4 MB/s ↓ · 0.5 ↑` or
+  `unlimited`), **priority** (icon + word), **time window** (with `· now` when
+  active) and a **budget bar**; plus a sparkline and a per-app **arm switch**.
+- **Theme** — follows the system; press `L` to toggle light/dark.
+- **Filter** — `Ctrl/⌘ K` focuses the search box.
+
+Colours, spacing and type come from the design tokens in
+[`throtl-app/src/styles/globals.css`](throtl-app/src/styles/globals.css); the
+Rust side never exposes the socket to the webview.
+
+### Classic GTK GUI
+
+Open **Throtl (classic)** from your launcher, or:
 
 ```bash
 /opt/throtl/bin/throtl-gui
@@ -449,10 +503,14 @@ throtl/
   stats.py           persistent per-app history (ring buffers, 3 windows)
   daemon.py          Unix-socket RPC daemon (root)
   cli.py             CLI (throtl-cli)
-  gui/               GTK4 + libadwaita frontend (app, graph, process table,
+  gui/               classic GTK4 + libadwaita frontend (app, graph, table,
                      rule-window dialog, prefs, style.css)
+throtl-app/          new dashboard GUI: Tauri 2 + React + TS + Tailwind v4
+  src/               React UI (Overview, LiveGraph, ProcessList, …)
+  src-tauri/         Rust shell: Unix-socket JSON-RPC bridge + commands
 tests/               unittest suite (GUI tests run under Xvfb)
-setup/               install/uninstall, systemd unit, .desktop, autostart
+setup/               install/uninstall (+ install-app.sh), systemd unit,
+                     .desktop, autostart
 packaging/           AUR PKGBUILD, Debian .deb builder + distro notes
 data/                icon (SVG)
 docs/                TESTING.md, RELEASING.md
@@ -474,9 +532,31 @@ make deb             # Debian package into dist/ (needs `dpkg-deb`)
 # Run the GUI widget tests on a headless machine
 xvfb-run -a -s "-screen 0 1280x900x24" make test
 
-# Regenerate the README screenshots / demo GIF (uses the Xvfb trick above)
+# Regenerate the classic README screenshots / demo GIF (uses the Xvfb trick)
 make images
 ```
+
+### The new dashboard (`throtl-app/`)
+
+```bash
+cd throtl-app
+npm install          # once
+npm run dev          # browser preview on http://localhost:1420 (mock data)
+VITE_MOCK=1 npm run tauri dev   # real Tauri window, mock data
+npm run tauri dev               # real window, live daemon data
+npm run tauri build             # .deb / .rpm / .AppImage
+```
+
+`?static=1&theme=light&pin=27` freezes the mock and pins the graph crosshair —
+useful for screenshots. Rust is only needed for `tauri dev/build`; install it
+with [rustup](https://rustup.rs) and put `~/.cargo/bin` on your `PATH`.
+
+```bash
+# lint + typecheck the frontend, and the Rust shell
+cd throtl-app && npm run build && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+```
+
+See [`throtl-app/README.md`](throtl-app/README.md) for the architecture.
 
 - Prefer the **system Python** for GUI tests (`/usr/bin/python3`), since a
   virtualenv typically lacks PyGObject. The `Makefile` does this automatically.

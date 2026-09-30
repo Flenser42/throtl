@@ -79,7 +79,7 @@ export function LiveGraph({ history, matchedApps, windowSumBytes, peakApp }: Pro
   };
 
   return (
-    <div className="card">
+    <div className="graph-section">
       <div className="card-head">
         <div>
           <div className="card-title">Live traffic</div>

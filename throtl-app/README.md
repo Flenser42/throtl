@@ -71,8 +71,8 @@ src/
   styles/globals.css      design tokens (OKLCH) + component classes
   lib/  ipc.ts types.ts format.ts model.ts mock.ts buildModel.ts
   hooks/useDaemon.ts      connection + live view-model
-  components/             Header, StatTile, LiveGraph, TopTalkers,
-                          GlobalsTile, Toolbar, ProcessList, Sparkline, …
+  components/             Header, Overview (hero + graph), LiveGraph,
+                          Toolbar, ProcessList, Sparkline, AnimatedNumber, icons
 src-tauri/
   src/socket.rs           Unix-socket JSON-RPC client + 1 Hz poller
   src/commands.rs         tauri::command wrappers

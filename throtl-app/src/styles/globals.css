@@ -270,7 +270,91 @@ body {
     box-shadow: var(--shadow-1);
   }
 
-  /* ---------- Stat tiles ---------- */
+  /* ---------- Overview (single monitor surface) ---------- */
+  .overview {
+    padding: 20px;
+  }
+  .overview-top {
+    display: flex;
+    align-items: flex-end;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  .metric {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 168px;
+  }
+  .metric-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .metric-value {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 44px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .metric-unit {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-3);
+    font-family: var(--font);
+  }
+  .metric-caption {
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .overview-stats {
+    margin-left: auto;
+    display: flex;
+    gap: 28px;
+    flex-wrap: wrap;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .stat-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .stat-value {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .stat-value i {
+    color: var(--text-3);
+    font-style: normal;
+  }
+  .overview-divider {
+    height: 1px;
+    background: var(--hairline);
+    margin: 18px 0 14px;
+  }
+  @media (max-width: 860px) {
+    .overview-stats {
+      margin-left: 0;
+      gap: 20px;
+    }
+    .metric-value {
+      font-size: 36px;
+    }
+  }
+
+  /* ---------- Stat tiles (legacy, kept for the tile styles) ---------- */
   .tile {
     display: flex;
     flex-direction: column;
@@ -660,22 +744,21 @@ body {
     border-radius: 999px;
     font-size: 11.5px;
     font-weight: 550;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
+    background: color-mix(in oklab, var(--surface-2) 90%, transparent);
+    border: 1px solid transparent;
     color: var(--text-2);
     cursor: pointer;
   }
   button.chip:hover {
     color: var(--text);
+    background: var(--surface-hover);
   }
   .chip.acc {
     background: var(--accent-soft);
-    border-color: color-mix(in oklab, var(--accent) 35%, transparent);
     color: var(--accent);
   }
   .chip.warn {
     background: color-mix(in oklab, var(--warn) 14%, transparent);
-    border-color: color-mix(in oklab, var(--warn) 35%, transparent);
     color: var(--warn);
   }
   .chip svg {

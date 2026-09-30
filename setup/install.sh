@@ -15,12 +15,12 @@ OPT="/opt/throtl"
 ETC="/etc/throtl"
 RUN="/run/throtl"
 
-echo "=== [1/6] Systempakete installieren ==="
+echo "=== [1/7] Systempakete installieren ==="
 # pacman-Pakete (alle in [extra])
 sudo pacman -S --needed --noconfirm \
   nethogs gtk4 libadwaita python-gobject python-cairo
 
-echo "=== [2/6] TrafficToll in venv installieren ==="
+echo "=== [2/7] TrafficToll in venv installieren ==="
 sudo mkdir -p "$OPT"
 if [ ! -x "$OPT"/venv/bin/python ]; then
   sudo /usr/bin/python3 -m venv "$OPT/venv"
@@ -32,7 +32,7 @@ fi
 sudo "$OPT/venv/bin/pip" install --upgrade pip
 sudo "$OPT/venv/bin/pip" install traffictoll
 
-echo "=== [3/6] Projektdateien kopieren ==="
+echo "=== [3/7] Projektdateien kopieren ==="
 # Alte Kopie entfernen, damit keine veralteten Module/__pycache__ liegen bleiben.
 sudo rm -rf "$OPT/throtl"
 sudo cp -r "$PROJECT_DIR/throtl" "$OPT/"
@@ -48,7 +48,7 @@ sudo ln -sf "$OPT/bin/throtl-cli"    /usr/local/bin/throtl-cli
 sudo ln -sf "$OPT/bin/throtl-gui"    /usr/local/bin/throtl-gui
 sudo ln -sf "$OPT/bin/throtl-daemon" /usr/local/bin/throtl-daemon
 
-echo "=== [4/6] Gruppe, Konfiguration + Runtime-Verzeichnisse ==="
+echo "=== [4/7] Gruppe, Konfiguration + Runtime-Verzeichnisse ==="
 # Gruppe 'throtl': nur ihre Mitglieder duerfen den Daemon-Socket ansprechen
 # (0660, siehe Daemon._secure_socket). Idempotent: existiert die Gruppe schon,
 # bleiben bestehende Mitglieder erhalten.
@@ -69,7 +69,7 @@ if [ ! -f "$ETC/config.toml" ]; then
   sudo install -o root -g root -m 0644 "$SELF_DIR"/default-config.toml "$ETC/config.toml"
 fi
 
-echo "=== [5/6] systemd-Service installieren ==="
+echo "=== [5/7] systemd-Service installieren ==="
 sudo install -m 0644 "$SELF_DIR"/throtl.service /etc/systemd/system/
 sudo systemctl daemon-reload
 # Restart-Zaehler leeren (falls die Unit zuvor in einer Start-Loop steckte)
@@ -84,7 +84,7 @@ if ! sudo systemctl restart throtl; then
 fi
 echo "   Daemon-Service: throtl  (Status: systemctl status throtl)"
 
-echo "=== [6/6] Desktop-Datei + Icon + Autostart ==="
+echo "=== [6/7] Desktop-Datei + Icon + Autostart ==="
 sudo install -Dm 0755 -d /usr/share/applications
 sudo install -m 0644 "$SELF_DIR"/throtl.desktop /usr/share/applications/throtl.desktop
 # Desktop-Datenbank aktualisieren, damit der Launcher die neue Exec-Zeile sofort
@@ -102,8 +102,24 @@ if ! command -v paru >/dev/null 2>&1 && ! command -v yay >/dev/null 2>&1; then
   echo "   installiert, kein AUR-Paket noetig."
 fi
 
+echo "=== [7/7] Neue GUI (Tauri) installieren ==="
+APP_USER="${SUDO_USER:-$USER}"
+if [[ "${1:-}" == "--no-app" ]]; then
+  echo "   uebersprungen (--no-app)"
+elif [[ "$APP_USER" == "root" ]]; then
+  echo "   Als root aufgerufen - GUI uebersprungen."
+  echo "   Ohne sudo nachholen: ./setup/install-app.sh"
+elif sudo -u "$APP_USER" -H bash "$SELF_DIR/install-app.sh"; then
+  echo "   GUI installiert: 'throtl-app' bzw. 'Throtl' im App-Menue."
+else
+  echo "   Warnung: GUI-Installation fehlgeschlagen (Node/Rust vorhanden?)."
+  echo "   Spaeter erneut: ./setup/install-app.sh"
+fi
+
 echo
 echo " FERTIG. Throtl ist installiert."
 echo "   CLI:     /opt/throtl/bin/throtl-cli status"
-echo "   GUI:     Starte 'Throtl' im App-Menue (Quickshell/wofi/rofi)"
+echo "   GUI:     'throtl-app' bzw. 'Throtl' im App-Menue (neue Tauri-GUI)"
+echo "            (alte GTK-GUI weiterhin: 'throtl-gui')"
 echo "   Uninstall: sudo ./setup/uninstall.sh"
+echo "   Nur GUI neu installieren: ./setup/install-app.sh"

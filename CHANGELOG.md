@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A new desktop dashboard (`throtl-app/`).** A Tauri 2 + React + TypeScript +
+  Tailwind v4 GUI: one "monitor" surface with the live rates, the bandwidth
+  graph (hover crosshair, tooltip, window switch) and a compact status line,
+  above a sortable/filterable application list with limit, priority, time-window
+  and budget chips. A Rust shell owns the Unix-socket JSON-RPC connection and
+  exposes it to the webview through commands and events; the daemon, CLI and
+  protocol are untouched. `sudo ./setup/install.sh` installs daemon **and** GUI
+  in one step (the GUI is built once and installed per-user). The classic GTK4
+  window still ships until feature parity.
+
 ## [0.10.3] - 2026-09-30
 
 ### Changed
