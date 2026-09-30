@@ -102,6 +102,39 @@ export function formatWindow(win: { days: number[]; start: string; end: string }
   return `${label} ${win.start}–${win.end}`;
 }
 
+const SIZE_FACTORS: Record<string, number> = {
+  b: 1,
+  kb: 1e3,
+  mb: 1e6,
+  gb: 1e9,
+  tb: 1e12,
+  kib: 1024,
+  mib: 1024 ** 2,
+  gib: 1024 ** 3,
+  tib: 1024 ** 4,
+};
+
+/** "20 GB" / "1.5 GiB" / "500" -> bytes (SI by default), or null. */
+export function parseSize(text: string): number | null {
+  const s = (text ?? "").trim().toLowerCase().replace(",", ".");
+  if (!s || s === "unlimited" || s === "-") return null;
+  const match = s.match(/^([\d.]+)\s*([a-z]+)?$/);
+  if (!match) return null;
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount)) return null;
+  const factor = SIZE_FACTORS[(match[2] ?? "b").replace(/\//g, "")] ?? 1;
+  return amount * factor;
+}
+
+/** A bare number in the shown unit -> kbit/s (inverse of splitRate). */
+export function parseRateInUnit(text: string, unit: Unit): number | null {
+  const s = (text ?? "").trim().replace(",", ".");
+  if (!s || s === "unlimited" || s === "-") return null;
+  const amount = Number(s);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  return amount / UNIT_FACTOR[unit];
+}
+
 export const PRIORITY_LABEL: Record<string, string> = {
   kritisch: "Critical",
   hoch: "High",

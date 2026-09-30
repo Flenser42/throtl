@@ -1,4 +1,4 @@
-import { ChartLine, Pause, Play, Settings } from "./icons";
+import { ChartLine, Pause, Play, Settings, Wallet } from "./icons";
 
 interface Props {
   enabled: boolean;
@@ -6,9 +6,10 @@ interface Props {
   onToggle: (enabled: boolean) => void;
   onSettings: () => void;
   onStats: () => void;
+  onBudgets: () => void;
 }
 
-export function Header({ enabled, profile, onToggle, onSettings, onStats }: Props) {
+export function Header({ enabled, profile, onToggle, onSettings, onStats, onBudgets }: Props) {
   return (
     <header className="app-header">
       <button
@@ -50,17 +51,21 @@ export function Header({ enabled, profile, onToggle, onSettings, onStats }: Prop
         <button
           type="button"
           className="icon-btn"
+          title="Budgets"
+          aria-label="Budgets"
+          onClick={onBudgets}
+        >
+          <Wallet />
+        </button>
+        <button
+          type="button"
+          className="icon-btn"
           title="Settings"
           aria-label="Settings"
           onClick={onSettings}
         >
           <Settings />
         </button>
-        <div className="win-ctrl" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </div>
       </div>
     </header>
   );

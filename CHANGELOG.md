@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   protocol are untouched. `sudo ./setup/install.sh` installs daemon **and** GUI
   in one step (the GUI is built once and installed per-user). The classic GTK4
   window still ships until feature parity.
+- **The dashboard is calmer and does more.** A single monitor surface (hero
+  rates, the graph and a compact status line) above the application list — the
+  per-row sparklines and the decorative window controls are gone, and each row
+  keeps only the rule it needs. Phase 3 adds the secondary screens: a Settings
+  sheet (theme, density, daemon info), a Statistics sheet (range switch, chart,
+  per-app breakdown), a Budgets sheet (global + per-app with progress) and a
+  rule editor, plus a proper connecting skeleton and offline/denied states and
+  toasts.
 
 ## [0.10.3] - 2026-09-30
 

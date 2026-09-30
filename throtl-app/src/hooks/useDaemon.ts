@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { buildModel } from "../lib/buildModel";
 import { isMock, listen, invokeDaemon } from "../lib/ipc";
 import { mockModel, tickModel } from "../lib/mock";
-import type { DaemonView, HistoryPoint } from "../lib/model";
+import type { AppRow, DaemonView, HistoryPoint } from "../lib/model";
 import type { Budgets, Config, ProcessState } from "../lib/types";
 
 // 30 minutes at 1 Hz covers the "15m"/"all" graph windows.
@@ -19,13 +19,28 @@ type SortKey = "download" | "upload" | "name";
 export function useDaemon(): DaemonView & {
   toggle: (enabled: boolean) => void;
   toggleArm: (key: string, armed: boolean) => void;
+  setApp: (
+    app: AppRow,
+    values: { download: number | null; upload: number | null; priority: string },
+  ) => void;
   sortKey: SortKey;
   setSort: (key: SortKey) => void;
 } {
+  // `?mockstate=offline|denied|connecting` forces a connection state (screens).
+  const forced = isMock
+    ? new URLSearchParams(location.search).get("mockstate")
+    : null;
+  const forcedState =
+    forced === "offline" || forced === "denied" || forced === "connecting"
+      ? forced
+      : null;
   const [view, setView] = useState<DaemonView>({
-    state: isMock ? "connected" : "connecting",
-    error: null,
-    model: isMock ? mockModel() : null,
+    state: isMock ? (forcedState ?? "connected") : "connecting",
+    error:
+      forcedState === "offline"
+        ? "Connection refused — is the throtl service running?"
+        : null,
+    model: isMock && !forcedState ? mockModel() : null,
   });
   const [sortKey, setSort] = useState<SortKey>("download");
   const historyRef = useRef<HistoryPoint[]>(isMock ? mockModel().history.slice(-MAX_HISTORY) : []);
@@ -33,7 +48,7 @@ export function useDaemon(): DaemonView & {
 
   // ---- mock mode ----
   useEffect(() => {
-    if (!isMock) return;
+    if (!isMock || forcedState) return;
     // `?static` freezes the mock so screenshots match the mockup exactly.
     if (new URLSearchParams(location.search).has("static")) return;
     let tick = 0;
@@ -123,6 +138,43 @@ export function useDaemon(): DaemonView & {
     if (!isMock) void invokeDaemon("toggle", { enabled }).catch(() => {});
   };
 
+  const setApp = (
+    app: AppRow,
+    values: { download: number | null; upload: number | null; priority: string },
+  ) => {
+    setView((prev) =>
+      prev.model
+        ? {
+            ...prev,
+            model: {
+              ...prev.model,
+              apps: prev.model.apps.map((a) =>
+                a.key === app.key
+                  ? {
+                      ...a,
+                      downloadLimit: values.download,
+                      uploadLimit: values.upload,
+                      priority: values.priority,
+                      armed: values.download != null || values.upload != null,
+                    }
+                  : a,
+              ),
+            },
+          }
+        : prev,
+    );
+    if (!isMock) {
+      void invokeDaemon("set_process", {
+        name: app.name,
+        match_type: app.matchType ?? "exe",
+        match_value: app.matchValue ?? app.name,
+        download_limit: values.download,
+        upload_limit: values.upload,
+        priority: values.priority,
+      }).catch(() => {});
+    }
+  };
+
   const toggleArm = (key: string, armed: boolean) => {
     setView((prev) =>
       prev.model
@@ -138,5 +190,5 @@ export function useDaemon(): DaemonView & {
     // Note: arming/disarming a per-app rule is Phase 3 (needs set_process).
   };
 
-  return { ...view, toggle, toggleArm, sortKey, setSort };
+  return { ...view, toggle, toggleArm, setApp, sortKey, setSort };
 }

@@ -89,6 +89,8 @@ export function buildModel(input: {
       spark: [],
       armed: rule != null && (rule.download_limit != null || rule.upload_limit != null),
       unattributed: app.unattributed,
+      matchType: rule?.match_type ?? "exe",
+      matchValue: rule?.match_value ?? (app.exe || app.name),
     };
   });
 

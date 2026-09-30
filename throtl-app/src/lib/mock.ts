@@ -2,6 +2,7 @@
 // Values mirror the approved mockup so the built UI can be compared 1:1.
 
 import type { AppRow, DashboardModel, HistoryPoint, Talker } from "./model";
+import type { Budgets, Profiles, StatsHistory } from "./types";
 
 const MBPS = 8000; // kbit/s per MB/s
 
@@ -182,12 +183,60 @@ export function mockModel(): DashboardModel {
     globalPriority: "normal",
     history: history(),
     windowSumBytes: 1.24e9,
-    apps: APPS.map((a) => ({ ...a })),
+    apps: APPS.map((a) => ({ ...a, matchType: "exe", matchValue: a.name.toLowerCase() })),
     topTalkers: TALKERS.map((t) => ({ ...t })),
     groupsVisible: 4,
     groupsTotal: 9,
     sortKey: "download",
   };
+}
+
+export function mockStats(window: string) {
+  const factor = window === "day" ? 24 : window === "hour" ? 2 : 1;
+  const apps = [
+    { app: "Steam", download: 4.2e9 * factor, upload: 1.1e8 * factor },
+    { app: "Firefox", download: 1.8e9 * factor, upload: 6.0e7 * factor },
+    { app: "legendary", download: 9.1e8 * factor, upload: 2.0e7 * factor },
+    { app: "Spotify", download: 4.4e8 * factor, upload: 3.0e7 * factor },
+  ];
+  const totals = apps.reduce(
+    (acc, a) => ({
+      download: acc.download + a.download,
+      upload: acc.upload + a.upload,
+    }),
+    { download: 0, upload: 0 },
+  );
+  return { window, apps, totals };
+}
+
+export function mockStatsHistory(window: string): StatsHistory {
+  const count = window === "day" ? 30 : window === "hour" ? 48 : 60;
+  const series = Array.from({ length: count }, (_, i) => {
+    const p = i / (count - 1);
+    const wave = 0.5 + 0.5 * Math.sin(i * 0.7) * Math.sin(i * 0.23 + 1);
+    return {
+      id: i,
+      download: wave * 6e8 * (0.4 + p),
+      upload: (0.2 + 0.3 * wave) * 1.4e8,
+    };
+  });
+  return { window, series };
+}
+
+export function mockBudgets(): Budgets {
+  return {
+    enabled: true,
+    entries: [
+      { scope: "global", app: null, window: "day", used: 12.4e9, limit: 20e9, ratio: 0.62, exceeded: false },
+      { scope: "global", app: null, window: "week", used: 78e9, limit: 100e9, ratio: 0.78, exceeded: false },
+      { scope: "app", app: "Steam", window: "day", used: 31.2e9, limit: 30e9, ratio: 1.04, exceeded: true },
+      { scope: "app", app: "Spotify", window: "day", used: 1.9e9, limit: 2e9, ratio: 0.95, exceeded: false },
+    ],
+  };
+}
+
+export function mockProfiles(): Profiles {
+  return { profiles: ["Standard", "University", "Evening"], active: "Evening" };
 }
 
 /** Advance the model one tick so the UI/graph move during development. */

@@ -2,7 +2,6 @@ import { formatBytes, splitRate } from "../lib/format";
 import type { AppRow } from "../lib/model";
 import type { Unit } from "../lib/types";
 import { ChevronsDown, ChevronsUp, Clock, EllipsisVertical, Gauge, Minus } from "./icons";
-import { Sparkline } from "./Sparkline";
 
 const PRIORITY_LABEL: Record<string, string> = {
   kritisch: "Critical",
@@ -12,9 +11,9 @@ const PRIORITY_LABEL: Record<string, string> = {
 };
 
 function PriorityIcon({ priority }: { priority: string }) {
-  if (priority === "kritisch" || priority === "hoch") return <ChevronsUp />;
-  if (priority === "niedrig") return <ChevronsDown />;
-  return <Minus />;
+  if (priority === "kritisch" || priority === "hoch") return <ChevronsUp size={13} />;
+  if (priority === "niedrig") return <ChevronsDown size={13} />;
+  return <Minus size={13} />;
 }
 
 function limitChipText(app: AppRow, unit: Unit): string {
@@ -38,71 +37,76 @@ function Rate({ kbit, unit, kind }: { kbit: number; unit: Unit; kind: "down" | "
 function ProcessRow({
   app,
   unit,
-  series,
   onToggleArm,
+  onEdit,
 }: {
   app: AppRow;
   unit: Unit;
-  series: "download" | "upload";
   onToggleArm: (key: string, armed: boolean) => void;
+  onEdit: (app: AppRow) => void;
 }) {
-  const armed = app.armed;
-  const sparkColor = series === "upload" ? "var(--up)" : "var(--down)";
-
   return (
     <div className={`row${app.unattributed ? " unattr" : ""}`}>
       <div className="r-top">
         <span className="appicon" style={{ background: app.gradient }}>
           {app.initial}
         </span>
-        <div>
+        <div className="r-id">
           <div className="r-name">{app.name}</div>
           <div className="r-meta">{app.meta}</div>
         </div>
-        <div className="rates">
-          <Rate kbit={app.downKbit} unit={unit} kind="down" />
-          <Rate kbit={app.upKbit} unit={unit} kind="up" />
+
+        <div className="r-actions">
+          <div className="rates">
+            <Rate kbit={app.downKbit} unit={unit} kind="down" />
+            <Rate kbit={app.upKbit} unit={unit} kind="up" />
+          </div>
+          {!app.unattributed && (
+            <button
+              type="button"
+              className={`switch${app.armed ? " on" : ""}`}
+              role="switch"
+              aria-checked={app.armed}
+              aria-label={`Limit ${app.name}`}
+              onClick={() => onToggleArm(app.key, !app.armed)}
+            />
+          )}
+          <button type="button" className="overflow" aria-label={`More actions for ${app.name}`}>
+            <EllipsisVertical size={16} />
+          </button>
         </div>
       </div>
 
       <div className="r-bottom">
         {app.unattributed ? (
           <>
-            <span className="chip">no rule</span>
+            <span className="meta-item">no rule</span>
             <button type="button" className="btn" style={{ height: 24, fontSize: 11.5 }}>
               Create rule…
-            </button>
-            <button type="button" className="overflow" aria-label="More actions">
-              <EllipsisVertical size={16} />
             </button>
           </>
         ) : (
           <>
-            <button type="button" className={`chip${armed ? " acc" : ""}`} title="Edit limit">
+            <button
+              type="button"
+              className={`chip${app.downloadLimit != null || app.uploadLimit != null ? " acc" : ""}`}
+              onClick={() => onEdit(app)}
+            >
               <Gauge />
               {limitChipText(app, unit)}
             </button>
-            <span className="chip" title="Priority">
+            <span className="meta-item">
               <PriorityIcon priority={app.priority} />
               {PRIORITY_LABEL[app.priority] ?? "Normal"}
             </span>
-            {app.windowLabel ? (
-              <span
-                className={`chip${app.windowActive ? " acc" : ""}`}
-                style={app.windowActive ? undefined : { opacity: 0.6 }}
-              >
+            {app.windowLabel && (
+              <span className={`chip${app.windowActive ? " acc" : ""}`} style={app.windowActive ? undefined : { opacity: 0.6 }}>
                 <Clock />
                 {app.windowActive ? `${app.windowLabel} · now` : app.windowState ?? app.windowLabel}
-              </span>
-            ) : (
-              <span className="chip" style={{ opacity: 0.6 }}>
-                <Clock />
-                no window
               </span>
             )}
             {app.budget && (
               <span className="mini">
-                <span>budget</span>
                 <span className="bar">
                   <i
                     style={{
@@ -120,28 +124,6 @@ function ProcessRow({
                 </span>
               </span>
             )}
-            {app.spark.length > 1 && (
-              <Sparkline
-                className="row-spark"
-                data={app.spark}
-                color={sparkColor}
-                width={78}
-                height={24}
-                fill={false}
-                strokeWidth={1.5}
-              />
-            )}
-            <button
-              type="button"
-              className={`switch${armed ? " on" : ""}`}
-              role="switch"
-              aria-checked={armed}
-              aria-label={`Limit ${app.name}`}
-              onClick={() => onToggleArm(app.key, !armed)}
-            />
-            <button type="button" className="overflow" aria-label={`More actions for ${app.name}`}>
-              <EllipsisVertical size={16} />
-            </button>
           </>
         )}
       </div>
@@ -154,6 +136,7 @@ interface Props {
   unit: Unit;
   sortKey: "download" | "upload" | "name";
   onToggleArm: (key: string, armed: boolean) => void;
+  onEdit: (app: AppRow) => void;
   groupsVisible: number;
   groupsTotal: number;
 }
@@ -163,6 +146,7 @@ export function ProcessList({
   unit,
   sortKey,
   onToggleArm,
+  onEdit,
   groupsVisible,
   groupsTotal,
 }: Props) {
@@ -179,8 +163,8 @@ export function ProcessList({
           key={app.key}
           app={app}
           unit={unit}
-          series={sortKey === "upload" ? "upload" : "download"}
           onToggleArm={onToggleArm}
+          onEdit={onEdit}
         />
       ))}
       <div className="hint">

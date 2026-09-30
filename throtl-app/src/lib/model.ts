@@ -19,6 +19,8 @@ export interface AppRow {
   spark: number[];
   armed: boolean;
   unattributed: boolean;
+  matchType?: string;
+  matchValue?: string;
 }
 
 export interface Talker {
