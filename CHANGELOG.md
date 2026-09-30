@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-09-30
+
+### Changed
+
+- **The GUI got a live-monitor refresh.** The two live rates are now the largest
+  type in the window and share a single "monitor" card with the graph, so the
+  window opens on the measurement rather than on chrome. Each graph curve
+  carries a soft fading wash of its own signal colour, the rate columns are
+  right-aligned in tabular figures so the numbers line up, and on wide or
+  fullscreen windows the content is clamped to a comfortable reading width and
+  centred instead of stretching the name column across the screen.
+
 ### Fixed
 
 - **A broken or hand-edited config can no longer make the daemon unstartable.**
@@ -474,7 +486,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.10.2...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.10.3...HEAD
+[0.10.3]: https://github.com/Flenser42/throtl/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/Flenser42/throtl/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/Flenser42/throtl/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/Flenser42/throtl/compare/v0.9.0...v0.10.0
