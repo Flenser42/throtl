@@ -1,0 +1,126 @@
+import { formatWindow } from "./format";
+import { gradientFor, initialFor } from "./mock";
+import type { AppRow, DashboardModel, HistoryPoint, Talker } from "./model";
+import type { AppEntry, BudgetEntry, Budgets, Config, ProcessState, Rule } from "./types";
+
+export function ruleActive(
+  win: { days: number[]; start: string; end: string },
+  now = new Date(),
+): boolean {
+  const day = (now.getDay() + 6) % 7; // Monday = 0
+  if (!win.days.includes(day)) {
+    // overnight windows may start on the previous day
+    const prev = (day + 6) % 7;
+    if (!(win.end < win.start && win.days.includes(prev))) return false;
+  }
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const toMin = (s: string) => {
+    const [h, m] = s.split(":").map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+  const start = toMin(win.start);
+  const end = toMin(win.end);
+  if (start <= end) return minutes >= start && minutes < end;
+  return minutes >= start || minutes < end;
+}
+
+function findRule(rules: Rule[], app: AppEntry): Rule | undefined {
+  const exe = (app.exe || app.name.split(" ")[0] || "").trim();
+  const base = exe.split("/").pop() || exe;
+  return rules.find((r) => {
+    if (r.name && r.name === app.name) return true;
+    const value = (r.match_value || "").replace(/\\(.)/g, "$1");
+    if (!value) return false;
+    if (r.match_type === "exe") return value === exe || exe.endsWith(value.replace(/\/$/, ""));
+    if (r.match_type === "name") return value === base;
+    return false;
+  });
+}
+
+function metaFor(app: AppEntry): string {
+  if (app.unattributed) return `${app.pid_count} processes · no rule applies`;
+  const count = app.pid_count || app.pids.length || 1;
+  const pids = (app.pids || []).slice(0, 2).join(", ");
+  return `${count} ${count === 1 ? "process" : "processes"}${pids ? ` · pid ${pids}` : ""}`;
+}
+
+export function buildModel(input: {
+  state: ProcessState;
+  config: Config;
+  budgets: Budgets;
+  history: HistoryPoint[];
+}): DashboardModel {
+  const { state, config, budgets, history } = input;
+  const rules = state.rules ?? state.processes ?? [];
+  const appBudget = new Map<string, BudgetEntry>();
+  for (const entry of budgets.entries ?? []) {
+    if (entry.scope === "app" && entry.app) appBudget.set(entry.app.toLowerCase(), entry);
+  }
+
+  const apps: AppRow[] = (state.apps ?? []).map((app) => {
+    const rule = app.unattributed ? undefined : findRule(rules, app);
+    const budget = appBudget.get(app.name.toLowerCase()) ?? null;
+    const windowActive = rule?.window ? ruleActive(rule.window) : false;
+    return {
+      key: app.name,
+      name: app.name,
+      initial: initialFor(app.name),
+      gradient: gradientFor(app.name),
+      meta: metaFor(app),
+      downKbit: app.download,
+      upKbit: app.upload,
+      downloadLimit: rule?.download_limit ?? null,
+      uploadLimit: rule?.upload_limit ?? null,
+      priority: rule?.priority ?? "normal",
+      windowLabel: rule?.window ? formatWindow(rule.window) : null,
+      windowActive,
+      windowState: rule?.window && !windowActive ? "off-hours" : null,
+      budget: budget ? { used: budget.used, limit: budget.limit, ratio: budget.ratio } : null,
+      spark: [],
+      armed: rule != null && (rule.download_limit != null || rule.upload_limit != null),
+      unattributed: app.unattributed,
+    };
+  });
+
+  const topApps = [...apps]
+    .filter((a) => !a.unattributed)
+    .sort((a, b) => b.downKbit + b.upKbit - (a.downKbit + a.upKbit))
+    .slice(0, 5);
+  const peak = Math.max(1, ...topApps.map((t) => t.downKbit + t.upKbit));
+  const topTalkers: Talker[] = topApps.map((t) => ({
+    name: t.name,
+    initial: t.initial,
+    gradient: t.gradient,
+    value: (t.downKbit + t.upKbit) / 8000,
+    ratio: (t.downKbit + t.upKbit) / peak,
+  }));
+
+  const scheduled = rules.filter((r) => r.window).length;
+  const active = rules.filter(
+    (r) => r.download_limit != null || r.upload_limit != null,
+  ).length;
+
+  return {
+    enabled: config.global.enabled,
+    profile: config.active_profile || "Standard",
+    unit: config.unit,
+    downKbit: state.global.download ?? 0,
+    upKbit: state.global.upload ?? 0,
+    matchedApps: apps.filter((a) => !a.unattributed).length,
+    trendDownPct: 0,
+    trendUpPct: 0,
+    activeRules: active,
+    totalRules: rules.length,
+    scheduledRules: scheduled,
+    globalDownLimit: config.global.download_limit,
+    globalUpLimit: config.global.upload_limit,
+    globalPriority: config.global.download_priority,
+    history,
+    windowSumBytes: 0,
+    apps,
+    topTalkers,
+    groupsVisible: apps.length,
+    groupsTotal: apps.length,
+    sortKey: "download",
+  };
+}

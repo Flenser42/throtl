@@ -1,0 +1,761 @@
+@import "tailwindcss";
+
+/* ============================================================
+   THROTL — Design Tokens (Dark first). Values come from the
+   approved mockup (Vault "Throtl Design"); do not hard-code
+   colours in components — always use these tokens.
+   ============================================================ */
+:root {
+  --bg: oklch(0.145 0.012 265);
+  --bg-glow: oklch(0.32 0.06 240 / 0.45);
+  --surface: oklch(0.205 0.014 265);
+  --surface-2: oklch(0.245 0.016 265);
+  --surface-hover: oklch(0.27 0.018 265);
+  --border: oklch(0.32 0.018 265 / 0.85);
+  --hairline: oklch(0.36 0.02 265 / 0.45);
+  --text: oklch(0.975 0.004 265);
+  --text-2: oklch(0.8 0.008 265);
+  --text-3: oklch(0.685 0.01 265);
+  --accent: oklch(0.78 0.15 195);
+  --accent-strong: oklch(0.7 0.16 195);
+  --accent-soft: oklch(0.78 0.15 195 / 0.14);
+  --down: oklch(0.8 0.14 195);
+  --up: oklch(0.74 0.16 300);
+  --warn: oklch(0.8 0.14 75);
+  --danger: oklch(0.68 0.19 25);
+  --shadow-1: 0 1px 2px oklch(0 0 0 / 0.35), 0 1px 1px oklch(0 0 0 / 0.2);
+  --shadow-2: 0 18px 40px -12px oklch(0 0 0 / 0.55), 0 4px 12px oklch(0 0 0 / 0.35);
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --font: "Inter Variable", "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+:root[data-theme="light"] {
+  --bg: oklch(0.975 0.004 265);
+  --bg-glow: oklch(0.86 0.06 220 / 0.55);
+  --surface: oklch(1 0 0);
+  --surface-2: oklch(0.975 0.004 265);
+  --surface-hover: oklch(0.955 0.006 265);
+  --border: oklch(0.885 0.008 265);
+  --hairline: oklch(0.9 0.008 265 / 0.9);
+  --text: oklch(0.24 0.014 265);
+  --text-2: oklch(0.42 0.012 265);
+  --text-3: oklch(0.53 0.012 265);
+  --accent: oklch(0.55 0.15 220);
+  --accent-strong: oklch(0.48 0.15 220);
+  --accent-soft: oklch(0.55 0.15 220 / 0.1);
+  --down: oklch(0.55 0.14 205);
+  --up: oklch(0.52 0.18 300);
+  --warn: oklch(0.62 0.15 65);
+  --shadow-1: 0 1px 2px oklch(0.4 0.02 265 / 0.1), 0 1px 1px oklch(0.4 0.02 265 / 0.06);
+  --shadow-2: 0 20px 40px -16px oklch(0.4 0.02 265 / 0.28), 0 4px 10px oklch(0.4 0.02 265 / 0.1);
+}
+
+/* Expose the tokens as Tailwind theme variables so utilities like
+   `bg-surface`, `text-text-3`, `border-border` and `font-mono` exist. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-hover: var(--surface-hover);
+  --color-border: var(--border);
+  --color-hairline: var(--hairline);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-down: var(--down);
+  --color-up: var(--up);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --font-sans: var(--font);
+  --font-mono: var(--mono);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--text);
+  background:
+    radial-gradient(1100px 520px at 12% -8%, var(--bg-glow), transparent 70%),
+    radial-gradient(900px 500px at 95% 0%, oklch(0.55 0.14 300 / 0.16), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: 40px;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+@layer components {
+  /* ---------- Header ---------- */
+  header.app-header {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 16px;
+    background: color-mix(in oklab, var(--surface) 72%, transparent);
+    backdrop-filter: blur(20px) saturate(150%);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text);
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+    cursor: pointer;
+  }
+  .status-pill.paused {
+    background: var(--surface-2);
+    border-color: var(--border);
+    color: var(--text-2);
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow:
+      0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent),
+      0 0 14px var(--accent);
+  }
+  .dot.off {
+    background: var(--text-3);
+    box-shadow: none;
+  }
+  .pill-sep {
+    width: 1px;
+    height: 14px;
+    background: var(--hairline);
+  }
+  .brand {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .brand .logo {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    background: conic-gradient(from 140deg, var(--accent), oklch(0.72 0.17 300), var(--accent));
+    box-shadow: 0 0 16px color-mix(in oklab, var(--accent) 45%, transparent);
+  }
+  .hright {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    color: var(--text-2);
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+  }
+  .icon-btn:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+    border-color: var(--border);
+  }
+  .win-ctrl {
+    display: flex;
+    gap: 8px;
+    margin-left: 6px;
+    padding-left: 12px;
+    border-left: 1px solid var(--hairline);
+  }
+  .win-ctrl i {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text-3);
+    opacity: 0.5;
+    display: block;
+  }
+
+  /* ---------- Page ---------- */
+  main.app-main {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 20px 24px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .grid-main {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 1023px) {
+    .grid-4 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .grid-main {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 640px) {
+    .grid-4 {
+      grid-template-columns: 1fr;
+    }
+    main.app-main {
+      padding: 16px 12px 0;
+    }
+  }
+
+  /* ---------- Card ---------- */
+  .card {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--surface) 96%, white 4%),
+      var(--surface)
+    );
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow:
+      var(--shadow-1),
+      inset 0 1px 0 oklch(1 0 0 / 0.055);
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  :root[data-theme="light"] .card {
+    box-shadow: var(--shadow-1);
+  }
+
+  /* ---------- Stat tiles ---------- */
+  .tile {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 150px;
+  }
+  .tile-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .tile-value {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .tile-value .unit {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-3);
+    font-family: var(--font);
+    margin-left: 2px;
+  }
+  .tile-cap {
+    font-size: 12px;
+    color: var(--text-2);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .spark {
+    display: block;
+    width: 100%;
+    height: 42px;
+    margin-top: auto;
+  }
+  .t-down {
+    color: var(--down);
+  }
+  .t-up {
+    color: var(--up);
+  }
+  .t-acc {
+    color: var(--accent);
+  }
+  .t-warn {
+    color: var(--warn);
+  }
+  .chip-trend {
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--accent) 16%, transparent);
+    color: var(--accent);
+  }
+
+  /* ---------- Globals ---------- */
+  .caps {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 2px;
+  }
+  .cap-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  .cap-val {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .btn {
+    height: 30px;
+    padding: 0 12px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 550;
+    background: var(--surface-2);
+    color: var(--text-2);
+    border: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .btn:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+  .btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-3);
+  }
+  .btn-ghost:hover {
+    color: var(--text);
+    background: var(--surface-hover);
+  }
+
+  /* ---------- Card headers ---------- */
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .card-sub {
+    font-size: 12px;
+    color: var(--text-3);
+  }
+  .seg {
+    display: inline-flex;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 2px;
+    gap: 2px;
+  }
+  .seg button {
+    border: 0;
+    background: transparent;
+    color: var(--text-3);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 550;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .seg button.on {
+    background: var(--accent-soft);
+    color: var(--accent);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent);
+  }
+
+  /* ---------- Graph ---------- */
+  .graph-wrap {
+    position: relative;
+    height: 196px;
+  }
+  .graph-wrap svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .legend {
+    display: flex;
+    gap: 14px;
+    margin-left: auto;
+    align-items: center;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .swatch {
+    width: 9px;
+    height: 9px;
+    border-radius: 3px;
+    display: inline-block;
+  }
+  .tooltip {
+    position: absolute;
+    top: 8px;
+    transform: translateX(-50%);
+    background: color-mix(in oklab, var(--surface-2) 94%, transparent);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-2);
+    padding: 9px 11px;
+    min-width: 150px;
+    backdrop-filter: blur(12px);
+    pointer-events: none;
+  }
+  .tooltip .tt-time {
+    font-size: 11px;
+    color: var(--text-3);
+    margin-bottom: 5px;
+  }
+  .tt-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+  }
+  .tt-row b {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-weight: 600;
+  }
+  .graph-stats {
+    display: flex;
+    gap: 18px;
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-3);
+  }
+  .graph-stats b {
+    color: var(--text-2);
+    font-family: var(--mono);
+    font-weight: 500;
+  }
+
+  /* ---------- Top talkers ---------- */
+  .talkers {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 2px;
+  }
+  .talker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .talker .name {
+    width: 74px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-2);
+  }
+  .bar {
+    flex: 1;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    overflow: hidden;
+  }
+  .bar i {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent-strong), var(--accent));
+  }
+  .talker .val {
+    width: 74px;
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--text);
+  }
+
+  /* ---------- Toolbar ---------- */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .search {
+    flex: 0 0 300px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    padding: 0 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-3);
+  }
+  .search input {
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    width: 100%;
+    outline: none;
+  }
+  .kbd {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-3);
+  }
+
+  /* ---------- Process rows ---------- */
+  .rows {
+    display: flex;
+    flex-direction: column;
+  }
+  .row {
+    padding: 10px 12px;
+    border-radius: var(--r-md);
+    transition: background 0.12s ease;
+  }
+  .row + .row {
+    border-top: 1px solid var(--hairline);
+  }
+  .row:hover {
+    background: var(--surface-hover);
+  }
+  .row.unattr {
+    opacity: 0.62;
+    font-style: italic;
+  }
+  .r-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .appicon {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    font-size: 13px;
+    color: oklch(0.16 0.02 265);
+    flex: 0 0 auto;
+  }
+  .r-name {
+    font-weight: 550;
+    font-size: 13.5px;
+  }
+  .r-meta {
+    font-size: 11.5px;
+    color: var(--text-3);
+    margin-top: 1px;
+  }
+  .rates {
+    margin-left: auto;
+    display: flex;
+    gap: 18px;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .rates .k {
+    color: var(--text-3);
+    font-size: 11px;
+    font-family: var(--font);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+  }
+  .rates .u {
+    font-size: 11px;
+    color: var(--text-3);
+  }
+  .r-bottom {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 9px;
+    padding-left: 42px;
+    flex-wrap: wrap;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 9px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 550;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    cursor: pointer;
+  }
+  button.chip:hover {
+    color: var(--text);
+  }
+  .chip.acc {
+    background: var(--accent-soft);
+    border-color: color-mix(in oklab, var(--accent) 35%, transparent);
+    color: var(--accent);
+  }
+  .chip.warn {
+    background: color-mix(in oklab, var(--warn) 14%, transparent);
+    border-color: color-mix(in oklab, var(--warn) 35%, transparent);
+    color: var(--warn);
+  }
+  .chip svg {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 auto;
+  }
+  .mini {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 120px;
+  }
+  .mini .bar {
+    height: 5px;
+  }
+  .mini span {
+    font-size: 11px;
+    color: var(--text-3);
+    font-family: var(--mono);
+  }
+  .row-spark {
+    width: 78px;
+    height: 24px;
+    flex: 0 0 auto;
+  }
+  .switch {
+    width: 36px;
+    height: 21px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    position: relative;
+    flex: 0 0 auto;
+    cursor: pointer;
+    padding: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: var(--text-3);
+    transition: 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .switch.on {
+    background: var(--accent-soft);
+    border-color: color-mix(in oklab, var(--accent) 45%, transparent);
+  }
+  .switch.on::after {
+    left: 17px;
+    background: var(--accent);
+    box-shadow: 0 0 10px color-mix(in oklab, var(--accent) 60%, transparent);
+  }
+  .overflow {
+    color: var(--text-3);
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border-radius: 7px;
+    cursor: pointer;
+    background: transparent;
+    border: 0;
+  }
+  .overflow:hover {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+
+  /* ---------- Footer hint ---------- */
+  .hint {
+    font-size: 12px;
+    color: var(--text-3);
+    text-align: center;
+    padding: 14px 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
