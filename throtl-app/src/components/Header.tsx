@@ -11,6 +11,8 @@ interface Props {
   onBudgets: () => void;
   profileOpen: boolean;
   onProfileToggle: () => void;
+  /** Adds a soft shadow once the page scrolls under the sticky header. */
+  scrolled: boolean;
   /** The profile popover, rendered under the pill when open. */
   profiles: ReactNode;
 }
@@ -24,10 +26,11 @@ export function Header({
   onBudgets,
   profileOpen,
   onProfileToggle,
+  scrolled,
   profiles,
 }: Props) {
   return (
-    <header className="app-header">
+    <header className={`app-header${scrolled ? " scrolled" : ""}`}>
       <div className="pill-anchor">
         <div className={`pill-group${enabled ? "" : " paused"}`}>
           <button

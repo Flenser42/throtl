@@ -13,6 +13,7 @@ import {
   Minus,
   Plus,
   Refresh,
+  Search,
   Trash,
 } from "./icons";
 
@@ -273,6 +274,9 @@ interface Props {
   onAddRule: (app?: AppRow) => void;
   onReset: () => void;
   onToast: (message: string, kind?: "info" | "error") => void;
+  /** Current filter text (drives the empty state). */
+  query: string;
+  onClearQuery: () => void;
   groupsVisible: number;
   groupsTotal: number;
 }
@@ -287,6 +291,8 @@ export function ProcessList({
   onAddRule,
   onReset,
   onToast,
+  query,
+  onClearQuery,
   groupsVisible,
   groupsTotal,
 }: Props) {
@@ -301,20 +307,41 @@ export function ProcessList({
 
   return (
     <div className="rows">
-      {sorted.map((app) => (
-        <ProcessRow
-          key={app.key}
-          app={app}
-          unit={unit}
-          onToggleArm={onToggleArm}
-          onEdit={onEdit}
-          onRemove={onRemove}
-          onAddRule={onAddRule}
-          onReset={onReset}
-          onToast={onToast}
-          autoMenu={menuParam && app.key === firstRuleKey}
-        />
-      ))}
+      {sorted.length === 0 ? (
+        <div className="empty">
+          <span className="empty-icon">
+            <Search size={22} />
+          </span>
+          <div className="empty-title">
+            {query ? "No matching applications" : "Nothing to show yet"}
+          </div>
+          <div className="empty-text">
+            {query
+              ? `Nothing matches “${query}”. Try a different name, or clear the filter.`
+              : "Throtl has not seen any traffic yet. Start something that uses the network."}
+          </div>
+          {query && (
+            <button type="button" className="btn" onClick={onClearQuery}>
+              Clear filter
+            </button>
+          )}
+        </div>
+      ) : (
+        sorted.map((app) => (
+          <ProcessRow
+            key={app.key}
+            app={app}
+            unit={unit}
+            onToggleArm={onToggleArm}
+            onEdit={onEdit}
+            onRemove={onRemove}
+            onAddRule={onAddRule}
+            onReset={onReset}
+            onToast={onToast}
+            autoMenu={menuParam && app.key === firstRuleKey}
+          />
+        ))
+      )}
       <div className="hint">
         Showing {groupsVisible} of {groupsTotal} groups · sorted by {sortKey}
       </div>

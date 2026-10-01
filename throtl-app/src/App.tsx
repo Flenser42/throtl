@@ -60,7 +60,9 @@ export function App() {
     sortKey,
     setSort,
   } = useDaemon();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(
+    () => new URLSearchParams(location.search).get("q") ?? "",
+  );
   const [sheet, setSheet] = useState<SheetKind>(() => {
     const s = new URLSearchParams(location.search).get("sheet") as SheetKind;
     return SHEET_NAMES.includes(s) ? s : null;
@@ -79,7 +81,15 @@ export function App() {
   );
   const { toasts, push } = useToasts();
   const [version, setVersion] = useState(APP_VERSION_FALLBACK);
+  const [scrolled, setScrolled] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 4);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const updates = useUpdateCheck(version);
   useBudgetAlerts(Boolean(model));
@@ -204,6 +214,7 @@ export function App() {
         onStats={() => setSheet("stats")}
         onBudgets={() => setSheet("budgets")}
         profileOpen={profileOpen}
+        scrolled={scrolled}
         onProfileToggle={() => setProfileOpen((v) => !v)}
         profiles={
           <ProfileMenu
@@ -256,6 +267,8 @@ export function App() {
                   push("Counters reset");
                 }}
                 onToast={push}
+                query={query}
+                onClearQuery={() => setQuery("")}
                 groupsVisible={apps.length}
                 groupsTotal={model.groupsTotal}
               />

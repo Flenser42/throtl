@@ -121,17 +121,17 @@ export function LiveGraph({ history, matchedApps, windowSumBytes, peakApp }: Pro
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
           <defs>
             <linearGradient id={areaId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="var(--down)" stopOpacity=".34" />
-              <stop offset="1" stopColor="var(--down)" stopOpacity="0" />
+              <stop offset="0" stopColor="var(--down)" stopOpacity=".30" />
+              <stop offset="1" stopColor="var(--down)" stopOpacity=".02" />
             </linearGradient>
           </defs>
 
-          <g stroke="var(--hairline)" strokeWidth="1">
+          <g stroke="var(--hairline)" strokeWidth="1" strokeDasharray="2 5" opacity=".8">
             <line x1="0" y1="24" x2={W} y2="24" />
             <line x1="0" y1="72" x2={W} y2="72" />
             <line x1="0" y1="120" x2={W} y2="120" />
-            <line x1="0" y1="168" x2={W} y2="168" />
           </g>
+          <line x1="0" y1="168" x2={W} y2="168" stroke="var(--border)" strokeWidth="1" />
 
           <path d={downArea} fill={`url(#${areaId})`} />
           <path
@@ -141,6 +141,7 @@ export function LiveGraph({ history, matchedApps, windowSumBytes, peakApp }: Pro
             strokeWidth="2"
             strokeLinejoin="round"
             strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
           />
           <path
             d={upLine}
@@ -148,6 +149,7 @@ export function LiveGraph({ history, matchedApps, windowSumBytes, peakApp }: Pro
             stroke="var(--up)"
             strokeWidth="1.7"
             strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
           />
 
           {activePoint && active != null && (
@@ -161,6 +163,7 @@ export function LiveGraph({ history, matchedApps, windowSumBytes, peakApp }: Pro
                 strokeWidth="1"
                 strokeDasharray="3 3"
                 opacity=".85"
+                vectorEffect="non-scaling-stroke"
               />
               <circle
                 cx={x(active)}

@@ -100,6 +100,54 @@ body {
   padding-bottom: 40px;
 }
 
+/* The surfaces the browser draws also belong to the design: native controls,
+   text selection, the caret, placeholders and scrollbars follow the palette. */
+:root {
+  color-scheme: dark;
+  caret-color: var(--accent);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+::selection {
+  background: color-mix(in oklab, var(--accent) 34%, transparent);
+  color: var(--text);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-3);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--text-3) 45%, transparent) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--text-3) 40%, transparent);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--text-3) 65%, transparent);
+  background-clip: content-box;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
+}
+
 .mono {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
@@ -120,6 +168,10 @@ body {
     background: color-mix(in oklab, var(--surface) 72%, transparent);
     backdrop-filter: blur(20px) saturate(150%);
     border-bottom: 1px solid var(--hairline);
+  }
+  header.app-header.scrolled {
+    box-shadow: 0 12px 28px -20px oklch(0 0 0 / 0.7);
+    border-bottom-color: var(--border);
   }
   .pill-anchor {
     position: relative;
@@ -227,22 +279,6 @@ body {
     color: var(--text);
     border-color: var(--border);
   }
-  .win-ctrl {
-    display: flex;
-    gap: 8px;
-    margin-left: 6px;
-    padding-left: 12px;
-    border-left: 1px solid var(--hairline);
-  }
-  .win-ctrl i {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--text-3);
-    opacity: 0.5;
-    display: block;
-  }
-
   /* ---------- Page ---------- */
   main.app-main {
     max-width: 1240px;
@@ -250,30 +286,9 @@ body {
     padding: 20px 24px 0;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-  }
-  .grid-4 {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 16px;
-  }
-  .grid-main {
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    gap: 16px;
-  }
-  @media (max-width: 1023px) {
-    .grid-4 {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .grid-main {
-      grid-template-columns: 1fr;
-    }
+    gap: 18px;
   }
   @media (max-width: 640px) {
-    .grid-4 {
-      grid-template-columns: 1fr;
-    }
     main.app-main {
       padding: 16px 12px 0;
     }
@@ -291,7 +306,7 @@ body {
     box-shadow:
       var(--shadow-1),
       inset 0 1px 0 var(--card-highlight);
-    padding: 16px;
+    padding: 18px;
     position: relative;
     overflow: hidden;
   }
@@ -301,7 +316,7 @@ body {
 
   /* ---------- Overview (single monitor surface) ---------- */
   .overview {
-    padding: 20px;
+    padding: 22px 20px 18px;
   }
   .overview-top {
     display: flex;
@@ -383,49 +398,6 @@ body {
     }
   }
 
-  /* ---------- Stat tiles (legacy, kept for the tile styles) ---------- */
-  .tile {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    min-height: 150px;
-  }
-  .tile-label {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-3);
-  }
-  .tile-value {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-    font-size: 34px;
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    line-height: 1;
-  }
-  .tile-value .unit {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-3);
-    font-family: var(--font);
-    margin-left: 2px;
-  }
-  .tile-cap {
-    font-size: 12px;
-    color: var(--text-2);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .spark {
-    display: block;
-    width: 100%;
-    height: 42px;
-    margin-top: auto;
-  }
   .t-down {
     color: var(--down);
   }
@@ -437,36 +409,6 @@ body {
   }
   .t-warn {
     color: var(--warn);
-  }
-  .chip-trend {
-    font-size: 11.5px;
-    font-weight: 600;
-    padding: 2px 7px;
-    border-radius: 999px;
-    background: color-mix(in oklab, var(--accent) 16%, transparent);
-    color: var(--accent);
-  }
-
-  /* ---------- Globals ---------- */
-  .caps {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-top: 2px;
-  }
-  .cap-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--text-2);
-  }
-  .cap-val {
-    margin-left: auto;
-    font-family: var(--mono);
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text);
   }
   .btn {
     height: 30px;
@@ -482,6 +424,14 @@ body {
   .btn:hover {
     background: var(--surface-hover);
     color: var(--text);
+  }
+  .btn:active:not(:disabled) {
+    background: var(--surface-hover);
+    transform: translateY(0.5px);
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
   .btn-ghost {
     background: transparent;
@@ -511,11 +461,12 @@ body {
   }
   .seg {
     display: inline-flex;
-    background: var(--surface-2);
+    background: color-mix(in oklab, var(--bg) 45%, var(--surface-2));
     border: 1px solid var(--border);
     border-radius: 999px;
     padding: 2px;
     gap: 2px;
+    box-shadow: inset 0 1px 2px oklch(0 0 0 / 0.14);
   }
   .seg button {
     border: 0;
@@ -527,11 +478,19 @@ body {
     padding: 4px 10px;
     border-radius: 999px;
     cursor: pointer;
+    transition:
+      background 0.14s ease,
+      color 0.14s ease;
+  }
+  .seg button:hover {
+    color: var(--text-2);
   }
   .seg button.on {
     background: var(--accent-soft);
     color: var(--accent);
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent);
+    box-shadow:
+      0 1px 2px oklch(0 0 0 / 0.22),
+      inset 0 1px 0 color-mix(in oklab, var(--accent) 22%, transparent);
   }
 
   /* ---------- Graph ---------- */
@@ -607,26 +566,7 @@ body {
     font-weight: 500;
   }
 
-  /* ---------- Top talkers ---------- */
-  .talkers {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-top: 2px;
-  }
-  .talker {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 13px;
-  }
-  .talker .name {
-    width: 74px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-2);
-  }
+  /* ---------- Progress bars ---------- */
   .bar {
     flex: 1;
     height: 7px;
@@ -639,13 +579,6 @@ body {
     height: 100%;
     border-radius: 999px;
     background: linear-gradient(90deg, var(--accent-strong), var(--accent));
-  }
-  .talker .val {
-    width: 74px;
-    text-align: right;
-    font-family: var(--mono);
-    font-size: 12.5px;
-    color: var(--text);
   }
 
   /* ---------- Toolbar ---------- */
@@ -698,7 +631,7 @@ body {
     flex-direction: column;
   }
   .row {
-    padding: 10px 12px;
+    padding: 11px 12px;
     border-radius: var(--r-md);
     transition: background 0.12s ease;
     animation: row-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -827,11 +760,6 @@ body {
     color: var(--text-3);
     font-family: var(--mono);
   }
-  .row-spark {
-    width: 78px;
-    height: 24px;
-    flex: 0 0 auto;
-  }
   .switch {
     width: 36px;
     height: 21px;
@@ -854,6 +782,9 @@ body {
     background: var(--text-3);
     transition: 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
+  .switch:active::after {
+    width: 20px;
+  }
   .switch.on {
     background: var(--accent-soft);
     border-color: color-mix(in oklab, var(--accent) 45%, transparent);
@@ -862,6 +793,9 @@ body {
     left: 17px;
     background: var(--accent);
     box-shadow: 0 0 10px color-mix(in oklab, var(--accent) 60%, transparent);
+  }
+  .switch.on:active::after {
+    left: 14px;
   }
   .overflow {
     color: var(--text-3);
@@ -906,6 +840,7 @@ body {
     gap: 6px;
   }
   .sheet-backdrop {
+    animation: fade-in 0.16s ease-out;
     position: fixed;
     inset: 0;
     z-index: 50;
@@ -1570,4 +1505,32 @@ body {
 .update-banner .icon-btn {
   width: 26px;
   height: 26px;
+}
+
+/* Empty state for the application list. */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 44px 16px 48px;
+  text-align: center;
+}
+.empty-icon {
+  color: var(--text-3);
+  margin-bottom: 2px;
+}
+.empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.empty-text {
+  max-width: 46ch;
+  font-size: 12.5px;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+.empty .btn {
+  margin-top: 8px;
 }
