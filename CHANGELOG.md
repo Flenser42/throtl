@@ -31,7 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   time window), edit and delete rules, copy the equivalent `throtl set-process`
   command, reset the counters, and switch, save, delete and pick the startup
   profile from the header. Settings gained a display-unit switch and JSON
-  export/import of the whole configuration. A row's menu opens as a fixed panel
+  export/import of the whole configuration. The global caps are editable from
+  the Overview stat (caps, floor, priorities) and profiles can be switched by
+  day and time in a schedule editor. A row's menu opens as a fixed panel
   so it is never clipped by the card.
 - **Packaging for the dashboard.** CI now builds the frontend (`npm run build`)
   and denies Rust warnings (`cargo clippy --all-targets -D warnings` plus

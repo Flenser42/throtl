@@ -94,5 +94,7 @@ hard-code a colour. Numbers use JetBrains Mono with `tabular-nums`.
 - [x] Phase 3 — Settings / Statistics / Budgets / rule editor / states / toasts
 - [x] Phase 4 — Motion (reduced-motion aware), empty/offline states, screenshots
 - [x] Phase 5 — frontend + Rust CI, release bundles (`.deb`/`.rpm`)
-- [ ] Phase 5 (rest) — global-limits and schedule editors, then retire the GTK
-      window once parity is complete
+- [ ] Phase 5 (rest) — the GTK window stays until two niceties move over:
+      budget desktop notifications and the "newer release" check. Everything
+      else (rules, profiles, schedule, global caps, budgets, statistics, unit,
+      config export/import) is in the dashboard.
