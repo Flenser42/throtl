@@ -1546,3 +1546,28 @@ body {
 .schedule-head .btn {
   padding: 0 10px;
 }
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 8px 10px 8px 12px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
+  color: var(--text);
+  font-size: 12.5px;
+  animation: row-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.update-banner > span {
+  flex: 1;
+}
+.update-banner .btn {
+  height: 26px;
+  font-size: 12px;
+}
+.update-banner .icon-btn {
+  width: 26px;
+  height: 26px;
+}

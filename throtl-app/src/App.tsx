@@ -10,11 +10,13 @@ import { RuleSheet } from "./components/RuleSheet";
 import { ScheduleSheet } from "./components/ScheduleSheet";
 import { SettingsSheet, type Density, type Theme } from "./components/SettingsSheet";
 import { StatisticsSheet } from "./components/StatisticsSheet";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { ConnectingState, DeniedState, OfflineState } from "./components/States";
 import { ToastHost, useToasts } from "./components/Toast";
 import { Toolbar } from "./components/Toolbar";
 import { useDaemon } from "./hooks/useDaemon";
 import { useBudgetAlerts } from "./hooks/useBudgetAlerts";
+import { useUpdateCheck } from "./hooks/useUpdateCheck";
 import { getConfig, importConfig } from "./lib/api";
 import { isMock, isTauri } from "./lib/ipc";
 import type { AppRow } from "./lib/model";
@@ -79,6 +81,7 @@ export function App() {
   const [version, setVersion] = useState(APP_VERSION_FALLBACK);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  const updates = useUpdateCheck(version);
   useBudgetAlerts(Boolean(model));
 
   useEffect(() => {
@@ -213,6 +216,13 @@ export function App() {
       />
 
       <main className="app-main">
+        {updates.latest && (
+          <UpdateBanner
+            version={updates.latest}
+            current={version}
+            onDismiss={updates.dismiss}
+          />
+        )}
         {model ? (
           <>
             <Overview
@@ -278,6 +288,15 @@ export function App() {
           version={version}
           onExport={() => void exportConfig()}
           onImport={(file) => void importConfigFile(file)}
+          checkUpdates={updates.enabled}
+          onCheckUpdates={updates.setEnabled}
+          onCheckNow={() => {
+            void updates
+              .check()
+              .then((found) =>
+                push(found ? `Throtl ${found} is available` : "You are up to date"),
+              );
+          }}
           onClose={closeSheets}
         />
       )}

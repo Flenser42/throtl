@@ -18,6 +18,9 @@ interface Props {
   version: string;
   onExport: () => void;
   onImport: (file: File) => void;
+  checkUpdates: boolean;
+  onCheckUpdates: (value: boolean) => void;
+  onCheckNow: () => void;
   onClose: () => void;
 }
 
@@ -46,6 +49,9 @@ export function SettingsSheet({
   version,
   onExport,
   onImport,
+  checkUpdates,
+  onCheckUpdates,
+  onCheckNow,
   onClose,
 }: Props) {
   return (
@@ -131,6 +137,26 @@ export function SettingsSheet({
           <span className="sheet-key">Status</span>
           <span className={`pill-state ${state}`}>{state}</span>
         </div>
+      </section>
+
+      <section className="sheet-group">
+        <h3 className="sheet-group-title">Updates</h3>
+        <label className="sheet-check">
+          <input
+            type="checkbox"
+            checked={checkUpdates}
+            onChange={(e) => onCheckUpdates(e.target.checked)}
+          />
+          Check for a newer release on start
+        </label>
+        <div className="sheet-actions">
+          <button type="button" className="btn" onClick={onCheckNow}>
+            <Download size={14} /> Check now
+          </button>
+        </div>
+        <p className="sheet-note">
+          One anonymous GET on the public release API — no account, no identifiers.
+        </p>
       </section>
 
       <section className="sheet-group">

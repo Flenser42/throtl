@@ -18,6 +18,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
             let bridge = Bridge::spawn(app.handle().clone(), socket_path.clone());
             app.manage(bridge);
