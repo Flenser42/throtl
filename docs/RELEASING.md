@@ -24,6 +24,13 @@ python3 -m unittest discover -s tests -v
 `pyproject.toml` reads it dynamically. Update it, then add a matching entry to
 `CHANGELOG.md` and update the compare links at the bottom of that file.
 
+Bump the same version everywhere else it is pinned, so the built packages and
+the About row agree:
+
+- `throtl-app/package.json`, `throtl-app/src-tauri/tauri.conf.json` and
+  `throtl-app/src-tauri/Cargo.toml` (the dashboard bundle version),
+- `packaging/aur/PKGBUILD` (plus its `sha256sums`).
+
 ## 3. Tag
 
 ```bash
