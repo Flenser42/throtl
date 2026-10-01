@@ -26,6 +26,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per-app breakdown), a Budgets sheet (global + per-app with progress) and a
   rule editor, plus a proper connecting skeleton and offline/denied states and
   toasts.
+- **The dashboard reaches feature parity with the GTK window.** Create a rule
+  (name, executable / name / command-line match, limits, priority and a weekday +
+  time window), edit and delete rules, copy the equivalent `throtl set-process`
+  command, reset the counters, and switch, save, delete and pick the startup
+  profile from the header. Settings gained a display-unit switch and JSON
+  export/import of the whole configuration. A row's menu opens as a fixed panel
+  so it is never clipped by the card.
+- **Packaging for the dashboard.** CI now builds the frontend (`npm run build`)
+  and denies Rust warnings (`cargo clippy --all-targets -D warnings` plus
+  `cargo test`); the release workflow builds and attaches the dashboard `.deb`
+  and `.rpm` next to the backend packages.
+
+### Fixed
+
+- **One "Throtl" entry in the menu.** The classic GTK window and the dashboard
+  both installed an entry named "Throtl", so the launcher showed it twice. The
+  classic entry is now a hidden "Throtl (Classic)" (still reachable as
+  `throtl-gui`), and `install.sh` removes the old colliding file.
+- **`?theme=light` / `?theme=dark` in the dashboard.** The URL parameter now
+  wins over the stored theme, so a light screenshot is actually light; it also
+  agrees with the pre-paint resolution in `index.html`.
+- **The mock carries the raw time window**, so the rule editor shows the correct
+  weekday/time selection during development and in screenshots.
 
 ## [0.10.3] - 2026-09-30
 

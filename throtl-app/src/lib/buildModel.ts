@@ -91,6 +91,8 @@ export function buildModel(input: {
       unattributed: app.unattributed,
       matchType: rule?.match_type ?? "exe",
       matchValue: rule?.match_value ?? (app.exe || app.name),
+      ruleKey: rule?.key,
+      window: rule?.window ?? null,
     };
   });
 

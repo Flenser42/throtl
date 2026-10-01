@@ -121,24 +121,53 @@ body {
     backdrop-filter: blur(20px) saturate(150%);
     border-bottom: 1px solid var(--hairline);
   }
-  .status-pill {
+  .pill-anchor {
+    position: relative;
+  }
+  .pill-group {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
     height: 32px;
-    padding: 0 12px;
     border-radius: 999px;
     font-size: 12.5px;
     font-weight: 500;
     color: var(--text);
     background: var(--accent-soft);
     border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
-    cursor: pointer;
   }
-  .status-pill.paused {
+  .pill-group.paused {
     background: var(--surface-2);
     border-color: var(--border);
     color: var(--text-2);
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 100%;
+    padding: 0 8px 0 12px;
+    border: 0;
+    border-radius: 999px 0 0 999px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .pill-caret {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 100%;
+    border: 0;
+    border-left: 1px solid color-mix(in oklab, currentColor 18%, transparent);
+    border-radius: 0 999px 999px 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+  .pill-caret:hover {
+    background: color-mix(in oklab, currentColor 10%, transparent);
   }
   .dot {
     width: 8px;
@@ -1242,4 +1271,226 @@ body {
     animation-duration: 0.001ms !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* ============================================================
+   Row overflow menu (fixed so the applications card can keep
+   its overflow: hidden), profile popover and rule-window editor.
+   ============================================================ */
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+}
+.menu {
+  z-index: 45;
+  min-width: 200px;
+  padding: 5px;
+  border-radius: var(--r-md);
+  background: color-mix(in oklab, var(--surface-2) 97%, transparent);
+  border: 1px solid var(--border);
+  box-shadow: 0 16px 40px oklch(0 0 0 / 0.45);
+  backdrop-filter: blur(14px);
+  animation: fade-in 0.1s ease-out;
+}
+.menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.menu button:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.menu button.danger {
+  color: var(--danger);
+}
+.menu button.danger:hover {
+  background: color-mix(in oklab, var(--danger) 16%, transparent);
+}
+.menu-sep {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--hairline);
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 45;
+  width: 264px;
+  padding: 10px;
+  border-radius: var(--r-lg);
+  background: color-mix(in oklab, var(--surface-2) 97%, transparent);
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 50px oklch(0 0 0 / 0.5);
+  backdrop-filter: blur(16px);
+  animation: fade-in 0.12s ease-out;
+}
+.pop-title {
+  padding: 2px 6px 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+.pop-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.pop-list li {
+  display: flex;
+  align-items: center;
+  border-radius: var(--r-sm);
+}
+.pop-list li.on {
+  background: var(--accent-soft);
+}
+.pop-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.pop-check {
+  display: inline-flex;
+  width: 16px;
+  color: var(--accent);
+}
+.pop-name {
+  flex: 1;
+}
+.pop-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+.pop-star,
+.pop-del {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 13px;
+}
+.pop-star:hover,
+.pop-del:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.pop-del:hover {
+  color: var(--danger);
+}
+.pop-star:disabled,
+.pop-del:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.pop-new {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+}
+.pop-new .sheet-input {
+  flex: 1;
+}
+.pop-new .btn {
+  white-space: nowrap;
+}
+
+.sheet-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.sheet-check input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+.days {
+  display: flex;
+  gap: 4px;
+  padding: 6px 2px 2px;
+}
+.day {
+  width: 34px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.day.on {
+  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
+  color: var(--text);
+}
+.time-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.time-range .sheet-input {
+  width: 92px;
+}
+.time-dash {
+  color: var(--text-3);
+}
+
+.file-label {
+  position: relative;
+  overflow: hidden;
+}
+.file-label input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.btn.danger {
+  color: var(--danger);
+  border-color: color-mix(in oklab, var(--danger) 35%, transparent);
+}
+.btn.danger:hover {
+  background: color-mix(in oklab, var(--danger) 14%, transparent);
+}
+.sheet-actions .push-right {
+  margin-left: auto;
 }

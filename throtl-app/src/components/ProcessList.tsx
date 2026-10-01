@@ -1,7 +1,20 @@
-import { formatBytes, splitRate } from "../lib/format";
+import { useEffect, useRef, useState } from "react";
+
+import { formatBytes, formatRate, splitRate } from "../lib/format";
 import type { AppRow } from "../lib/model";
 import type { Unit } from "../lib/types";
-import { ChevronsDown, ChevronsUp, Clock, EllipsisVertical, Gauge, Minus } from "./icons";
+import {
+  ChevronsDown,
+  ChevronsUp,
+  Clock,
+  Copy,
+  EllipsisVertical,
+  Gauge,
+  Minus,
+  Plus,
+  Refresh,
+  Trash,
+} from "./icons";
 
 const PRIORITY_LABEL: Record<string, string> = {
   kritisch: "Critical",
@@ -25,6 +38,17 @@ function limitChipText(app: AppRow, unit: Unit): string {
   return `${dlText} · ${ulText}`;
 }
 
+/** A runnable `throtl set-process …` equivalent for the rule. */
+function cliFor(app: AppRow, unit: Unit): string {
+  const parts = ["throtl set-process", `--appname "${app.matchValue ?? app.name}"`];
+  if (app.downloadLimit != null)
+    parts.push(`--download-limit "${formatRate(app.downloadLimit, unit, 2)}"`);
+  if (app.uploadLimit != null)
+    parts.push(`--upload-limit "${formatRate(app.uploadLimit, unit, 2)}"`);
+  if (app.priority && app.priority !== "normal") parts.push(`--priority ${app.priority}`);
+  return parts.join(" ");
+}
+
 function Rate({ kbit, unit, kind }: { kbit: number; unit: Unit; kind: "down" | "up" }) {
   const { value, unit: label } = splitRate(kbit, unit, 2);
   return (
@@ -34,17 +58,53 @@ function Rate({ kbit, unit, kind }: { kbit: number; unit: Unit; kind: "down" | "
   );
 }
 
-function ProcessRow({
-  app,
-  unit,
-  onToggleArm,
-  onEdit,
-}: {
+interface RowProps {
   app: AppRow;
   unit: Unit;
   onToggleArm: (key: string, armed: boolean) => void;
   onEdit: (app: AppRow) => void;
-}) {
+  onRemove: (app: AppRow) => void;
+  onAddRule: (app?: AppRow) => void;
+  onReset: () => void;
+  onToast: (message: string, kind?: "info" | "error") => void;
+  /** ?menu=1 auto-opens the first row's menu (screenshots/dev). */
+  autoMenu?: boolean;
+}
+
+function ProcessRow({ app, unit, onToggleArm, onEdit, onRemove, onAddRule, onReset, onToast, autoMenu }: RowProps) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const toggleMenu = (target: HTMLElement) => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = target.getBoundingClientRect();
+    const width = 200;
+    const height = app.unattributed ? 140 : 180;
+    const openUp = rect.bottom + height > window.innerHeight;
+    setPos({
+      top: openUp ? rect.top - height - 6 : rect.bottom + 6,
+      left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+    });
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (autoMenu && btnRef.current) toggleMenu(btnRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const copyCli = () => {
+    const text = cliFor(app, unit);
+    navigator.clipboard?.writeText(text).then(
+      () => onToast("CLI command copied"),
+      () => onToast("Could not copy", "error"),
+    );
+  };
+
   return (
     <div className={`row${app.unattributed ? " unattr" : ""}`}>
       <div className="r-top">
@@ -71,20 +131,92 @@ function ProcessRow({
               onClick={() => onToggleArm(app.key, !app.armed)}
             />
           )}
-          <button type="button" className="overflow" aria-label={`More actions for ${app.name}`}>
-            <EllipsisVertical size={16} />
-          </button>
+          <div className="menu-wrap">
+            <button
+              type="button"
+              className="overflow"
+              aria-label={`More actions for ${app.name}`}
+              aria-haspopup="menu"
+              aria-expanded={open}
+              ref={btnRef}
+              onClick={(e) => toggleMenu(e.currentTarget)}
+            >
+              <EllipsisVertical size={16} />
+            </button>
+            {open && pos && (
+              <>
+                <div className="menu-backdrop" onClick={() => setOpen(false)} />
+                <div
+                  className="menu"
+                  role="menu"
+                  style={{ position: "fixed", top: pos.top, left: pos.left }}
+                >
+                  {app.unattributed ? (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setOpen(false);
+                        onAddRule(app);
+                      }}
+                    >
+                      <Plus size={14} /> Create rule…
+                    </button>
+                  ) : (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setOpen(false);
+                        onEdit(app);
+                      }}
+                    >
+                      <Gauge size={14} /> Edit rule
+                    </button>
+                  )}
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setOpen(false);
+                      onReset();
+                    }}
+                  >
+                    <Refresh size={14} /> Reset counters
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setOpen(false);
+                      copyCli();
+                    }}
+                  >
+                    <Copy size={14} /> Copy CLI command
+                  </button>
+                  {!app.unattributed && (
+                    <>
+                      <div className="menu-sep" />
+                      <button
+                        role="menuitem"
+                        className="danger"
+                        onClick={() => {
+                          setOpen(false);
+                          onRemove(app);
+                        }}
+                      >
+                        <Trash size={14} /> Remove rule
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
       <div className="r-bottom">
         {app.unattributed ? (
-          <>
-            <span className="meta-item">no rule</span>
-            <button type="button" className="btn" style={{ height: 24, fontSize: 11.5 }}>
-              Create rule…
-            </button>
-          </>
+          <button type="button" className="btn" style={{ height: 24, fontSize: 11.5 }} onClick={() => onAddRule(app)}>
+            <Plus size={13} /> Create rule…
+          </button>
         ) : (
           <>
             <button
@@ -137,6 +269,10 @@ interface Props {
   sortKey: "download" | "upload" | "name";
   onToggleArm: (key: string, armed: boolean) => void;
   onEdit: (app: AppRow) => void;
+  onRemove: (app: AppRow) => void;
+  onAddRule: (app?: AppRow) => void;
+  onReset: () => void;
+  onToast: (message: string, kind?: "info" | "error") => void;
   groupsVisible: number;
   groupsTotal: number;
 }
@@ -147,6 +283,10 @@ export function ProcessList({
   sortKey,
   onToggleArm,
   onEdit,
+  onRemove,
+  onAddRule,
+  onReset,
+  onToast,
   groupsVisible,
   groupsTotal,
 }: Props) {
@@ -155,6 +295,9 @@ export function ProcessList({
     if (sortKey === "upload") return b.upKbit - a.upKbit;
     return b.downKbit - a.downKbit;
   });
+
+  const menuParam = new URLSearchParams(location.search).get("menu") === "1";
+  const firstRuleKey = sorted.find((a) => !a.unattributed)?.key;
 
   return (
     <div className="rows">
@@ -165,6 +308,11 @@ export function ProcessList({
           unit={unit}
           onToggleArm={onToggleArm}
           onEdit={onEdit}
+          onRemove={onRemove}
+          onAddRule={onAddRule}
+          onReset={onReset}
+          onToast={onToast}
+          autoMenu={menuParam && app.key === firstRuleKey}
         />
       ))}
       <div className="hint">

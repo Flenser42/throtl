@@ -89,3 +89,5 @@ jobs:
         run: npm ci --no-audit --no-fund && npm run build
       - name: Clippy (deny warnings)
         run: cargo clippy --manifest-path throtl-app/src-tauri/Cargo.toml --all-targets -- -D warnings
+      - name: Rust tests
+        run: cargo test --manifest-path throtl-app/src-tauri/Cargo.toml

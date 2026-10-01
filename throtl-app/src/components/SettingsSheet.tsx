@@ -1,5 +1,6 @@
 import { Sheet } from "./Sheet";
 import { unitLabel } from "../lib/format";
+import { Download, Upload } from "./icons";
 import type { ConnectionState, Unit } from "../lib/types";
 
 export type Theme = "system" | "light" | "dark";
@@ -11,9 +12,12 @@ interface Props {
   density: Density;
   onDensity: (density: Density) => void;
   unit: Unit;
+  onUnit: (unit: Unit) => void;
   socket: string;
   state: ConnectionState;
   version: string;
+  onExport: () => void;
+  onImport: (file: File) => void;
   onClose: () => void;
 }
 
@@ -28,15 +32,20 @@ const DENSITIES: { id: Density; label: string }[] = [
   { id: "compact", label: "Compact" },
 ];
 
+const UNITS: Unit[] = ["mBs", "kBs", "mbps", "kbps"];
+
 export function SettingsSheet({
   theme,
   onTheme,
   density,
   onDensity,
   unit,
+  onUnit,
   socket,
   state,
   version,
+  onExport,
+  onImport,
   onClose,
 }: Props) {
   return (
@@ -75,8 +84,41 @@ export function SettingsSheet({
         </div>
         <div className="sheet-row">
           <span className="sheet-key">Display unit</span>
-          <span className="sheet-value">{unitLabel(unit)}</span>
+          <div className="seg">
+            {UNITS.map((u) => (
+              <button
+                key={u}
+                type="button"
+                className={unit === u ? "on" : ""}
+                onClick={() => onUnit(u)}
+              >
+                {unitLabel(u)}
+              </button>
+            ))}
+          </div>
         </div>
+      </section>
+
+      <section className="sheet-group">
+        <h3 className="sheet-group-title">Configuration</h3>
+        <div className="sheet-actions">
+          <button type="button" className="btn" onClick={onExport}>
+            <Download size={14} /> Export
+          </button>
+          <label className="btn file-label">
+            <Upload size={14} /> Import
+            <input
+              type="file"
+              accept="application/json,.json"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onImport(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+        <p className="sheet-note">Export writes the whole config as JSON; import replaces it.</p>
       </section>
 
       <section className="sheet-group">

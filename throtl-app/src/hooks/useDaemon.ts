@@ -1,15 +1,58 @@
 import { useEffect, useRef, useState } from "react";
 
+import {
+  removeRule as removeRuleApi,
+  resetStats as resetStatsApi,
+  setRule as setRuleApi,
+  setUnit as setUnitApi,
+} from "../lib/api";
 import { buildModel } from "../lib/buildModel";
 import { isMock, listen, invokeDaemon } from "../lib/ipc";
-import { mockModel, tickModel } from "../lib/mock";
-import type { AppRow, DaemonView, HistoryPoint } from "../lib/model";
-import type { Budgets, Config, ProcessState } from "../lib/types";
+import { gradientFor, initialFor, mockModel, tickModel } from "../lib/mock";
+import type { AppRow, DaemonView, HistoryPoint, RuleValues } from "../lib/model";
+import type { Budgets, Config, ProcessState, Unit } from "../lib/types";
 
 // 30 minutes at 1 Hz covers the "15m"/"all" graph windows.
 const MAX_HISTORY = 1800;
 
 type SortKey = "download" | "upload" | "name";
+
+function ruleParams(values: RuleValues): Record<string, unknown> {
+  return {
+    name: values.name,
+    match_type: values.matchType,
+    match_value: values.matchValue,
+    download_limit: values.download,
+    upload_limit: values.upload,
+    priority: values.priority,
+    window: values.window ?? undefined,
+  };
+}
+
+function mockRow(values: RuleValues): AppRow {
+  return {
+    key: values.name,
+    name: values.name,
+    initial: initialFor(values.name),
+    gradient: gradientFor(values.name),
+    meta: "new rule · not running yet",
+    downKbit: 0,
+    upKbit: 0,
+    downloadLimit: values.download,
+    uploadLimit: values.upload,
+    priority: values.priority,
+    windowLabel: null,
+    windowActive: false,
+    windowState: null,
+    budget: null,
+    spark: [],
+    armed: values.download != null || values.upload != null,
+    unattributed: false,
+    matchType: values.matchType,
+    matchValue: values.matchValue,
+    window: values.window,
+  };
+}
 
 /**
  * Owns the daemon connection. In the browser (no Tauri, or VITE_MOCK=1) it
@@ -19,10 +62,12 @@ type SortKey = "download" | "upload" | "name";
 export function useDaemon(): DaemonView & {
   toggle: (enabled: boolean) => void;
   toggleArm: (key: string, armed: boolean) => void;
-  setApp: (
-    app: AppRow,
-    values: { download: number | null; upload: number | null; priority: string },
-  ) => void;
+  setApp: (app: AppRow, values: RuleValues) => void;
+  createRule: (values: RuleValues) => void;
+  removeRule: (app: AppRow) => void;
+  resetStats: () => void;
+  changeUnit: (unit: Unit) => void;
+  refresh: () => void;
   sortKey: SortKey;
   setSort: (key: SortKey) => void;
 } {
@@ -45,6 +90,7 @@ export function useDaemon(): DaemonView & {
   const [sortKey, setSort] = useState<SortKey>("download");
   const historyRef = useRef<HistoryPoint[]>(isMock ? mockModel().history.slice(-MAX_HISTORY) : []);
   const realRef = useRef<{ state?: ProcessState; config?: Config; budgets?: Budgets }>({});
+  const refreshRef = useRef<() => void>(() => {});
 
   // ---- mock mode ----
   useEffect(() => {
@@ -124,6 +170,9 @@ export function useDaemon(): DaemonView & {
         return;
       }
       unlisteners.push(offUpdate, offState);
+      refreshRef.current = () => {
+        void fetchAll();
+      };
       void fetchAll();
     })();
 
@@ -138,10 +187,7 @@ export function useDaemon(): DaemonView & {
     if (!isMock) void invokeDaemon("toggle", { enabled }).catch(() => {});
   };
 
-  const setApp = (
-    app: AppRow,
-    values: { download: number | null; upload: number | null; priority: string },
-  ) => {
+  const setApp = (app: AppRow, values: RuleValues) => {
     setView((prev) =>
       prev.model
         ? {
@@ -155,6 +201,7 @@ export function useDaemon(): DaemonView & {
                       downloadLimit: values.download,
                       uploadLimit: values.upload,
                       priority: values.priority,
+                      window: values.window,
                       armed: values.download != null || values.upload != null,
                     }
                   : a,
@@ -163,16 +210,68 @@ export function useDaemon(): DaemonView & {
           }
         : prev,
     );
-    if (!isMock) {
-      void invokeDaemon("set_process", {
-        name: app.name,
-        match_type: app.matchType ?? "exe",
-        match_value: app.matchValue ?? app.name,
-        download_limit: values.download,
-        upload_limit: values.upload,
-        priority: values.priority,
-      }).catch(() => {});
-    }
+    if (!isMock) void setRuleApi(ruleParams(values)).catch(() => {});
+  };
+
+  const createRule = (values: RuleValues) => {
+    setView((prev) =>
+      prev.model
+        ? {
+            ...prev,
+            model: {
+              ...prev.model,
+              apps: [...prev.model.apps.filter((a) => a.key !== values.name), mockRow(values)],
+              totalRules: prev.model.totalRules + 1,
+              groupsTotal: prev.model.groupsTotal + 1,
+            },
+          }
+        : prev,
+    );
+    if (!isMock) void setRuleApi(ruleParams(values)).catch(() => {});
+  };
+
+  const removeRule = (app: AppRow) => {
+    if (!isMock && app.ruleKey) void removeRuleApi(app.ruleKey).catch(() => {});
+    setView((prev) =>
+      prev.model
+        ? {
+            ...prev,
+            model: {
+              ...prev.model,
+              apps: prev.model.apps.map((a) =>
+                a.key === app.key
+                  ? {
+                      ...a,
+                      unattributed: true,
+                      armed: false,
+                      downloadLimit: null,
+                      uploadLimit: null,
+                      priority: "normal",
+                      windowLabel: null,
+                      windowActive: false,
+                      windowState: null,
+                      ruleKey: undefined,
+                      meta: `${a.meta.split(" · ")[0]} · no rule applies`,
+                    }
+                  : a,
+              ),
+            },
+          }
+        : prev,
+    );
+  };
+
+  const resetStats = () => {
+    if (!isMock) void resetStatsApi().catch(() => {});
+    historyRef.current = [];
+    setView((prev) =>
+      prev.model ? { ...prev, model: { ...prev.model, history: [], windowSumBytes: 0 } } : prev,
+    );
+  };
+
+  const changeUnit = (unit: Unit) => {
+    if (!isMock) void setUnitApi(unit).catch(() => {});
+    setView((prev) => (prev.model ? { ...prev, model: { ...prev.model, unit } } : prev));
   };
 
   const toggleArm = (key: string, armed: boolean) => {
@@ -187,8 +286,19 @@ export function useDaemon(): DaemonView & {
           }
         : prev,
     );
-    // Note: arming/disarming a per-app rule is Phase 3 (needs set_process).
   };
 
-  return { ...view, toggle, toggleArm, setApp, sortKey, setSort };
+  return {
+    ...view,
+    toggle,
+    toggleArm,
+    setApp,
+    createRule,
+    removeRule,
+    resetStats,
+    changeUnit,
+    refresh: () => refreshRef.current(),
+    sortKey,
+    setSort,
+  };
 }

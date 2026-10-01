@@ -1,4 +1,4 @@
-import type { ConnectionState, Unit } from "./types";
+import type { ConnectionState, Unit, Window } from "./types";
 
 export interface AppRow {
   key: string;
@@ -21,6 +21,21 @@ export interface AppRow {
   unattributed: boolean;
   matchType?: string;
   matchValue?: string;
+  /** Rule key, needed to remove/update the rule via the daemon. */
+  ruleKey?: string;
+  /** Raw time window (kept for the editor; labels live in windowLabel). */
+  window?: Window | null;
+}
+
+/** The fields a rule editor can change/create. */
+export interface RuleValues {
+  name: string;
+  matchType: "exe" | "name" | "cmdline";
+  matchValue: string;
+  download: number | null;
+  upload: number | null;
+  priority: string;
+  window: Window | null;
 }
 
 export interface Talker {
@@ -60,6 +75,7 @@ export interface DashboardModel {
   groupsTotal: number;
   sortKey: "download" | "upload" | "name";
 }
+
 
 export interface DaemonView {
   state: ConnectionState;

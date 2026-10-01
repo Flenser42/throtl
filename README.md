@@ -32,12 +32,17 @@ Light mode follows your system style (toggle with `L`, or pin it in Settings):
 
 ![Throtl dashboard, light](docs/images/dashboard-light.png)
 
-Statistics and budgets open as right-side sheets (Settings too — theme, density
-and daemon info):
+Secondary screens open as right-side sheets: **Statistics** (range switch,
+chart, per-app breakdown), **Budgets** (global and per-app), **Settings**
+(theme, density, display unit, daemon info, JSON export/import) and the
+**rule editor** — create, edit or delete a rule with limits, priority and a
+weekday/time window. Profiles (including the startup profile) are switched
+from the header pill, and each row's menu can copy the equivalent
+`throtl set-process` command or reset the counters.
 
 ![Statistics sheet](docs/images/dashboard-stats.png)
 
-![Budgets sheet](docs/images/dashboard-budgets.png)
+![Rule editor](docs/images/dashboard-rule.png)
 
 The dashboard is the new GUI: a **Tauri 2 + React + TypeScript + Tailwind v4**
 app in [`throtl-app/`](throtl-app/) whose Rust shell talks to the same root
@@ -559,13 +564,16 @@ npm run tauri dev               # real window, live daemon data
 npm run tauri build             # .deb / .rpm / .AppImage
 ```
 
-`?static=1&theme=light&pin=27` freezes the mock and pins the graph crosshair —
-useful for screenshots. Rust is only needed for `tauri dev/build`; install it
-with [rustup](https://rustup.rs) and put `~/.cargo/bin` on your `PATH`.
+`?static=1&theme=light&pin=27` freezes the mock and pins the graph crosshair.
+Other URL parameters are handy for screenshots and deep links: `theme=light|dark`,
+`sheet=new|rule|stats|budgets|settings`, `pop=profile`, `menu=1` and
+`mockstate=offline|denied|connecting`. Rust is only needed for
+`tauri dev/build`; install it with [rustup](https://rustup.rs) and put
+`~/.cargo/bin` on your `PATH`.
 
 ```bash
 # lint + typecheck the frontend, and the Rust shell
-cd throtl-app && npm run build && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+cd throtl-app && npm run build && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 See [`throtl-app/README.md`](throtl-app/README.md) for the architecture.
