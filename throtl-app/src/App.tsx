@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { BudgetsSheet } from "./components/BudgetsSheet";
+import { GlobalSheet } from "./components/GlobalSheet";
 import { Header } from "./components/Header";
 import { Overview } from "./components/Overview";
 import { ProcessList } from "./components/ProcessList";
 import { ProfileMenu } from "./components/ProfileMenu";
 import { RuleSheet } from "./components/RuleSheet";
+import { ScheduleSheet } from "./components/ScheduleSheet";
 import { SettingsSheet, type Density, type Theme } from "./components/SettingsSheet";
 import { StatisticsSheet } from "./components/StatisticsSheet";
 import { ConnectingState, DeniedState, OfflineState } from "./components/States";
@@ -19,7 +21,9 @@ import type { AppRow } from "./lib/model";
 const APP_VERSION = "0.1.0";
 const SOCKET_PATH = "/run/throtl/daemon.sock";
 
-type SheetKind = "settings" | "stats" | "budgets" | null;
+type SheetKind = "settings" | "stats" | "budgets" | "globals" | "schedule" | null;
+
+const SHEET_NAMES: SheetKind[] = ["settings", "stats", "budgets", "globals", "schedule"];
 
 function resolveTheme(theme: Theme): "dark" | "light" {
   if (theme !== "system") return theme;
@@ -47,14 +51,15 @@ export function App() {
     removeRule,
     resetStats,
     changeUnit,
+    saveGlobal,
     refresh,
     sortKey,
     setSort,
   } = useDaemon();
   const [query, setQuery] = useState("");
   const [sheet, setSheet] = useState<SheetKind>(() => {
-    const s = new URLSearchParams(location.search).get("sheet");
-    return s === "settings" || s === "stats" || s === "budgets" ? s : null;
+    const s = new URLSearchParams(location.search).get("sheet") as SheetKind;
+    return SHEET_NAMES.includes(s) ? s : null;
   });
   const [editApp, setEditApp] = useState<AppRow | null>(null);
   const [createApp, setCreateApp] = useState<AppRow | null>(null);
@@ -189,6 +194,7 @@ export function App() {
             onClose={() => setProfileOpen(false)}
             onToast={push}
             onChanged={refresh}
+            onSchedules={() => setSheet("schedule")}
           />
         }
       />
@@ -196,7 +202,11 @@ export function App() {
       <main className="app-main">
         {model ? (
           <>
-            <Overview model={model} peakApp={model.topTalkers[0]?.name ?? "—"} />
+            <Overview
+              model={model}
+              peakApp={model.topTalkers[0]?.name ?? "—"}
+              onGlobals={() => setSheet("globals")}
+            />
 
             <section className="card applications">
               <Toolbar
@@ -260,6 +270,20 @@ export function App() {
       )}
       {sheet === "stats" && <StatisticsSheet onClose={closeSheets} />}
       {sheet === "budgets" && <BudgetsSheet onClose={closeSheets} onToast={push} />}
+      {sheet === "globals" && model && (
+        <GlobalSheet
+          model={model}
+          onClose={closeSheets}
+          onSave={(values) => {
+            saveGlobal(values);
+            push("Global limits saved");
+            closeSheets();
+          }}
+        />
+      )}
+      {sheet === "schedule" && (
+        <ScheduleSheet onClose={closeSheets} onToast={push} onChanged={refresh} />
+      )}
       {editApp && model && (
         <RuleSheet
           mode="edit"

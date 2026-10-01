@@ -1494,3 +1494,55 @@ body {
 .sheet-actions .push-right {
   margin-left: auto;
 }
+
+/* Clickable Overview stat (global caps). */
+.stat-btn {
+  padding: 4px 8px;
+  margin: -4px -8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.stat-btn:hover {
+  background: var(--surface-hover);
+}
+
+.pop-schedules {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 6px 2px;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.pop-schedules:hover {
+  color: var(--text);
+}
+
+.schedule-entry {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.schedule-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.schedule-head .sheet-input-wrap {
+  flex: 1;
+}
+.schedule-head .btn {
+  padding: 0 10px;
+}

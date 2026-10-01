@@ -2,7 +2,7 @@
 // Values mirror the approved mockup so the built UI can be compared 1:1.
 
 import type { AppRow, DashboardModel, HistoryPoint, Talker } from "./model";
-import type { Budgets, Profiles, StatsHistory } from "./types";
+import type { Budgets, Profiles, ScheduleEntry, StatsHistory } from "./types";
 
 const MBPS = 8000; // kbit/s per MB/s
 
@@ -182,7 +182,10 @@ export function mockModel(): DashboardModel {
     scheduledRules: 3,
     globalDownLimit: 20 * MBPS,
     globalUpLimit: 5 * MBPS,
+    globalDownMinimum: 0,
+    globalUpMinimum: 0,
     globalPriority: "normal",
+    globalUpPriority: "normal",
     history: history(),
     windowSumBytes: 1.24e9,
     apps: APPS.map((a) => ({ ...a, matchType: "exe", matchValue: a.name.toLowerCase() })),
@@ -239,6 +242,13 @@ export function mockBudgets(): Budgets {
 
 export function mockProfiles(): Profiles {
   return { profiles: ["Standard", "University", "Evening"], active: "Evening" };
+}
+
+export function mockSchedule(): ScheduleEntry[] {
+  return [
+    { profile: "University", days: [0, 1, 2, 3, 4], start: "08:00", end: "16:00" },
+    { profile: "Evening", days: [0, 1, 2, 3, 4, 5, 6], start: "18:00", end: "23:30" },
+  ];
 }
 
 /** Advance the model one tick so the UI/graph move during development. */

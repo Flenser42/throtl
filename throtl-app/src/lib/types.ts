@@ -57,6 +57,7 @@ export interface Config {
   unit: Unit;
   active_profile: string;
   start_profile: string | null;
+  schedule?: ScheduleEntry[];
   global: {
     enabled: boolean;
     download_limit: number | null;
@@ -98,4 +99,12 @@ export interface StatsHistory {
 export interface Profiles {
   profiles: string[];
   active: string;
+}
+
+/** A time-of-day → profile rule (`set_schedule`). */
+export interface ScheduleEntry {
+  profile: string;
+  days: number[];
+  start: string;
+  end: string;
 }

@@ -4,8 +4,8 @@
 // deterministic mock in the browser so the UI works without a daemon.
 
 import { invokeDaemon, isMock } from "./ipc";
-import { mockBudgets, mockProfiles, mockStats, mockStatsHistory } from "./mock";
-import type { Budgets, Config, Profiles, StatsApp, StatsHistory } from "./types";
+import { mockBudgets, mockProfiles, mockSchedule, mockStats, mockStatsHistory } from "./mock";
+import type { Budgets, Config, Profiles, ScheduleEntry, StatsApp, StatsHistory } from "./types";
 
 export interface StatsPayload {
   window: string;
@@ -85,4 +85,22 @@ export async function getConfig(): Promise<Config> {
 
 export async function importConfig(config: unknown): Promise<void> {
   if (!isMock) await invokeDaemon("import_config", { config });
+}
+
+// ---- global limits + schedule ----
+
+/** `set_global`: keys are download_limit/upload_limit/download_minimum/
+ * upload_minimum/download_priority/upload_priority/enabled. A null limit clears it. */
+export async function setGlobal(params: Record<string, unknown>): Promise<void> {
+  if (!isMock) await invokeDaemon("set_global", params);
+}
+
+export async function getSchedule(): Promise<ScheduleEntry[]> {
+  if (isMock) return mockSchedule();
+  const config = await getConfig();
+  return config.schedule ?? [];
+}
+
+export async function setSchedule(entries: ScheduleEntry[]): Promise<void> {
+  if (!isMock) await invokeDaemon("set_schedule", { rules: entries });
 }

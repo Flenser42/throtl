@@ -16,10 +16,12 @@ interface Props {
   onToast: (message: string, kind?: "info" | "error") => void;
   /** Called after a change so the dashboard can refetch. */
   onChanged: () => void;
+  /** Open the schedule editor. */
+  onSchedules: () => void;
 }
 
 /** Profile switcher popover: activate, save-as, delete and pick the startup profile. */
-export function ProfileMenu({ onClose, onToast, onChanged }: Props) {
+export function ProfileMenu({ onClose, onToast, onChanged, onSchedules }: Props) {
   const [profiles, setProfiles] = useState<string[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [start, setStart] = useState<string | null>(null);
@@ -134,6 +136,16 @@ export function ProfileMenu({ onClose, onToast, onChanged }: Props) {
           <Plus size={13} /> Save
         </button>
       </div>
+      <button
+        type="button"
+        className="pop-schedules"
+        onClick={() => {
+          onClose();
+          onSchedules();
+        }}
+      >
+        Schedule…
+      </button>
     </div>
   );
 }

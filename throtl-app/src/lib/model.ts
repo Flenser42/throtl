@@ -27,6 +27,17 @@ export interface AppRow {
   window?: Window | null;
 }
 
+/** Global caps edited from the Global limits sheet. */
+export interface GlobalValues {
+  enabled: boolean;
+  download: number | null;
+  upload: number | null;
+  downloadMinimum: number;
+  uploadMinimum: number;
+  downloadPriority: string;
+  uploadPriority: string;
+}
+
 /** The fields a rule editor can change/create. */
 export interface RuleValues {
   name: string;
@@ -66,7 +77,10 @@ export interface DashboardModel {
   scheduledRules: number;
   globalDownLimit: number | null;
   globalUpLimit: number | null;
+  globalDownMinimum: number;
+  globalUpMinimum: number;
   globalPriority: string;
+  globalUpPriority: string;
   history: HistoryPoint[];
   windowSumBytes: number;
   apps: AppRow[];

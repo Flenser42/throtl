@@ -3,13 +3,14 @@ import { useEffect, useRef, useState } from "react";
 import {
   removeRule as removeRuleApi,
   resetStats as resetStatsApi,
+  setGlobal as setGlobalApi,
   setRule as setRuleApi,
   setUnit as setUnitApi,
 } from "../lib/api";
 import { buildModel } from "../lib/buildModel";
 import { isMock, listen, invokeDaemon } from "../lib/ipc";
 import { gradientFor, initialFor, mockModel, tickModel } from "../lib/mock";
-import type { AppRow, DaemonView, HistoryPoint, RuleValues } from "../lib/model";
+import type { AppRow, DaemonView, GlobalValues, HistoryPoint, RuleValues } from "../lib/model";
 import type { Budgets, Config, ProcessState, Unit } from "../lib/types";
 
 // 30 minutes at 1 Hz covers the "15m"/"all" graph windows.
@@ -67,6 +68,7 @@ export function useDaemon(): DaemonView & {
   removeRule: (app: AppRow) => void;
   resetStats: () => void;
   changeUnit: (unit: Unit) => void;
+  saveGlobal: (values: GlobalValues) => void;
   refresh: () => void;
   sortKey: SortKey;
   setSort: (key: SortKey) => void;
@@ -274,6 +276,37 @@ export function useDaemon(): DaemonView & {
     setView((prev) => (prev.model ? { ...prev, model: { ...prev.model, unit } } : prev));
   };
 
+  const saveGlobal = (values: GlobalValues) => {
+    setView((prev) =>
+      prev.model
+        ? {
+            ...prev,
+            model: {
+              ...prev.model,
+              enabled: values.enabled,
+              globalDownLimit: values.download,
+              globalUpLimit: values.upload,
+              globalDownMinimum: values.downloadMinimum,
+              globalUpMinimum: values.uploadMinimum,
+              globalPriority: values.downloadPriority,
+              globalUpPriority: values.uploadPriority,
+            },
+          }
+        : prev,
+    );
+    if (!isMock) {
+      void setGlobalApi({
+        enabled: values.enabled,
+        download_limit: values.download,
+        upload_limit: values.upload,
+        download_minimum: values.downloadMinimum,
+        upload_minimum: values.uploadMinimum,
+        download_priority: values.downloadPriority,
+        upload_priority: values.uploadPriority,
+      }).catch(() => {});
+    }
+  };
+
   const toggleArm = (key: string, armed: boolean) => {
     setView((prev) =>
       prev.model
@@ -297,6 +330,7 @@ export function useDaemon(): DaemonView & {
     removeRule,
     resetStats,
     changeUnit,
+    saveGlobal,
     refresh: () => refreshRef.current(),
     sortKey,
     setSort,

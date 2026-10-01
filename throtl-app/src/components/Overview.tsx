@@ -4,7 +4,15 @@ import { splitRate } from "../lib/format";
 import type { DashboardModel } from "../lib/model";
 
 /** The one "monitor" surface: hero rates, inline status, and the live graph. */
-export function Overview({ model, peakApp }: { model: DashboardModel; peakApp: string }) {
+export function Overview({
+  model,
+  peakApp,
+  onGlobals,
+}: {
+  model: DashboardModel;
+  peakApp: string;
+  onGlobals: () => void;
+}) {
   const down = splitRate(model.downKbit, model.unit, 1);
   const up = splitRate(model.upKbit, model.unit, 2);
   const limited = model.apps.filter((a) => !a.unattributed && a.armed).length;
@@ -51,10 +59,10 @@ export function Overview({ model, peakApp }: { model: DashboardModel; peakApp: s
               {model.activeRules} <i>of {model.totalRules}</i>
             </span>
           </div>
-          <div className="stat">
+          <button type="button" className="stat stat-btn" onClick={onGlobals}>
             <span className="stat-label">Global caps</span>
             <span className="stat-value mono">{caps}</span>
-          </div>
+          </button>
           <div className="stat">
             <span className="stat-label">Profile</span>
             <span className="stat-value mono">{model.profile}</span>
