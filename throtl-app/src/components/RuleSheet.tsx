@@ -94,32 +94,53 @@ export function RuleSheet({ mode, app, unit, onSave, onDelete, onClose }: Props)
             </div>
           </div>
         )}
-        <div className="sheet-row">
-          <span className="sheet-key">Match by</span>
-          <div className="seg">
-            {MATCH_TYPES.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                className={matchType === m.id ? "on" : ""}
-                onClick={() => setMatchType(m.id)}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="sheet-row">
-          <span className="sheet-key">Pattern</span>
-          <div className="sheet-input-wrap">
-            <input
-              className="sheet-input"
-              value={matchValue}
-              placeholder={matchType === "exe" ? "/usr/bin/steam" : "steam"}
-              onChange={(e) => setMatchValue(e.target.value)}
-            />
-          </div>
-        </div>
+        {isCreate ? (
+          <>
+            <div className="sheet-row">
+              <span className="sheet-key">Match by</span>
+              <div className="seg">
+                {MATCH_TYPES.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={matchType === m.id ? "on" : ""}
+                    onClick={() => setMatchType(m.id)}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="sheet-row">
+              <span className="sheet-key">Pattern</span>
+              <div className="sheet-input-wrap">
+                <input
+                  className="sheet-input"
+                  value={matchValue}
+                  placeholder={matchType === "exe" ? "/usr/bin/steam" : "steam"}
+                  onChange={(e) => setMatchValue(e.target.value)}
+                />
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="sheet-row">
+              <span className="sheet-key">Match by</span>
+              <span className="sheet-value">
+                {MATCH_TYPES.find((m) => m.id === matchType)?.label}
+              </span>
+            </div>
+            <div className="sheet-row">
+              <span className="sheet-key">Pattern</span>
+              <span className="sheet-value mono">{matchValue}</span>
+            </div>
+            <p className="sheet-note">
+              A rule's match pattern is fixed once it exists — remove the rule and
+              create a new one to change what it applies to.
+            </p>
+          </>
+        )}
       </section>
 
       <section className="sheet-group">

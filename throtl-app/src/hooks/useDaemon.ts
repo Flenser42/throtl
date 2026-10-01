@@ -18,15 +18,39 @@ const MAX_HISTORY = 1800;
 
 type SortKey = "download" | "upload" | "name";
 
-function ruleParams(values: RuleValues): Record<string, unknown> {
+interface Options {
+  /** Surfaces bridge/daemon errors that no caller can await (poll, events). */
+  onError?: (message: string) => void;
+}
+
+/**
+ * The daemon's `set_process` updates an existing rule only when it is given the
+ * rule `key`; without it the daemon would mint a new, double-escaped rule. A
+ * `null` limit clears it and `window: null` clears the time window, so both
+ * must be sent explicitly (JSON drops `undefined`).
+ */
+function ruleParams(values: RuleValues, key?: string): Record<string, unknown> {
   return {
+    ...(key ? { key } : {}),
     name: values.name,
     match_type: values.matchType,
     match_value: values.matchValue,
     download_limit: values.download,
     upload_limit: values.upload,
     priority: values.priority,
-    window: values.window ?? undefined,
+    window: values.window,
+  };
+}
+
+function valuesFromApp(app: AppRow, download: number | null, upload: number | null): RuleValues {
+  return {
+    name: app.name,
+    matchType: (app.matchType as RuleValues["matchType"]) ?? "exe",
+    matchValue: app.matchValue ?? app.name,
+    download,
+    upload,
+    priority: app.priority,
+    window: app.window ?? null,
   };
 }
 
@@ -59,20 +83,25 @@ function mockRow(values: RuleValues): AppRow {
  * Owns the daemon connection. In the browser (no Tauri, or VITE_MOCK=1) it
  * drives a deterministic mock so the UI can be developed and screenshotted.
  * Inside Tauri it subscribes to the Rust bridge events and invokes commands.
+ *
+ * Write actions update the view optimistically and return a promise that
+ * rejects when the daemon refuses the change, so the caller can report it
+ * instead of claiming success.
  */
-export function useDaemon(): DaemonView & {
+export function useDaemon(options: Options = {}): DaemonView & {
   toggle: (enabled: boolean) => void;
   toggleArm: (key: string, armed: boolean) => void;
-  setApp: (app: AppRow, values: RuleValues) => void;
-  createRule: (values: RuleValues) => void;
-  removeRule: (app: AppRow) => void;
-  resetStats: () => void;
+  setApp: (app: AppRow, values: RuleValues) => Promise<void>;
+  createRule: (values: RuleValues) => Promise<void>;
+  removeRule: (app: AppRow) => Promise<void>;
+  resetStats: () => Promise<void>;
   changeUnit: (unit: Unit) => void;
-  saveGlobal: (values: GlobalValues) => void;
+  saveGlobal: (values: GlobalValues) => Promise<void>;
   refresh: () => void;
   sortKey: SortKey;
   setSort: (key: SortKey) => void;
 } {
+  const { onError } = options;
   // `?mockstate=offline|denied|connecting` forces a connection state (screens).
   const forced = isMock
     ? new URLSearchParams(location.search).get("mockstate")
@@ -93,6 +122,8 @@ export function useDaemon(): DaemonView & {
   const historyRef = useRef<HistoryPoint[]>(isMock ? mockModel().history.slice(-MAX_HISTORY) : []);
   const realRef = useRef<{ state?: ProcessState; config?: Config; budgets?: Budgets }>({});
   const refreshRef = useRef<() => void>(() => {});
+  // Limits remembered while a row is disarmed, so arming restores them.
+  const disarmedRef = useRef<Map<string, { download: number | null; upload: number | null }>>(new Map());
 
   // ---- mock mode ----
   useEffect(() => {
@@ -166,12 +197,17 @@ export function useDaemon(): DaemonView & {
           setView((prev) => ({ ...prev, state: state as DaemonView["state"] }));
         }
       });
+      const offError = await listen<string>("daemon:error", (message) => {
+        if (disposed) return;
+        onError?.(`Daemon: ${message}`);
+      });
       if (disposed) {
         offUpdate();
         offState();
+        offError();
         return;
       }
-      unlisteners.push(offUpdate, offState);
+      unlisteners.push(offUpdate, offState, offError);
       refreshRef.current = () => {
         void fetchAll();
       };
@@ -182,14 +218,16 @@ export function useDaemon(): DaemonView & {
       disposed = true;
       unlisteners.forEach((off) => off());
     };
-  }, []);
+  }, [onError]);
 
   const toggle = (enabled: boolean) => {
     setView((prev) => (prev.model ? { ...prev, model: { ...prev.model, enabled } } : prev));
-    if (!isMock) void invokeDaemon("toggle", { enabled }).catch(() => {});
+    if (!isMock) {
+      invokeDaemon("toggle", { enabled }).catch((error) => onError?.(`Shaping: ${String(error)}`));
+    }
   };
 
-  const setApp = (app: AppRow, values: RuleValues) => {
+  const setApp = async (app: AppRow, values: RuleValues) => {
     setView((prev) =>
       prev.model
         ? {
@@ -212,10 +250,10 @@ export function useDaemon(): DaemonView & {
           }
         : prev,
     );
-    if (!isMock) void setRuleApi(ruleParams(values)).catch(() => {});
+    if (!isMock) await setRuleApi(ruleParams(values, app.ruleKey));
   };
 
-  const createRule = (values: RuleValues) => {
+  const createRule = async (values: RuleValues) => {
     setView((prev) =>
       prev.model
         ? {
@@ -229,11 +267,10 @@ export function useDaemon(): DaemonView & {
           }
         : prev,
     );
-    if (!isMock) void setRuleApi(ruleParams(values)).catch(() => {});
+    if (!isMock) await setRuleApi(ruleParams(values));
   };
 
-  const removeRule = (app: AppRow) => {
-    if (!isMock && app.ruleKey) void removeRuleApi(app.ruleKey).catch(() => {});
+  const removeRule = async (app: AppRow) => {
     setView((prev) =>
       prev.model
         ? {
@@ -253,6 +290,7 @@ export function useDaemon(): DaemonView & {
                       windowActive: false,
                       windowState: null,
                       ruleKey: undefined,
+                      window: null,
                       meta: `${a.meta.split(" · ")[0]} · no rule applies`,
                     }
                   : a,
@@ -261,22 +299,26 @@ export function useDaemon(): DaemonView & {
           }
         : prev,
     );
+    disarmedRef.current.delete(app.key);
+    if (!isMock && app.ruleKey) await removeRuleApi(app.ruleKey);
   };
 
-  const resetStats = () => {
-    if (!isMock) void resetStatsApi().catch(() => {});
+  const resetStats = async () => {
     historyRef.current = [];
     setView((prev) =>
       prev.model ? { ...prev, model: { ...prev.model, history: [], windowSumBytes: 0 } } : prev,
     );
+    if (!isMock) await resetStatsApi();
   };
 
   const changeUnit = (unit: Unit) => {
-    if (!isMock) void setUnitApi(unit).catch(() => {});
     setView((prev) => (prev.model ? { ...prev, model: { ...prev.model, unit } } : prev));
+    if (!isMock) {
+      setUnitApi(unit).catch((error) => onError?.(`Display unit: ${String(error)}`));
+    }
   };
 
-  const saveGlobal = (values: GlobalValues) => {
+  const saveGlobal = async (values: GlobalValues) => {
     setView((prev) =>
       prev.model
         ? {
@@ -295,7 +337,7 @@ export function useDaemon(): DaemonView & {
         : prev,
     );
     if (!isMock) {
-      void setGlobalApi({
+      await setGlobalApi({
         enabled: values.enabled,
         download_limit: values.download,
         upload_limit: values.upload,
@@ -303,22 +345,56 @@ export function useDaemon(): DaemonView & {
         upload_minimum: values.uploadMinimum,
         download_priority: values.downloadPriority,
         upload_priority: values.uploadPriority,
-      }).catch(() => {});
+      });
     }
   };
 
+  /**
+   * Arm/disarm a rule. Disarming clears its limits on the daemon (remembering
+   * them for this session); arming sends them back.
+   */
   const toggleArm = (key: string, armed: boolean) => {
+    const app = view.model?.apps.find((a) => a.key === key);
+    if (!app || !app.ruleKey) return;
+    const current = { download: app.downloadLimit, upload: app.uploadLimit };
+    let next: { download: number | null; upload: number | null };
+
+    if (armed) {
+      next = disarmedRef.current.get(key) ?? current;
+      disarmedRef.current.delete(key);
+    } else {
+      if (current.download != null || current.upload != null) {
+        disarmedRef.current.set(key, current);
+      }
+      next = { download: null, upload: null };
+    }
+
+    const values = valuesFromApp(app, next.download, next.upload);
     setView((prev) =>
       prev.model
         ? {
             ...prev,
             model: {
               ...prev.model,
-              apps: prev.model.apps.map((a) => (a.key === key ? { ...a, armed } : a)),
+              apps: prev.model.apps.map((a) =>
+                a.key === key
+                  ? {
+                      ...a,
+                      downloadLimit: next.download,
+                      uploadLimit: next.upload,
+                      armed: next.download != null || next.upload != null,
+                    }
+                  : a,
+              ),
             },
           }
         : prev,
     );
+    if (!isMock) {
+      setRuleApi(ruleParams(values, app.ruleKey)).catch((error) =>
+        onError?.(`Limit for ${app.name}: ${String(error)}`),
+      );
+    }
   };
 
   return {

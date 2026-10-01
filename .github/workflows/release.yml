@@ -49,7 +49,7 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" dist/*.deb --clobber
 
   dashboard:
-    name: Build and attach the dashboard (.deb)
+    name: Build and attach the dashboard (.deb + .rpm)
     needs: build
     runs-on: ubuntu-latest
     steps:

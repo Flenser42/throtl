@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   toasts.
 - **The dashboard reaches feature parity with the GTK window.** Create a rule
   (name, executable / name / command-line match, limits, priority and a weekday +
-  time window), edit and delete rules, copy the equivalent `throtl set-process`
+  time window), edit and delete rules, copy the equivalent `throtl-cli set-process`
   command, reset the counters, and switch, save, delete and pick the startup
   profile from the header. Settings gained a display-unit switch and JSON
   export/import of the whole configuration. The global caps are editable from
@@ -57,9 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **One "Throtl" entry in the menu.** The classic GTK window and the dashboard
-  both installed an entry named "Throtl", so the launcher showed it twice. The
-  classic entry is now a hidden "Throtl (Classic)" (still reachable as
-  `throtl-gui`), and `install.sh` removes the old colliding file.
+  both installed an entry named "Throtl", so the launcher showed it twice.
+  With the GTK window removed the dashboard owns the name, and
+  `setup/install.sh` deletes leftovers from older installs.
 - **`?theme=light` / `?theme=dark` in the dashboard.** The URL parameter now
   wins over the stored theme, so a light screenshot is actually light; it also
   agrees with the pre-paint resolution in `index.html`.

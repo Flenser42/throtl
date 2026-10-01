@@ -39,9 +39,9 @@ function limitChipText(app: AppRow, unit: Unit): string {
   return `${dlText} · ${ulText}`;
 }
 
-/** A runnable `throtl set-process …` equivalent for the rule. */
+/** A runnable `throtl-cli set-process …` equivalent for the rule. */
 function cliFor(app: AppRow, unit: Unit): string {
-  const parts = ["throtl set-process", `--appname "${app.matchValue ?? app.name}"`];
+  const parts = ["throtl-cli set-process", `--appname "${app.matchValue ?? app.name}"`];
   if (app.downloadLimit != null)
     parts.push(`--download-limit "${formatRate(app.downloadLimit, unit, 2)}"`);
   if (app.uploadLimit != null)

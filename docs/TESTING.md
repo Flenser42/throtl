@@ -117,8 +117,6 @@ throtl-cli toggle --enabled true    # back
   leave the GUI field empty.
 - **Interface selection**: the daemon auto-detects the default-route interface.
   For VPN tunnels (e.g. `tailscale0`/`tun0`) pin it with `--interface`.
-- **GUI instantiation**: headless environments cannot run the widget tests (a
-  display is required). On Omarchy/Hyprland they run.
 - **Statistics are sampled, not captured**: volume is accumulated per monitoring
   tick from the rates nethogs reports (`bytes += rate_kbit/s * 1000 / 8 *
   interval_s`). There is no per-connection accounting, so missed/duplicated

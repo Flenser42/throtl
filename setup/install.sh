@@ -18,7 +18,7 @@ RUN="/run/throtl"
 echo "=== [1/7] Systempakete installieren ==="
 # pacman-Pakete (alle in [extra]): nethogs liefert die Live-Messung,
 # webkit2gtk-4.1 ist die Laufzeit des Tauri-Dashboards.
-sudo pacman -S --needed --noconfirm nethogs webkit2gtk-4.1
+sudo pacman -S --needed --noconfirm nethogs webkit2gtk-4.1 iproute2
 
 echo "=== [2/7] TrafficToll in venv installieren ==="
 sudo mkdir -p "$OPT"

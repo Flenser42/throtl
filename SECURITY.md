@@ -6,8 +6,8 @@ Security fixes are provided for the latest release and `master`.
 
 | Version | Supported |
 |---------|-----------|
-| 0.1.x   | ✅        |
-| < 0.1   | ❌        |
+| 0.10.x  | ✅        |
+| < 0.10  | ❌        |
 
 ## Reporting a vulnerability
 

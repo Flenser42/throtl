@@ -7,10 +7,10 @@ include SECURITY.md
 include Makefile
 include pyproject.toml
 
-recursive-include throtl *.py *.css
+recursive-include throtl *.py
 recursive-include data *.svg
-recursive-include setup *.sh *.service *.desktop *.toml
-recursive-include docs *.md *.png *.svg *.gif
+recursive-include setup *.sh *.service *.toml
+recursive-include docs *.md *.png *.svg
 recursive-include packaging *
 recursive-include tests *.py
 

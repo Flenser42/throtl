@@ -28,20 +28,22 @@ export function ProfileMenu({ onClose, onToast, onChanged, onSchedules }: Props)
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const data = await getProfiles();
-        setProfiles(data.profiles);
-        setActive(data.active);
-        if (!isMock) {
-          const config = await getConfig();
-          setStart(config.start_profile ?? null);
-        }
-      } catch {
-        /* keep quiet; the popover stays empty */
+  const load = async () => {
+    try {
+      const data = await getProfiles();
+      setProfiles(data.profiles);
+      setActive(data.active);
+      if (!isMock) {
+        const config = await getConfig();
+        setStart(config.start_profile ?? null);
       }
-    })();
+    } catch {
+      /* keep quiet; the popover stays empty */
+    }
+  };
+
+  useEffect(() => {
+    void load();
   }, []);
 
   const run = async (fn: () => Promise<void>, message: string) => {
@@ -52,6 +54,8 @@ export function ProfileMenu({ onClose, onToast, onChanged, onSchedules }: Props)
       } catch (error) {
         onToast(`Failed: ${String(error)}`, "error");
         setBusy(false);
+        // Drop the optimistic change and show what the daemon really has.
+        await load();
         return;
       }
       setBusy(false);

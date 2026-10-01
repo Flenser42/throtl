@@ -44,6 +44,11 @@ function storedTheme(): Theme {
 }
 
 export function App() {
+  const { toasts, push } = useToasts();
+  const onDaemonError = useCallback(
+    (message: string) => push(message, "error"),
+    [push],
+  );
   const {
     model,
     state,
@@ -59,7 +64,7 @@ export function App() {
     refresh,
     sortKey,
     setSort,
-  } = useDaemon();
+  } = useDaemon({ onError: onDaemonError });
   const [query, setQuery] = useState(
     () => new URLSearchParams(location.search).get("q") ?? "",
   );
@@ -79,7 +84,6 @@ export function App() {
   const [density, setDensity] = useState<Density>(
     (localStorage.getItem("throtl-density") as Density) || "comfortable",
   );
-  const { toasts, push } = useToasts();
   const [version, setVersion] = useState(APP_VERSION_FALLBACK);
   const [scrolled, setScrolled] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -257,14 +261,22 @@ export function App() {
                 sortKey={sortKey}
                 onToggleArm={toggleArm}
                 onEdit={setEditApp}
-                onRemove={(app) => {
-                  removeRule(app);
-                  push(`Rule removed for ${app.name}`);
+                onRemove={async (app) => {
+                  try {
+                    await removeRule(app);
+                    push(`Rule removed for ${app.name}`);
+                  } catch (err) {
+                    push(`Could not remove the rule: ${String(err)}`, "error");
+                  }
                 }}
                 onAddRule={openCreate}
-                onReset={() => {
-                  resetStats();
-                  push("Counters reset");
+                onReset={async () => {
+                  try {
+                    await resetStats();
+                    push("Counters reset");
+                  } catch (err) {
+                    push(`Could not reset the counters: ${String(err)}`, "error");
+                  }
                 }}
                 onToast={push}
                 query={query}
@@ -319,10 +331,14 @@ export function App() {
         <GlobalSheet
           model={model}
           onClose={closeSheets}
-          onSave={(values) => {
-            saveGlobal(values);
-            push("Global limits saved");
-            closeSheets();
+          onSave={async (values) => {
+            try {
+              await saveGlobal(values);
+              push("Global limits saved");
+              closeSheets();
+            } catch (err) {
+              push(`Could not save the limits: ${String(err)}`, "error");
+            }
           }}
         />
       )}
@@ -335,15 +351,23 @@ export function App() {
           app={editApp}
           unit={model.unit}
           onClose={closeSheets}
-          onSave={(values) => {
-            setApp(editApp, values);
-            push(`Rule saved for ${editApp.name}`);
-            closeSheets();
+          onSave={async (values) => {
+            try {
+              await setApp(editApp, values);
+              push(`Rule saved for ${editApp.name}`);
+              closeSheets();
+            } catch (err) {
+              push(`Could not save the rule: ${String(err)}`, "error");
+            }
           }}
-          onDelete={() => {
-            removeRule(editApp);
-            push(`Rule removed for ${editApp.name}`);
-            closeSheets();
+          onDelete={async () => {
+            try {
+              await removeRule(editApp);
+              push(`Rule removed for ${editApp.name}`);
+              closeSheets();
+            } catch (err) {
+              push(`Could not remove the rule: ${String(err)}`, "error");
+            }
           }}
         />
       )}
@@ -353,10 +377,14 @@ export function App() {
           app={createApp ?? undefined}
           unit={model.unit}
           onClose={closeSheets}
-          onSave={(values) => {
-            createRule(values);
-            push(`Rule created for ${values.name}`);
-            closeSheets();
+          onSave={async (values) => {
+            try {
+              await createRule(values);
+              push(`Rule created for ${values.name}`);
+              closeSheets();
+            } catch (err) {
+              push(`Could not create the rule: ${String(err)}`, "error");
+            }
           }}
         />
       )}

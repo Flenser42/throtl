@@ -68,7 +68,12 @@ export function buildModel(input: {
   }
 
   const apps: AppRow[] = (state.apps ?? []).map((app) => {
-    const rule = app.unattributed ? undefined : findRule(rules, app);
+    // The daemon tells us which rule it applied; fall back to local matching
+    // only when it did not name one.
+    const named = app.rule_name
+      ? rules.find((r) => r.name && r.name === app.rule_name)
+      : undefined;
+    const rule = app.unattributed ? undefined : (named ?? findRule(rules, app));
     const budget = appBudget.get(app.name.toLowerCase()) ?? null;
     const windowActive = rule?.window ? ruleActive(rule.window) : false;
     return {

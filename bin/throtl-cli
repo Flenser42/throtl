@@ -3,7 +3,7 @@
 import os
 import sys
 
-# realpath loest Symlinks auf (z.B. /usr/local/bin/throtl-cli -> /opt/netlimiter-clone/bin),
+# realpath loest Symlinks auf (z.B. /usr/local/bin/throtl-cli -> /opt/throtl/bin),
 # damit das Projektverzeichnis korrekt in sys.path landet, egal wie aufgerufen.
 _PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 if _PROJECT_DIR not in sys.path:

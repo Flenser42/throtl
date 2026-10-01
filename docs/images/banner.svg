@@ -64,7 +64,7 @@
       Per-application bandwidth limits &amp; traffic prioritisation
     </text>
     <text x="366" y="272" font-size="26" fill="#9aa6b2">
-      for Linux — GTK4 + libadwaita
+      for Linux — Tauri + React dashboard
     </text>
   </g>
   <rect x="366" y="292" width="150" height="6" rx="3" fill="url(#meter)"/>
@@ -85,7 +85,7 @@
     <g>
       <rect x="600" y="322" width="96" height="40" rx="20"
             fill="#1b2027" stroke="#2b323b"/>
-      <text x="648" y="348" text-anchor="middle">GTK4</text>
+      <text x="648" y="348" text-anchor="middle">Tauri</text>
     </g>
     <g>
       <rect x="710" y="322" width="150" height="40" rx="20"

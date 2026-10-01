@@ -6,8 +6,3 @@
 *.sh text eol=lf
 *.service text eol=lf
 *.desktop text eol=lf
-
-# Keep generated/vendored trees out of language stats
-docs/images/screenshot.png linguist-generated
-docs/images/graph.png linguist-generated
-docs/images/table.png linguist-generated

@@ -568,7 +568,8 @@ p {
 
   /* ---------- Progress bars ---------- */
   .bar {
-    flex: 1;
+    display: block;
+    width: 100%;
     height: 7px;
     border-radius: 999px;
     background: var(--surface-2);
@@ -753,6 +754,8 @@ p {
     min-width: 120px;
   }
   .mini .bar {
+    flex: 1;
+    width: auto;
     height: 5px;
   }
   .mini span {
@@ -852,6 +855,9 @@ p {
   .sheet {
     height: 100%;
     max-width: 92vw;
+    /* The panel takes programmatic focus so screen readers land inside the
+       dialog; that focus should not paint a ring around the whole panel. */
+    outline: none;
     background: var(--surface);
     border-left: 1px solid var(--border);
     box-shadow: var(--shadow-2);
@@ -1533,4 +1539,11 @@ p {
 }
 .empty .btn {
   margin-top: 8px;
+}
+
+/* The dialog panel is focused programmatically for screen readers; that focus
+   must not paint the global focus ring around the whole panel. */
+.sheet:focus,
+.sheet:focus-visible {
+  outline: none;
 }

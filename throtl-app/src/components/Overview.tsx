@@ -75,7 +75,6 @@ export function Overview({
       <LiveGraph
         history={model.history}
         matchedApps={model.matchedApps}
-        windowSumBytes={model.windowSumBytes}
         peakApp={peakApp}
       />
     </section>

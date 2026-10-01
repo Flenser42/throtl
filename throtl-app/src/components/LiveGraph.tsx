@@ -20,11 +20,10 @@ const WINDOWS: { id: string; label: string; seconds: number }[] = [
 interface Props {
   history: HistoryPoint[];
   matchedApps: number;
-  windowSumBytes: number;
   peakApp: string;
 }
 
-export function LiveGraph({ history, matchedApps, windowSumBytes, peakApp }: Props) {
+export function LiveGraph({ history, matchedApps, peakApp }: Props) {
   const [win, setWin] = useState("1m");
   const [hover, setHover] = useState<number | null>(null);
   // `?pin=N` pins a sample for deterministic screenshots; otherwise the
@@ -52,6 +51,12 @@ export function LiveGraph({ history, matchedApps, windowSumBytes, peakApp }: Pro
     const avg = downs.length ? downs.reduce((a, b) => a + b, 0) / downs.length : 0;
     return { yMax, min, avg, max };
   }, [data]);
+
+  // Integral of the 1 Hz samples over the *shown* window (kbit/s -> bytes).
+  const windowSumBytes = useMemo(
+    () => (data.reduce((sum, p) => sum + p.down + p.up, 0) * 1000) / 8,
+    [data],
+  );
 
   const x = (i: number) => (data.length < 2 ? 0 : (i / (data.length - 1)) * W);
   const y = (v: number) => BOTTOM - (Math.min(v, metrics.yMax) / metrics.yMax) * (BOTTOM - TOP);

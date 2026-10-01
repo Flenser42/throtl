@@ -4,6 +4,7 @@ import { getBudgets, removeBudget, setBudget } from "../lib/api";
 import { formatBytes, parseSize } from "../lib/format";
 import type { Budgets } from "../lib/types";
 import { Sheet } from "./Sheet";
+import { X } from "./icons";
 
 export function BudgetsSheet({
   onClose,
@@ -15,15 +16,23 @@ export function BudgetsSheet({
   const [budgets, setBudgets] = useState<Budgets | null>(null);
   const [day, setDay] = useState("");
   const [week, setWeek] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
 
-  const load = () =>
-    getBudgets().then((b) => {
+  const load = async () => {
+    try {
+      const b = await getBudgets();
       setBudgets(b);
       const g = b.entries.find((e) => e.scope === "global" && e.window === "day");
       const w = b.entries.find((e) => e.scope === "global" && e.window === "week");
       setDay(g ? formatBytes(g.limit, 0) : "");
       setWeek(w ? formatBytes(w.limit, 0) : "");
-    });
+      setFailed(false);
+    } catch {
+      setFailed(true);
+      onToast("Could not load the budgets", "error");
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -31,9 +40,27 @@ export function BudgetsSheet({
   }, []);
 
   const save = async () => {
-    await setBudget({ day: parseSize(day), week: parseSize(week) });
-    onToast("Global budgets saved");
-    void load();
+    if (busy) return;
+    setBusy(true);
+    try {
+      await setBudget({ day: parseSize(day), week: parseSize(week) });
+      onToast("Global budgets saved");
+      await load();
+    } catch (error) {
+      onToast(`Could not save the budgets: ${String(error)}`, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (app: string) => {
+    try {
+      await removeBudget(app);
+      onToast("Budget removed");
+      await load();
+    } catch (error) {
+      onToast(`Could not remove the budget: ${String(error)}`, "error");
+    }
   };
 
   const global = (budgets?.entries ?? []).filter((e) => e.scope === "global");
@@ -62,10 +89,18 @@ export function BudgetsSheet({
           />
         </div>
         <div className="sheet-actions">
-          <button type="button" className="btn btn-primary" onClick={() => void save()}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy}
+            onClick={() => void save()}
+          >
             Save limits
           </button>
         </div>
+        {failed && budgets === null && (
+          <p className="sheet-note">The daemon did not answer — reopen the sheet to retry.</p>
+        )}
         {global.map((e) => (
           <BudgetBar key={e.window} label={`Global · ${e.window}`} entry={e} />
         ))}
@@ -81,14 +116,9 @@ export function BudgetsSheet({
               type="button"
               className="overflow"
               aria-label={`Remove budget for ${e.app}`}
-              onClick={() => {
-                void removeBudget(e.app ?? "").then(() => {
-                  onToast("Budget removed");
-                  void load();
-                });
-              }}
+              onClick={() => void remove(e.app ?? "")}
             >
-              ✕
+              <X size={14} />
             </button>
           </div>
         ))}

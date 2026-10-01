@@ -6,7 +6,7 @@ Installation: setup/install.sh | Manuell: sudo ./bin/throtl-daemon --foreground
 import os
 import sys
 
-# realpath loest Symlinks auf, damit das Projektverzeichnis (z.B. /opt/netlimiter-clone)
+# realpath loest Symlinks auf, damit das Projektverzeichnis (z.B. /opt/throtl)
 # korrekt in sys.path landet, egal wie der Daemon aufgerufen wird.
 _PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 if _PROJECT_DIR not in sys.path:

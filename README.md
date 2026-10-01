@@ -39,7 +39,7 @@ card) and the **rule editor** — create, edit or delete a rule with limits,
 priority and a weekday/time window. Profiles (including the startup profile)
 are switched from the header pill, which also opens the **Schedule** editor
 (day/time → profile). Each row's menu can copy the equivalent
-`throtl set-process` command or reset the counters.
+`throtl-cli set-process` command or reset the counters.
 
 ![Statistics sheet](docs/images/dashboard-stats.png)
 
@@ -175,14 +175,15 @@ sudo ./setup/install.sh
 
 The script:
 
-1. installs the system packages listed above,
+1. installs the system packages it needs (`nethogs`, `webkit2gtk-4.1`, `iproute2`
+   for `tc`),
 2. creates `/opt/throtl/venv` and installs `traffictoll`,
 3. copies the code and launchers to `/opt/throtl` (and symlinks
    `throtl-cli` / `throtl-daemon` into `/usr/local/bin`),
 4. creates `/etc/throtl/config.toml` and `/run/throtl`,
 5. installs and starts the `throtl` systemd service,
 6. removes leftovers from the old GTK GUI (menu entry, launcher, icon),
-7. **installs the new dashboard GUI** for your user (builds the AppImage once
+7. **installs the dashboard GUI** for your user (builds the AppImage once
    if needed, then installs it under `~/.local`). Use `--no-app` to skip it, or
    run it separately later.
 
@@ -196,8 +197,14 @@ make install                         # same as the first line
 ```
 
 Uninstall with `sudo ./setup/uninstall.sh` (add `--purge` to also remove code
-and configuration); remove the dashboard with
-`rm -rf ~/.local/opt/throtl ~/.local/bin/throtl-app ~/.local/share/applications/throtl-app.desktop`.
+and configuration), which also removes the per-user dashboard; to drop only the
+dashboard by hand:
+
+```bash
+rm -rf ~/.local/opt/throtl ~/.local/bin/throtl-app \
+       ~/.local/share/applications/throtl-app.desktop \
+       ~/.local/share/icons/hicolor/scalable/apps/throtl-app.svg
+```
 
 > **Prebuilt artifacts / distro packages:** The backend is pure Python, so
 > there is nothing to compile for the daemon or CLI. Every release carries an
@@ -257,8 +264,8 @@ Rust side never exposes the socket to the webview.
 ### Updates
 
 On start, Throtl asks the public GitHub release API which version is current
-and shows a banner when yours is older — *“Throtl 0.9.0 is available (installed:
-0.8.0)”* — with a **Download** button that opens the release page in your
+and shows a banner when yours is older — *“Throtl 0.11.0 is available — you have
+0.10.3”* — with a **View release** button that opens the release page in your
 browser. Throtl never downloads or installs anything, needs no root for this and
 asks nothing of the daemon.
 

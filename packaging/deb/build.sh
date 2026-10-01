@@ -30,8 +30,6 @@ rm -rf "$SELF_DIR/_build"
 mkdir -p "$DEBIAN" \
     "$STAGE/opt/throtl/bin" \
     "$STAGE/usr/bin" \
-    "$STAGE/usr/share/applications" \
-    "$STAGE/usr/share/icons/hicolor/scalable/apps" \
     "$STAGE/usr/lib/systemd/system" \
     "$STAGE/etc/throtl"
 

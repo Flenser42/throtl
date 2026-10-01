@@ -8,6 +8,11 @@ import { Plus, Trash } from "./icons";
 
 const DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
+/** A schedule entry plus a stable key, so removing a row cannot shift state. */
+type Row = ScheduleEntry & { id: string };
+let nextId = 0;
+const makeId = () => `sched-${(nextId += 1)}`;
+
 interface Props {
   onClose: () => void;
   onToast: (message: string, kind?: "info" | "error") => void;
@@ -17,7 +22,7 @@ interface Props {
 /** Time-of-day → profile rules (`set_schedule`). */
 export function ScheduleSheet({ onClose, onToast, onChanged }: Props) {
   const [profiles, setProfiles] = useState<string[]>([]);
-  const [entries, setEntries] = useState<ScheduleEntry[]>([]);
+  const [entries, setEntries] = useState<Row[]>([]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -25,7 +30,8 @@ export function ScheduleSheet({ onClose, onToast, onChanged }: Props) {
       try {
         const data = await getProfiles();
         setProfiles(data.profiles);
-        setEntries(await getSchedule());
+        const rows = await getSchedule();
+        setEntries(rows.map((row) => ({ ...row, id: makeId() })));
       } catch {
         /* leave the sheet empty */
       }
@@ -42,6 +48,7 @@ export function ScheduleSheet({ onClose, onToast, onChanged }: Props) {
     setEntries((prev) => [
       ...prev,
       {
+        id: makeId(),
         profile: profiles[0] ?? "Standard",
         days: [0, 1, 2, 3, 4],
         start: "18:00",
@@ -62,7 +69,7 @@ export function ScheduleSheet({ onClose, onToast, onChanged }: Props) {
     if (!isMock) {
       setBusy(true);
       try {
-        await setSchedule(entries);
+        await setSchedule(entries.map(({ id: _id, ...rest }) => rest));
       } catch (error) {
         onToast(`Failed: ${String(error)}`, "error");
         setBusy(false);
@@ -89,7 +96,7 @@ export function ScheduleSheet({ onClose, onToast, onChanged }: Props) {
       )}
 
       {entries.map((entry, index) => (
-        <section className="sheet-group schedule-entry" key={index}>
+        <section className="sheet-group schedule-entry" key={entry.id}>
           <div className="schedule-head">
             <div className="sheet-input-wrap">
               <select

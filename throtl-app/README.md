@@ -91,9 +91,8 @@ hard-code a colour. Numbers use JetBrains Mono with `tabular-nums`.
 
 - [x] Phase 0 — Tauri + React + Tailwind scaffold, tokens, fonts
 - [x] Phase 1 — Rust socket bridge, commands, events, mock mode
-- [x] Phase 2 — Dashboard (header, stat tiles, live graph, globals, process list)
+- [x] Phase 2 — Dashboard (header, live graph, process list)
 - [x] Phase 3 — Settings / Statistics / Budgets / rule editor / states / toasts
 - [x] Phase 4 — Motion (reduced-motion aware), empty/offline states, screenshots
 - [x] Phase 5 — frontend + Rust CI, release bundles (`.deb`/`.rpm`)
-- [x] Phase 5 — frontend + Rust CI, release bundles (`.deb`/`.rpm`), GTK window
-      removed after feature parity
+- [x] Phase 6 — GTK window removed after feature parity, dashboard polish

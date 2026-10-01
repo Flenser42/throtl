@@ -25,7 +25,7 @@
     <g>
       <rect x="310" y="56" width="230" height="64" rx="12"
             fill="#171d24" stroke="#2b323b"/>
-      <text x="425" y="95" font-size="20" fill="#e6edf3" text-anchor="middle">GTK4 GUI</text>
+      <text x="425" y="95" font-size="20" fill="#e6edf3" text-anchor="middle">Dashboard · Tauri</text>
 
       <rect x="560" y="56" width="230" height="64" rx="12"
             fill="#171d24" stroke="#2b323b"/>

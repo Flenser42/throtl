@@ -11,12 +11,7 @@ make check          # ruff + full unittest suite
 make build          # produces dist/throtl-<version>.tar.gz and .whl
 ```
 
-Optional but recommended with a real display session (so the GUI widget tests
-run instead of being skipped):
-
-```bash
-python3 -m unittest discover -s tests -v
-```
+The suite needs neither a display nor root.
 
 ## 2. Version
 
