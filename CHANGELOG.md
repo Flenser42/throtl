@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Overview stat (caps, floor, priorities) and profiles can be switched by
   day and time in a schedule editor. A row's menu opens as a fixed panel
   so it is never clipped by the card.
+- **Budget alerts in the dashboard.** It polls the budgets every 30 s and
+  raises a desktop notification when one passes 80 % or its limit — transitions
+  only, so it does not spam. The Tauri notification plugin was already wired
+  into the shell and its capability; only the frontend side was missing.
 - **Packaging for the dashboard.** CI now builds the frontend (`npm run build`)
   and denies Rust warnings (`cargo clippy --all-targets -D warnings` plus
   `cargo test`); the release workflow builds and attaches the dashboard `.deb`
@@ -51,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   agrees with the pre-paint resolution in `index.html`.
 - **The mock carries the raw time window**, so the rule editor shows the correct
   weekday/time selection during development and in screenshots.
+- **The dashboard reported the wrong version** ("0.1.0"). `package.json`,
+  `tauri.conf.json` and `Cargo.toml` now carry the real product version, the
+  About row reads the bundle version at runtime, and the built packages are
+  versioned correctly.
 
 ## [0.10.3] - 2026-09-30
 

@@ -14,11 +14,13 @@ import { ConnectingState, DeniedState, OfflineState } from "./components/States"
 import { ToastHost, useToasts } from "./components/Toast";
 import { Toolbar } from "./components/Toolbar";
 import { useDaemon } from "./hooks/useDaemon";
+import { useBudgetAlerts } from "./hooks/useBudgetAlerts";
 import { getConfig, importConfig } from "./lib/api";
-import { isMock } from "./lib/ipc";
+import { isMock, isTauri } from "./lib/ipc";
 import type { AppRow } from "./lib/model";
 
-const APP_VERSION = "0.1.0";
+// Fallback for the browser; inside Tauri the real bundle version wins.
+const APP_VERSION_FALLBACK = "0.10.3";
 const SOCKET_PATH = "/run/throtl/daemon.sock";
 
 type SheetKind = "settings" | "stats" | "budgets" | "globals" | "schedule" | null;
@@ -74,7 +76,18 @@ export function App() {
     (localStorage.getItem("throtl-density") as Density) || "comfortable",
   );
   const { toasts, push } = useToasts();
+  const [version, setVersion] = useState(APP_VERSION_FALLBACK);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  useBudgetAlerts(Boolean(model));
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    void import("@tauri-apps/api/app")
+      .then((mod) => mod.getVersion())
+      .then(setVersion)
+      .catch(() => {});
+  }, []);
 
   // Theme: apply and follow the system when "system" is chosen.
   useEffect(() => {
@@ -262,7 +275,7 @@ export function App() {
           onUnit={changeUnit}
           socket={SOCKET_PATH}
           state={state}
-          version={APP_VERSION}
+          version={version}
           onExport={() => void exportConfig()}
           onImport={(file) => void importConfigFile(file)}
           onClose={closeSheets}

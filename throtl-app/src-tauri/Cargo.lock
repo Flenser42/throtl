@@ -3717,7 +3717,7 @@ dependencies = [
 
 [[package]]
 name = "throtl-app"
-version = "0.1.0"
+version = "0.10.3"
 dependencies = [
  "serde",
  "serde_json",

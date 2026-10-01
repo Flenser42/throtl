@@ -94,7 +94,9 @@ hard-code a colour. Numbers use JetBrains Mono with `tabular-nums`.
 - [x] Phase 3 — Settings / Statistics / Budgets / rule editor / states / toasts
 - [x] Phase 4 — Motion (reduced-motion aware), empty/offline states, screenshots
 - [x] Phase 5 — frontend + Rust CI, release bundles (`.deb`/`.rpm`)
-- [ ] Phase 5 (rest) — the GTK window stays until two niceties move over:
-      budget desktop notifications and the "newer release" check. Everything
-      else (rules, profiles, schedule, global caps, budgets, statistics, unit,
-      config export/import) is in the dashboard.
+- [ ] Phase 5 (rest) — the GTK window stays for one feature that is not in the
+      dashboard yet: the "newer release available" banner (it would need either
+      a `connect-src` for the GitHub API or a Rust HTTP client, so it is
+      deliberately deferred). Rules, profiles, schedule, global caps, budgets
+      (incl. desktop alerts), statistics, unit and config export/import are all
+      in the dashboard.

@@ -34,10 +34,12 @@ Light mode follows your system style (toggle with `L`, or pin it in Settings):
 
 Secondary screens open as right-side sheets: **Statistics** (range switch,
 chart, per-app breakdown), **Budgets** (global and per-app), **Settings**
-(theme, density, display unit, daemon info, JSON export/import) and the
-**rule editor** — create, edit or delete a rule with limits, priority and a
-weekday/time window. Profiles (including the startup profile) are switched
-from the header pill, and each row's menu can copy the equivalent
+(theme, density, display unit, daemon info, JSON export/import), **Global
+limits** (caps, per-direction floor and priorities, opened from the Overview
+card) and the **rule editor** — create, edit or delete a rule with limits,
+priority and a weekday/time window. Profiles (including the startup profile)
+are switched from the header pill, which also opens the **Schedule** editor
+(day/time → profile). Each row's menu can copy the equivalent
 `throtl set-process` command or reset the counters.
 
 ![Statistics sheet](docs/images/dashboard-stats.png)
