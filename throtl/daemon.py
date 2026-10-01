@@ -1,7 +1,7 @@
 """Throtl-Daemon: Unix-Socket-Server, TrafficToll-Engine-Steuerung, Monitoring.
 
 Architektur:
-    [GTK4-Frontend / CLI] --Unix-Socket (JSON)-- [Daemon]
+    [Dashboard / CLI] --Unix-Socket (JSON)-- [Daemon]
         ├── TrafficTollEngine  -> tt-Subprozess (tc + cgroups, root)
         ├── NethogsMonitor     -> Live-Bandbreiten pro Prozess
         └── ConfigStore        -> ~/.config/throtl/config.toml

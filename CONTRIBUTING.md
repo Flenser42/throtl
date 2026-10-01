@@ -6,30 +6,29 @@ development setup and the expectations for changes.
 ## Development setup
 
 Throtl's backend is pure standard library, so it can be developed on any Linux
-box. The GUI additionally needs GTK4 + libadwaita through **system** PyGObject
-(it is intentionally not a pip dependency).
+box — no GTK, no PyGObject, no pip dependencies.
 
 ```bash
 git clone https://github.com/Flenser42/throtl.git
 cd throtl
 
 # Arch / Omarchy
-sudo pacman -S --needed nethogs gtk4 libadwaita python-gobject python-cairo
+sudo pacman -S --needed nethogs
 # Debian / Ubuntu
-# sudo apt install nethogs gir1.2-gtk-4.0 gir1.2-adw-1 python3-gi
+# sudo apt install nethogs
 
 make check           # ruff + full unittest suite
 ```
 
 Notes:
 
-- Use the system Python for GUI tests (`/usr/bin/python3`), because a
-  virtualenv/mise Python typically does not have PyGObject. The `Makefile`
-  already prefers `/usr/bin/python3` when present.
-- GUI widget tests are skipped automatically when no display is available.
+- The tests need no display and no root; `make check` runs everywhere.
 - To exercise real shaping you need root, `tc` and
   [TrafficToll](https://github.com/cryzed/TrafficToll). Without them, use the
   simulation mode: `throtl-daemon --simulate --socket /tmp/throtl.sock`.
+- The **dashboard** (`throtl-app/`) is a separate Tauri + React app: it needs
+  Node 20+ and Rust to build, and `webkit2gtk-4.1` to run. See
+  [`throtl-app/README.md`](throtl-app/README.md).
 
 ## Style
 

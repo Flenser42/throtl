@@ -44,7 +44,8 @@ echo ""
 echo "Throtl installiert."
 echo "  Deinen Nutzer zur Gruppe 'throtl' hinzufuegen und neu einloggen:"
 echo "      sudo usermod -aG throtl \$USER"
-echo "  Danach:  sudo systemctl start throtl   und   throtl-gui"
+echo "  Danach:  sudo systemctl start throtl"
+echo "  Dashboard: ./setup/install-app.sh   (oder 'Throtl' im App-Menue)"
 echo ""
 
 exit 0

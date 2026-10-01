@@ -1,7 +1,7 @@
 # TESTING.md — how Throtl is tested
 
 This document describes what is covered by the automated tests, how to verify
-manually (without the GUI) that limits actually apply, and what the known
+manually (without the dashboard) that limits actually apply, and what the known
 limitations are.
 
 ---
@@ -12,10 +12,10 @@ limitations are.
 make check           # ruff + full unittest suite
 make test            # tests only (python3 -m unittest discover -s tests)
 make lint            # ruff check .
-
-# Headless machines: run the GUI widget tests under a virtual display
-xvfb-run -a -s "-screen 0 1280x900x24" make test
 ```
+
+No display, no root and no daemon are required: sockets, `tt` and `nethogs` are
+exercised through in-process fakes and a simulation engine.
 
 Current suite (`tests/`):
 
@@ -30,16 +30,11 @@ Current suite (`tests/`):
 | `test_engine` | TrafficToll YAML rendering (incl. inactive-window rules), `tt` subprocess (start/restart/disabled), SimEngine | fake `tt` shell script |
 | `test_daemon_cli` | end-to-end daemon (sim) + CLI: status, set_global + persistence, set_process round-trip/update/**window**, toggle, set_unit, list | real Unix socket, SimEngine + fake monitor |
 | `test_cli` | byte/name formatting, selftest guards, **`watch` report + alert exit codes + JSON** | fake client |
-| `test_gui` | rate formatting, priority mapping, GuiClient RPC against a real daemon, process table (grouping/sorting/in-place updates/**filter**), **time-window dialog**, **full-window handler smoke test**, bandwidth graph (window/auto-scroll) | widget tests skipped without a display |
-
-> GUI widget instantiation (`PriorityDropdown`, `ProcessTable`, `RuleWindowDialog`,
-> `BandwidthGraph`, the full `ThrotlWindow`) is automatically **skipped** in a
-> headless environment (no Wayland/X11 display). Use `xvfb-run` (above) to run
-> the complete suite on a headless machine.
+| `test_version` | update-check version parsing/compare (`is_newer`, pre-release, build metadata) | pure logic |
 
 ---
 
-## Manual: testing limits without opening the GUI
+## Manual: testing limits without opening the dashboard
 
 ### 1) Is the daemon reachable, and what is the baseline?
 

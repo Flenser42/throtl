@@ -16,12 +16,10 @@ keywords = [
     "qos",
     "traffic-shaping",
     "tc",
-    "gtk4",
-    "libadwaita",
+    "tauri",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Environment :: X11 Applications :: GTK",
     "Intended Audience :: End Users/Desktop",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
@@ -32,13 +30,11 @@ classifiers = [
     "Topic :: System :: Systems Administration",
 ]
 # Intentionally no pip dependencies: the backend uses only the standard library.
-# PyGObject (Gtk4/Adw), nethogs and TrafficToll are installed system-side by
-# setup/install.sh (or your distro's package manager).
+# nethogs and TrafficToll are installed system-side by setup/install.sh (or your
+# distro's package manager); the dashboard is a separate Tauri app in throtl-app/.
 dependencies = []
 
 [project.optional-dependencies]
-# The GUI needs the system PyGObject; the "gui" extra exists for clarity only.
-gui = []
 dev = ["ruff>=0.6", "build>=1.2"]
 
 [project.urls]
@@ -51,14 +47,10 @@ Changelog = "https://github.com/Flenser42/throtl/blob/master/CHANGELOG.md"
 [project.scripts]
 throtl-cli = "throtl.cli:main"
 throtl-daemon = "throtl.daemon:main"
-throtl-gui = "throtl.gui.app:main"
 
 [tool.setuptools]
-packages = ["throtl", "throtl.gui"]
+packages = ["throtl"]
 include-package-data = true
-
-[tool.setuptools.package-data]
-"throtl.gui" = ["*.css"]
 
 [tool.setuptools.dynamic]
 version = { attr = "throtl.__version__" }
@@ -70,12 +62,7 @@ extend-exclude = ["attic"]
 
 [tool.ruff.lint]
 # Pragmatic, low-noise rule set. The project deliberately catches broad
-# exceptions in the daemon/GUI (a bad callback or a dead monitor must never
-# take the process down), so BLE/S rules are intentionally not enabled.
+# exceptions in the daemon (a dead monitor must never take the process down),
+# so BLE/S rules are intentionally not enabled.
 select = ["E4", "E7", "E9", "F", "W", "I"]
 ignore = ["E501"]
-
-[tool.ruff.lint.per-file-ignores]
-# In GTK modules `gi.require_version()` must run before importing
-# `gi.repository`, so the import block legitimately lives below a statement.
-"throtl/gui/*.py" = ["E402"]

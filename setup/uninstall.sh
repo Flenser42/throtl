@@ -17,8 +17,22 @@ sudo systemctl daemon-reload
 
 echo "=== Entferne Desktop-Datei + Icon ==="
 sudo rm -f /usr/share/applications/throtl.desktop
+sudo rm -f /usr/share/applications/throtl-classic.desktop
 sudo rm -f /usr/share/icons/hicolor/scalable/apps/throtl.svg
 sudo gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+
+# Die Dashboard-Installation liegt pro Nutzer unter ~/.local (install-app.sh).
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+  USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+  if [ -n "$USER_HOME" ] && [ -d "$USER_HOME/.local" ]; then
+    echo "=== Entferne Dashboard-Installation (Nutzer $SUDO_USER) ==="
+    sudo rm -rf "$USER_HOME/.local/opt/throtl"
+    sudo rm -f "$USER_HOME/.local/bin/throtl-app"
+    sudo rm -f "$USER_HOME/.local/share/applications/throtl-app.desktop"
+    sudo rm -f "$USER_HOME/.local/share/applications/throtl.desktop"
+    sudo rm -f "$USER_HOME/.local/share/icons/hicolor/scalable/apps/throtl-app.svg"
+  fi
+fi
 
 echo "=== Entferne PATH-Launcher ==="
 sudo rm -f /usr/local/bin/throtl-cli /usr/local/bin/throtl-gui /usr/local/bin/throtl-daemon

@@ -1,8 +1,8 @@
 """Versionscheck gegen die oeffentliche GitHub-Release-API.
 
 Reine Logik plus ein injizierbarer HTTP-Opener: die Tests laufen damit ohne
-Netzwerk, und die GUI kann den Check im Hintergrund ausfuehren, ohne dass hier
-GTK importiert wird.
+Netzwerk und ohne Display. Das Dashboard spiegelt dieselbe Vergleichslogik in
+TypeScript (`throtl-app/src/lib/update.ts`).
 """
 
 import unittest

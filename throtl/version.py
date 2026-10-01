@@ -7,7 +7,8 @@ installiert nichts — auf Wunsch oeffnet die App nur die Release-Seite im
 Standardbrowser.
 
 Nur Standardbibliothek, kein GTK: damit ist die Logik ohne Display und ohne Netz
-testbar (der HTTP-Opener ist injizierbar).
+testbar (der HTTP-Opener ist injizierbar). Das Dashboard spiegelt dieselbe
+Vergleichslogik in TypeScript (`throtl-app/src/lib/update.ts`).
 """
 
 import json

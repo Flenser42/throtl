@@ -12,7 +12,6 @@
 Throtl brings fine-grained bandwidth control to Linux/Omarchy: set per-application
 download/upload limits and traffic priorities from a modern desktop dashboard
 (Tauri 2 + React) or the scriptable CLI — without reinventing the shaping engine.
-A classic GTK4 + libadwaita window still ships alongside it.
 
 It is a thin, well-behaved layer on top of two proven tools:
 
@@ -46,15 +45,9 @@ are switched from the header pill, which also opens the **Schedule** editor
 
 ![Rule editor](docs/images/dashboard-rule.png)
 
-The dashboard is the new GUI: a **Tauri 2 + React + TypeScript + Tailwind v4**
-app in [`throtl-app/`](throtl-app/) whose Rust shell talks to the same root
-daemon over the Unix socket. It reuses the daemon, CLI and socket protocol
-unchanged. The classic GTK4 window (`throtl-gui`) still ships until the new
-GUI reaches feature parity.
-
-![Classic GTK4 GUI](docs/images/demo.gif)
-
-*The classic GTK4 GUI, for comparison.*
+The dashboard is the GUI: a **Tauri 2 + React + TypeScript + Tailwind v4** app
+in [`throtl-app/`](throtl-app/) whose Rust shell talks to the same root daemon
+over the Unix socket — the daemon, CLI and socket protocol are unchanged.
 
 ---
 
@@ -76,9 +69,10 @@ GUI reaches feature parity.
 - **Global switch** — turn all shaping on/off without losing your rules.
 - **Consumption budgets** — a rolling daily/weekly volume limit (global or per
   app); the GUI warns and shows a desktop notification when it is exceeded.
-- **Budgets, editable in the app** — main menu → **Budgets…** sets the global
+- **Budgets, editable in the app** — the **Budgets** sheet sets the global
   daily/weekly volume and per-application budgets, showing how much is already
-  used. A warning arrives at 80 % of a budget, so there is still time to react.
+  used. A desktop notification arrives at 80 % of a budget, so there is still
+  time to react.
 - **Explains itself** — every affected row says which rule applies (own limit,
   global limit, time window and whether it is active right now).
 - **Knows when the service is missing** — if the daemon is not reachable, the
@@ -89,9 +83,9 @@ GUI reaches feature parity.
 - **Profiles, schedules & startup profile** — save the current limits as named
   profiles ("University", "Evening", "Night"), switch between them automatically by
   weekday and time, and pick one to activate on daemon startup.
-- **Native GNOME design** — built on libadwaita and following your system
-  light/dark preference (or pin Light/Dark in the main menu); the graph and
-  rate colours adapt with it.
+- **Native-feeling design** — the dashboard follows your system light/dark
+  preference (or pin Light/Dark in Settings); the graph and rate colours adapt
+  with it.
 - **Responsive** — TrafficToll restarts are coalesced and happen off the UI
   thread, so the window never freezes while a change is applied.
 - **Headless CLI** — everything the GUI can do, plus `monitor`, `top`,
@@ -101,14 +95,6 @@ GUI reaches feature parity.
   the optional update check (below).
 - **Update notice** — tells you when a newer release exists and opens its page
   in your browser. Throtl never installs anything by itself.
-
-### Graph
-
-![Bandwidth graph](docs/images/graph.png)
-
-### Process table
-
-![Process table](docs/images/table.png)
 
 ---
 
@@ -166,18 +152,16 @@ as a synthetic `(unattributed)` row instead of being dropped.
 
 - Linux (developed on **Arch / [Omarchy](https://omarchy.org)**, Wayland)
 - Python **3.11+**
-- `nethogs`, `gtk4`, `libadwaita`, `python-gobject`, `python-cairo`
-  (all in Arch `[extra]`)
+- `nethogs` (Arch `[extra]`)
 - [`traffictoll`](https://github.com/cryzed/TrafficToll) — installed by the setup
   script into a venv under `/opt/throtl`
 - `tc` and the `ifb` kernel module (for ingress shaping)
-- For the **new dashboard**: `webkit2gtk-4.1` at runtime (already pulled in by
-  `gtk4`/Adwaita on most systems). Building it additionally needs **Node 20+**
-  and **Rust** (see [Development](#development)); the CLI and GTK GUI need
-  neither.
+- For the **dashboard**: `webkit2gtk-4.1` at runtime. Building it additionally
+  needs **Node 20+** and **Rust** (see [Development](#development)); the CLI
+  needs neither.
 
-The backend itself has **no third-party Python dependencies**; the classic GTK
-GUI uses the system PyGObject.
+The backend itself has **no third-party Python dependencies** — it uses only
+the standard library.
 
 ---
 
@@ -194,10 +178,10 @@ The script:
 1. installs the system packages listed above,
 2. creates `/opt/throtl/venv` and installs `traffictoll`,
 3. copies the code and launchers to `/opt/throtl` (and symlinks
-   `throtl-cli` / `throtl-gui` / `throtl-daemon` into `/usr/local/bin`),
+   `throtl-cli` / `throtl-daemon` into `/usr/local/bin`),
 4. creates `/etc/throtl/config.toml` and `/run/throtl`,
 5. installs and starts the `throtl` systemd service,
-6. installs the desktop entry, the icon and offers autostart,
+6. removes leftovers from the old GTK GUI (menu entry, launcher, icon),
 7. **installs the new dashboard GUI** for your user (builds the AppImage once
    if needed, then installs it under `~/.local`). Use `--no-app` to skip it, or
    run it separately later.
@@ -206,8 +190,8 @@ That is the whole install — daemon + GUI in one command:
 
 ```bash
 sudo ./setup/install.sh              # everything
-sudo ./setup/install.sh --no-app     # daemon + classic GTK GUI only
-./setup/install-app.sh               # new dashboard only (no root)
+sudo ./setup/install.sh --no-app     # daemon + CLI only
+./setup/install-app.sh               # dashboard only (no root)
 make install                         # same as the first line
 ```
 
@@ -222,8 +206,8 @@ and configuration); remove the dashboard with
 > (`make app-build`); there is an AUR `PKGBUILD` for Arch/Omarchy. See
 > [`packaging/README.md`](packaging/README.md).
 >
-> CI lints and tests the Python backend (ruff + unittest + GTK/Xvfb), builds the
-> frontend (`npm run build`) and denies Rust warnings (`cargo clippy -D warnings`).
+> CI lints and tests the Python backend (ruff + unittest), builds the frontend
+> (`npm run build`) and denies Rust warnings (`cargo clippy -D warnings`).
 
 > The daemon and engine need root, so Throtl installs system-wide. The frontend
 > (GUI/CLI) runs as your user and talks to the daemon over the Unix socket.
@@ -232,7 +216,7 @@ and configuration); remove the dashboard with
 
 ## Usage
 
-### Dashboard (new GUI)
+### Dashboard (GUI)
 
 Open **Throtl** from your launcher, or:
 
@@ -247,36 +231,17 @@ bandwidth graph and a compact status line (active rules, global caps, profile)
 - **Graph** — hover for a crosshair and a tooltip with the exact values at that
   moment, click to pin it; switch the window with `30s / 1m / 5m / 15m / all`.
   Below it: `min / avg / max` and the peak application.
-- **Applications** — sortable and filterable. Each row shows the rates and, on
-  the second line, chips for the **limit** (`◧ 3.4 MB/s ↓ · 0.5 ↑` or
-  `unlimited`), **priority** (icon + word), **time window** (with `· now` when
-  active) and a **budget bar**; plus a sparkline and a per-app **arm switch**.
+- **Applications** — sortable and filterable. Each row shows the rates, a per-app
+  **arm switch** and a `⋯` menu (edit rule, reset counters, copy the equivalent
+  CLI command, remove rule). The second line keeps only what applies: **limit**
+  (`◧ 3.4 MB/s ↓ · 0.5 ↑` or `unlimited`), **priority** (icon + word),
+  **time window** (with `· now` when active) and a **budget bar**.
 - **Theme** — follows the system; press `L` to toggle light/dark.
 - **Filter** — `Ctrl/⌘ K` focuses the search box.
 
 Colours, spacing and type come from the design tokens in
 [`throtl-app/src/styles/globals.css`](throtl-app/src/styles/globals.css); the
 Rust side never exposes the socket to the webview.
-
-### Classic GTK GUI
-
-Open **Throtl (classic)** from your launcher, or:
-
-```bash
-/opt/throtl/bin/throtl-gui
-```
-
-The window gives you a global on/off switch, the active profile, global limits
-and priority, the live graph and the per-app table. Type a limit into a row's
-`DL limit` / `UL limit` field (empty = unlimited) and pick a priority; the change
-is sent to the daemon automatically.
-
-Each row explains itself: underneath an application that is affected by
-something, a quiet line says **why** — `Your rule: 0.5 MB/s download, 0.062 MB/s
-upload` or `Your rule: 0.04 MB/s download · Mon-Fri 20:00-00:00 (not active
-now)`. Rows that are unlimited stay one line, so only the interesting ones
-grow. The `⋯` button on a row opens its actions: set a budget for exactly that
-application, or edit its time window.
 
 > Limits are displayed and interpreted in the selected unit (MB/s, Mbit/s, KB/s,
 > kbit/s). An explicit suffix such as `2 kbps` always wins over the unit.
@@ -285,13 +250,9 @@ application, or edit its time window.
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl+R` | Reload settings and the process list |
-| `Ctrl+I` | Open Statistics |
-| `Ctrl+S` | Save the current settings as a profile |
-| `Ctrl+F` | Focus the application filter |
-| `Esc` | Clear the filter |
-| `Ctrl+1` … `Ctrl+9` | Activate the n-th profile |
-| `Alt+D` / `Alt+U` / `Alt+P` | Jump to the download limit, upload limit, priority field |
+| `L` | Toggle light/dark |
+| `Ctrl/⌘ K` | Focus the application filter |
+| `Esc` | Close the open sheet or menu |
 
 ### Updates
 
@@ -303,12 +264,11 @@ asks nothing of the daemon.
 
 This is the only outbound request the app makes. It carries no account, no
 identifier and no usage data — just a GET for the latest tag. Switch it off in
-the main menu under **Updates → Check for updates on start**; **Check for
-updates** runs it once on demand.
+Settings under **Updates**; **Check now** runs it once on demand.
 
 ### CLI
 
-The daemon is fully controllable without the GUI:
+The daemon is fully controllable without the dashboard:
 
 ```bash
 throtl-cli status
@@ -446,12 +406,10 @@ every application into three rolling windows and stores them as
 | `hour` | 1 hour | 2 days |
 | `day` | 1 day | 30 days |
 
-The GUI exposes this under **Statistics…** (window switcher + per-app list and
-history graph); the CLI prints it with `throtl-cli stats`. Stored values are
-**bytes**, derived from the sampled rates — see [`docs/TESTING.md`](docs/TESTING.md)
-for the accuracy limits.
-
-![Statistics dialog](docs/images/stats.png)
+The dashboard exposes this in the **Statistics** sheet (window switcher +
+per-app list and history graph); the CLI prints it with `throtl-cli stats`.
+Stored values are **bytes**, derived from the sampled rates — see
+[`docs/TESTING.md`](docs/TESTING.md) for the accuracy limits.
 
 ### Simulation mode
 
@@ -522,14 +480,11 @@ throtl/
   stats.py           persistent per-app history (ring buffers, 3 windows)
   daemon.py          Unix-socket RPC daemon (root)
   cli.py             CLI (throtl-cli)
-  gui/               classic GTK4 + libadwaita frontend (app, graph, table,
-                     rule-window dialog, prefs, style.css)
-throtl-app/          new dashboard GUI: Tauri 2 + React + TS + Tailwind v4
-  src/               React UI (Overview, LiveGraph, ProcessList, …)
+throtl-app/          dashboard GUI: Tauri 2 + React + TS + Tailwind v4
+  src/               React UI (Overview, LiveGraph, ProcessList, sheets, …)
   src-tauri/         Rust shell: Unix-socket JSON-RPC bridge + commands
-tests/               unittest suite (GUI tests run under Xvfb)
-setup/               install/uninstall (+ install-app.sh), systemd unit,
-                     .desktop, autostart
+tests/               unittest suite (no display or root needed)
+setup/               install/uninstall (+ install-app.sh) and systemd unit
 packaging/           AUR PKGBUILD, Debian .deb builder + distro notes
 data/                icon (SVG)
 docs/                TESTING.md, RELEASING.md
@@ -542,20 +497,14 @@ docs/images/         banner, architecture diagram and screenshots
 
 ```bash
 make check          # ruff + full unittest suite
-make test            # python3 -m unittest discover -s tests (GUI tests skip headless)
-make lint            # ruff check .
-make lint-fix        # ruff autofixes (imports/formatting)
-make build           # sdist + wheel into dist/ (needs `build`)
-make deb             # Debian package into dist/ (needs `dpkg-deb`)
-
-# Run the GUI widget tests on a headless machine
-xvfb-run -a -s "-screen 0 1280x900x24" make test
-
-# Regenerate the classic README screenshots / demo GIF (uses the Xvfb trick)
-make images
+make test           # python3 -m unittest discover -s tests
+make lint           # ruff check .
+make lint-fix       # ruff autofixes (imports/formatting)
+make build          # sdist + wheel into dist/ (needs `build`)
+make deb            # Debian package into dist/ (needs `dpkg-deb`)
 ```
 
-### The new dashboard (`throtl-app/`)
+### The dashboard (`throtl-app/`)
 
 ```bash
 cd throtl-app
@@ -569,9 +518,11 @@ npm run tauri build             # .deb / .rpm / .AppImage
 `?static=1&theme=light&pin=27` freezes the mock and pins the graph crosshair.
 Other URL parameters are handy for screenshots and deep links: `theme=light|dark`,
 `sheet=new|rule|stats|budgets|settings`, `pop=profile`, `menu=1` and
-`mockstate=offline|denied|connecting`. Rust is only needed for
-`tauri dev/build`; install it with [rustup](https://rustup.rs) and put
-`~/.cargo/bin` on your `PATH`.
+`mockstate=offline|denied|connecting`. To regenerate the README screenshots,
+serve `dist/` and capture with headless Chromium, e.g.
+`chromium --headless=new --window-size=1240,1000 --screenshot=docs/images/dashboard-dark.png "http://localhost:4173/?static=1&pin=27&theme=dark"`.
+Rust is only needed for `tauri dev/build`; install it with
+[rustup](https://rustup.rs) and put `~/.cargo/bin` on your `PATH`.
 
 ```bash
 # lint + typecheck the frontend, and the Rust shell
@@ -580,9 +531,7 @@ cd throtl-app && npm run build && cargo clippy --manifest-path src-tauri/Cargo.t
 
 See [`throtl-app/README.md`](throtl-app/README.md) for the architecture.
 
-- Prefer the **system Python** for GUI tests (`/usr/bin/python3`), since a
-  virtualenv typically lacks PyGObject. The `Makefile` does this automatically.
-- GUI widget tests and `make images` are skipped when no display is available.
+- The test suite needs no display and no root.
 - Run `make clean` to drop build artifacts and caches.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/RELEASING.md`](docs/RELEASING.md);
@@ -593,10 +542,10 @@ the project follows [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) and has a
 
 ## Troubleshooting
 
-The window tells you when the service is missing instead of showing an empty
-table:
+The dashboard tells you when the service is missing instead of showing an empty
+list:
 
-![Throtl with the service unreachable](docs/images/offline.png)
+![Throtl with the service unreachable](docs/images/dashboard-offline.png)
 
 - **No process list in the GUI** — the daemon could not start `nethogs`. Check
   `throtl-cli status` (`Monitor error`) and `systemctl status throtl`.

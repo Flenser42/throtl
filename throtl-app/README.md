@@ -1,11 +1,12 @@
 # throtl-app
 
 The new Throtl desktop GUI: **Tauri 2 + React + TypeScript + Vite + Tailwind CSS v4**.
-It replaces the GTK4/libadwaita window with a modern dashboard while the Python
-daemon, CLI and socket protocol stay exactly as they are.
+It replaces the old GTK4/libadwaita window (removed in this release) while the
+Python daemon, CLI and socket protocol stay exactly as they are.
 
-> Phase 0–2 of the redesign spec: scaffold, daemon bridge, dashboard. The GTK
-> GUI remains in `../throtl/gui/` until this app reaches feature parity.
+> All redesign phases are done: the GTK window and its tests are gone, and the
+dashboard covers rules, profiles, schedules, global caps, budgets (with desktop
+alerts), statistics and the update notice.
 
 ## Architecture
 
@@ -94,9 +95,5 @@ hard-code a colour. Numbers use JetBrains Mono with `tabular-nums`.
 - [x] Phase 3 — Settings / Statistics / Budgets / rule editor / states / toasts
 - [x] Phase 4 — Motion (reduced-motion aware), empty/offline states, screenshots
 - [x] Phase 5 — frontend + Rust CI, release bundles (`.deb`/`.rpm`)
-- [ ] Phase 5 (rest) — the GTK window stays for one feature that is not in the
-      dashboard yet: the "newer release available" banner (it would need either
-      a `connect-src` for the GitHub API or a Rust HTTP client, so it is
-      deliberately deferred). Rules, profiles, schedule, global caps, budgets
-      (incl. desktop alerts), statistics, unit and config export/import are all
-      in the dashboard.
+- [x] Phase 5 — frontend + Rust CI, release bundles (`.deb`/`.rpm`), GTK window
+      removed after feature parity

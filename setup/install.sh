@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # Throtl-Installation fuer Omarchy (Arch Linux + Hyprland, Wayland).
-# - Installiert Systempakete: nethogs, gtk4, libadwaita, python-gobject, python-cairo
+# - Installiert Systempakete: nethogs, webkit2gtk-4.1 (fuer das Dashboard)
 # - Installiert TrafficToll (pip) in ein venv unter /opt/throtl
-# - Legt systemd-Service, .desktop-Datei, Icon an
-# - Richtet Autostart ein
+# - Legt systemd-Service an, raeumt alte GTK-Eintraege auf
+# - Installiert optional das Tauri-Dashboard (Schritt 7)
 #
 # AUSFUEHREN NUR ALS ROOT/sudo:  sudo ./install.sh
 
@@ -16,9 +16,9 @@ ETC="/etc/throtl"
 RUN="/run/throtl"
 
 echo "=== [1/7] Systempakete installieren ==="
-# pacman-Pakete (alle in [extra])
-sudo pacman -S --needed --noconfirm \
-  nethogs gtk4 libadwaita python-gobject python-cairo
+# pacman-Pakete (alle in [extra]): nethogs liefert die Live-Messung,
+# webkit2gtk-4.1 ist die Laufzeit des Tauri-Dashboards.
+sudo pacman -S --needed --noconfirm nethogs webkit2gtk-4.1
 
 echo "=== [2/7] TrafficToll in venv installieren ==="
 sudo mkdir -p "$OPT"
@@ -40,12 +40,10 @@ sudo find "$OPT/throtl" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/de
 sudo install -m 0644 "$PROJECT_DIR/README.md" "$PROJECT_DIR/CHANGELOG.md" \
   "$PROJECT_DIR/LICENSE" "$OPT/"
 sudo mkdir -p "$OPT/bin"
-sudo cp "$PROJECT_DIR"/bin/throtl-gui "$PROJECT_DIR"/bin/throtl-cli \
-  "$PROJECT_DIR"/bin/throtl-daemon "$OPT/bin/"
+sudo cp "$PROJECT_DIR"/bin/throtl-cli "$PROJECT_DIR"/bin/throtl-daemon "$OPT/bin/"
 sudo chmod +x "$OPT/bin"/throtl-*
 echo "   Launcher als /usr/local/bin/throtl-* (PATH) verlinken"
 sudo ln -sf "$OPT/bin/throtl-cli"    /usr/local/bin/throtl-cli
-sudo ln -sf "$OPT/bin/throtl-gui"    /usr/local/bin/throtl-gui
 sudo ln -sf "$OPT/bin/throtl-daemon" /usr/local/bin/throtl-daemon
 
 echo "=== [4/7] Gruppe, Konfiguration + Runtime-Verzeichnisse ==="
@@ -84,21 +82,18 @@ if ! sudo systemctl restart throtl; then
 fi
 echo "   Daemon-Service: throtl  (Status: systemctl status throtl)"
 
-echo "=== [6/7] Desktop-Datei + Icon + Autostart ==="
-sudo install -Dm 0755 -d /usr/share/applications
-# The classic GTK GUI is a hidden, clearly named entry; the new dashboard owns
-# the visible "Throtl" name (otherwise the menu shows "Throtl" twice).
-sudo install -m 0644 "$SELF_DIR"/throtl.desktop /usr/share/applications/throtl-classic.desktop
-sudo rm -f /usr/share/applications/throtl.desktop
-# Desktop-Datenbank aktualisieren, damit der Launcher die neue Exec-Zeile sofort
-# sieht (Qt/GNOME/wofi/rofi-caches aktualisieren hier sonst nicht).
+echo "=== [6/7] Alte GTK-Eintraege aufraeumen ==="
+# Aeltere Installationen hinterliessen die GTK-GUI: Menueeintrag, Launcher und
+# Icon entfernen, damit das Menue nur noch das Dashboard zeigt.
+sudo rm -f /usr/share/applications/throtl.desktop \
+           /usr/share/applications/throtl-classic.desktop \
+           /usr/local/bin/throtl-gui \
+           /usr/share/icons/hicolor/scalable/apps/throtl.svg
+sudo rm -rf "$OPT/throtl/gui" "$OPT/bin/throtl-gui"
+# Desktop-Datenbank aktualisieren, damit Launcher den Wegfall sofort sehen.
 if command -v update-desktop-database >/dev/null 2>&1; then
   sudo update-desktop-database /usr/share/applications 2>/dev/null || true
 fi
-
-sudo install -Dm 0644 "$PROJECT_DIR"/data/hicolor/scalable/apps/throtl.svg \
-  /usr/share/icons/hicolor/scalable/apps/throtl.svg
-sudo gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
 
 if ! command -v paru >/dev/null 2>&1 && ! command -v yay >/dev/null 2>&1; then
   echo "   Hinweis: Kein AUR-Helper (paru/yay) gefunden. TrafficToll wurde ueber pip "
@@ -122,7 +117,6 @@ fi
 echo
 echo " FERTIG. Throtl ist installiert."
 echo "   CLI:     /opt/throtl/bin/throtl-cli status"
-echo "   GUI:     'throtl-app' bzw. 'Throtl' im App-Menue (neue Tauri-GUI)"
-echo "            (alte GTK-GUI weiterhin: 'throtl-gui')"
+echo "   GUI:     'throtl-app' bzw. 'Throtl' im App-Menue (Dashboard)"
 echo "   Uninstall: sudo ./setup/uninstall.sh"
 echo "   Nur GUI neu installieren: ./setup/install-app.sh"

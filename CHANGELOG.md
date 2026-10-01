@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **The classic GTK4 + libadwaita GUI** (`throtl/gui/`, the `throtl-gui` entry
+  point and its 91 tests). The dashboard reaches feature parity — including the
+  update notice (now in the dashboard, one anonymous GET on the public release
+  API) and the budget notifications — so the GTK window, its `pyproject.toml`
+  entry point, its packaging (desktop file, icon, launchers, autostart) and its
+  CI job are gone. The backend loses nothing: it is still pure standard library
+  and no longer needs PyGObject, GTK or libadwaita. `setup/install.sh` removes
+  leftovers from older installs.
+
 ### Added
 
 - **A new desktop dashboard (`throtl-app/`).** A Tauri 2 + React + TypeScript +
@@ -16,8 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and budget chips. A Rust shell owns the Unix-socket JSON-RPC connection and
   exposes it to the webview through commands and events; the daemon, CLI and
   protocol are untouched. `sudo ./setup/install.sh` installs daemon **and** GUI
-  in one step (the GUI is built once and installed per-user). The classic GTK4
-  window still ships until feature parity.
+  in one step (the GUI is built once and installed per-user).
 - **The dashboard is calmer and does more.** A single monitor surface (hero
   rates, the graph and a compact status line) above the application list — the
   per-row sparklines and the decorative window controls are gone, and each row
@@ -59,6 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tauri.conf.json` and `Cargo.toml` now carry the real product version, the
   About row reads the bundle version at runtime, and the built packages are
   versioned correctly.
+- **The README's light dashboard screenshot was actually dark** — the dashboard
+  overwrote the pre-paint `?theme=` resolution from `index.html`.
 
 ## [0.10.3] - 2026-09-30
 

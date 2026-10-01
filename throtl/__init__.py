@@ -1,8 +1,8 @@
 """Throtl — Bandbreiten-Limits und QoS pro Anwendung fuer Linux.
 
 Architektur: privilegierter Daemon (root, systemd) mit TrafficToll-Backend,
-GTK4/libadwaita-Frontend, Unix-Socket-IPC. Konfiguration unter
-~/.config/throtl/ (TOML).
+Tauri-Dashboard (throtl-app/) und CLI als Frontends ueber Unix-Socket-IPC.
+Konfiguration unter ~/.config/throtl/ (TOML).
 """
 
 import grp

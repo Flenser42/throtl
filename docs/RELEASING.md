@@ -52,9 +52,9 @@ git push origin vX.Y.Z
   python -m twine upload dist/*
   ```
 
-  Note that the GUI requires the *system* PyGObject; installing from PyPI only
-  provides the Python modules and the `throtl-cli` / `throtl-daemon` /
-  `throtl-gui` entry points.
+  Note that this only provides the Python modules and the `throtl-cli` /
+  `throtl-daemon` entry points; the dashboard is the separate `throtl-app/`
+  Tauri build.
 
 ## 5. Verify the installer
 

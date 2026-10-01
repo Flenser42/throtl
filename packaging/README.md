@@ -10,8 +10,9 @@ compile. "Prebuilt" therefore means:
 - an **AUR package** for Arch / Omarchy.
 
 > A wheel alone only provides the Python modules and the `throtl-cli` /
-> `throtl-daemon` / `throtl-gui` entry points. For a working install you still
-> need the systemd unit, the desktop file and the system dependencies.
+> `throtl-daemon` entry points. For a working install you still need the
+> systemd unit and the system dependencies. The dashboard is a separate Tauri
+> app (see [`../throtl-app/`](../throtl-app/)) and is not part of the wheel.
 
 ## Per-distro status
 
@@ -22,11 +23,10 @@ compile. "Prebuilt" therefore means:
 | Arch / Omarchy | AUR package — see [`aur/PKGBUILD`](aur/PKGBUILD) | template included |
 | Fedora | `.rpm` | planned |
 
-Common runtime dependencies: `python-gobject`, `gtk4`, `libadwaita`,
-`python-cairo`, `nethogs`, `iproute2` (`tc`) and a TrafficToll backend that
-provides the `tt` binary (`traffictoll`). On Debian/Ubuntu the cairo foreign
-struct support for PyGObject is the separate `python3-gi-cairo` package —
-without it the GUI cannot draw the graph, so the `.deb` depends on it.
+Common runtime dependencies: `nethogs`, `iproute2` (`tc`) and a TrafficToll
+backend that provides the `tt` binary (`traffictoll`). The backend needs only
+the Python standard library — no PyGObject, no GTK. The dashboard needs
+`webkit2gtk-4.1` at runtime (it ships separately, see below).
 
 ## Debian / Ubuntu (`.deb`)
 
@@ -39,8 +39,7 @@ The package:
 
 - installs the sources under `/opt/throtl/` (same layout as
   `setup/install.sh`, so the systemd unit works unchanged),
-- ships `/usr/bin/throtl-{gui,cli,daemon}` symlinks, the desktop file, the
-  icon and the systemd unit,
+- ships `/usr/bin/throtl-{cli,daemon}` symlinks and the systemd unit,
 - creates the `throtl` group and enables the service in its `postinst`,
 - creates a venv at `/opt/throtl/venv` and installs **TrafficToll** into it.
   When the build machine had network access, the TrafficToll wheel is bundled
@@ -52,7 +51,13 @@ After installing, add your user to the `throtl` group (the socket is
 ```bash
 sudo usermod -aG throtl "$USER"
 sudo systemctl start throtl
-throtl-gui
+throtl-cli status
+```
+
+For the desktop GUI, install the dashboard per user (no root):
+
+```bash
+./setup/install-app.sh
 ```
 
 The release workflow builds the `.deb` on `ubuntu-latest` and attaches it to
@@ -66,9 +71,10 @@ makepkg -si          # after running `updpkgsums` to fill in the checksum
 ```
 
 `PKGBUILD` installs the wheel into the system site-packages, plus the systemd
-unit and desktop entry from `packaging/aur/`.
+unit from `packaging/aur/`. The dashboard is installed per user via
+`./setup/install-app.sh` (or the Tauri `.deb`/`.rpm` from the release).
 
-## Why not an AppImage?
+## Why the backend is not an AppImage (but the dashboard is)
 
 An AppImage is a portable **user-space** application bundle. Throtl's core is a
 **privileged daemon** that:
@@ -77,7 +83,7 @@ An AppImage is a portable **user-space** application bundle. Throtl's core is a
 - drives `tc` and the `ifb` kernel module,
 - reads `/proc` via `nethogs`.
 
-None of that fits in an AppImage. The best an AppImage could do is ship the GUI,
-which cannot do anything without the system daemon — and bundling GTK4,
-PyGObject and all GObject-introspection typelibs is large and fragile. Distro
-packages (or the plain `setup/install.sh`) are the right vehicle.
+None of that fits in an AppImage, so the backend ships as distro packages (or
+`setup/install.sh`). The **dashboard**, by contrast, is pure user space and is
+installed as an AppImage under `~/.local` by `setup/install-app.sh` — the same
+bundle the Tauri `.deb`/`.rpm` contains.

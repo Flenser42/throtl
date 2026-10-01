@@ -39,8 +39,7 @@ mkdir -p "$DEBIAN" \
 cp -r "$PROJECT_DIR/throtl" "$STAGE/opt/throtl/"
 find "$STAGE/opt/throtl/throtl" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
 find "$STAGE/opt/throtl/throtl" -name '*.pyc' -delete 2>/dev/null || true
-install -m 0755 "$PROJECT_DIR"/bin/throtl-gui \
-    "$PROJECT_DIR"/bin/throtl-cli \
+install -m 0755 "$PROJECT_DIR"/bin/throtl-cli \
     "$PROJECT_DIR"/bin/throtl-daemon "$STAGE/opt/throtl/bin/"
 
 # --- Dokumentation ---------------------------------------------------------
@@ -48,11 +47,7 @@ for doc in README.md CHANGELOG.md LICENSE; do
     [ -f "$PROJECT_DIR/$doc" ] && install -m 0644 "$PROJECT_DIR/$doc" "$STAGE/opt/throtl/"
 done
 
-# --- Desktop, Icon, systemd, Default-Config --------------------------------
-install -m 0644 "$PROJECT_DIR/setup/throtl.desktop" \
-    "$STAGE/usr/share/applications/throtl.desktop"
-install -m 0644 "$PROJECT_DIR/data/hicolor/scalable/apps/throtl.svg" \
-    "$STAGE/usr/share/icons/hicolor/scalable/apps/throtl.svg"
+# --- systemd, Default-Config -------------------------------------------------
 install -m 0644 "$PROJECT_DIR/setup/throtl.service" \
     "$STAGE/usr/lib/systemd/system/throtl.service"
 install -m 0644 "$PROJECT_DIR/setup/default-config.toml" \
@@ -60,7 +55,7 @@ install -m 0644 "$PROJECT_DIR/setup/default-config.toml" \
 echo "/etc/throtl/config.toml" > "$DEBIAN/conffiles"
 
 # --- PATH-Symlinks ---------------------------------------------------------
-for name in throtl-gui throtl-cli throtl-daemon; do
+for name in throtl-cli throtl-daemon; do
     ln -s "/opt/throtl/bin/$name" "$STAGE/usr/bin/$name"
 done
 
