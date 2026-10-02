@@ -19,6 +19,8 @@
   --accent: oklch(0.78 0.15 195);
   --accent-strong: oklch(0.7 0.16 195);
   --accent-soft: oklch(0.78 0.15 195 / 0.14);
+  /* Ink that sits on an accent fill (primary button, filled chips). */
+  --on-accent: oklch(0.16 0.02 265);
   --down: oklch(0.8 0.14 195);
   --up: oklch(0.74 0.16 300);
   --warn: oklch(0.8 0.14 75);
@@ -29,6 +31,30 @@
   --r-md: 12px;
   --r-lg: 16px;
   --r-xl: 20px;
+
+  /* Type scale (px) and line heights — one ladder, no ad-hoc sizes. */
+  --fs-100: 11px;    /* uppercase labels */
+  --fs-200: 11.5px;  /* meta, chips, captions */
+  --fs-300: 12.5px;  /* buttons, menu items, inputs */
+  --fs-400: 13px;    /* body copy */
+  --fs-500: 13.5px;  /* row name, card title */
+  --fs-600: 14px;    /* base */
+  --fs-700: 16px;    /* sheet titles */
+  --fs-hero: 44px;   /* the two live rates */
+  --lh-tight: 1.15;
+  --lh-snug: 1.3;
+  --lh-base: 1.5;
+  --track-label: 0.06em;
+  --track-display: -0.02em;
+
+  /* Spacing scale — everything on a 4 px grid. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
   --veil: oklch(0.55 0.14 300 / 0.16);
   --appicon-ink: oklch(0.16 0.02 265);
   --card-highlight: oklch(1 0 0 / 0.055);
@@ -48,12 +74,15 @@
   --text: oklch(0.24 0.014 265);
   --text-2: oklch(0.42 0.012 265);
   --text-3: oklch(0.53 0.012 265);
-  --accent: oklch(0.55 0.15 220);
-  --accent-strong: oklch(0.48 0.15 220);
-  --accent-soft: oklch(0.55 0.15 220 / 0.1);
-  --down: oklch(0.55 0.14 205);
-  --up: oklch(0.52 0.18 300);
-  --warn: oklch(0.62 0.15 65);
+  --accent: oklch(0.46 0.15 220);
+  --accent-strong: oklch(0.41 0.15 220);
+  --accent-soft: oklch(0.46 0.15 220 / 0.1);
+  /* A dark accent fill needs light ink — measured 6.25:1 against white. */
+  --on-accent: oklch(0.99 0 0);
+  --down: oklch(0.5 0.14 205);
+  --up: oklch(0.5 0.18 300);
+  --warn: oklch(0.545 0.15 65);
+  --danger: oklch(0.56 0.19 25);
   --shadow-1: 0 1px 2px oklch(0.4 0.02 265 / 0.1), 0 1px 1px oklch(0.4 0.02 265 / 0.06);
   --shadow-2: 0 20px 40px -16px oklch(0.4 0.02 265 / 0.28), 0 4px 10px oklch(0.4 0.02 265 / 0.1);
 }
@@ -89,7 +118,8 @@ body,
 
 body {
   font-family: var(--font);
-  font-size: 14px;
+  font-size: var(--fs-600);
+  line-height: var(--lh-base);
   color: var(--text);
   background:
     radial-gradient(1100px 520px at 12% -8%, var(--bg-glow), transparent 70%),
@@ -151,6 +181,8 @@ p {
 .mono {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
+  /* Slashed zero: PIDs and ids stay unambiguous in the data font. */
+  font-feature-settings: "tnum" 1, "zero" 1;
   letter-spacing: -0.01em;
 }
 
@@ -283,14 +315,14 @@ p {
   main.app-main {
     max-width: 1240px;
     margin: 0 auto;
-    padding: 20px 24px 0;
+    padding: var(--sp-5) var(--sp-6) 0;
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: var(--sp-5);
   }
   @media (max-width: 640px) {
     main.app-main {
-      padding: 16px 12px 0;
+      padding: var(--sp-4) var(--sp-3) 0;
     }
   }
 
@@ -306,7 +338,7 @@ p {
     box-shadow:
       var(--shadow-1),
       inset 0 1px 0 var(--card-highlight);
-    padding: 18px;
+    padding: var(--sp-5);
     position: relative;
     overflow: hidden;
   }
@@ -316,7 +348,7 @@ p {
 
   /* ---------- Overview (single monitor surface) ---------- */
   .overview {
-    padding: 22px 20px 18px;
+    padding: var(--sp-6) var(--sp-5) var(--sp-4);
   }
   .overview-top {
     display: flex;
@@ -331,20 +363,20 @@ p {
     min-width: 168px;
   }
   .metric-label {
-    font-size: 11px;
+    font-size: var(--fs-100);
     font-weight: 600;
-    letter-spacing: 0.08em;
+    letter-spacing: var(--track-label);
     text-transform: uppercase;
     color: var(--text-3);
   }
   .metric-value {
     display: flex;
     align-items: baseline;
-    gap: 6px;
-    font-size: 44px;
+    gap: var(--sp-2);
+    font-size: var(--fs-hero);
     font-weight: 700;
-    letter-spacing: -0.03em;
-    line-height: 1;
+    letter-spacing: var(--track-display);
+    line-height: var(--lh-tight);
   }
   .metric-unit {
     font-size: 15px;
@@ -359,18 +391,20 @@ p {
   .overview-stats {
     margin-left: auto;
     display: flex;
-    gap: 28px;
+    gap: var(--sp-8);
     flex-wrap: wrap;
   }
   .stat {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: var(--sp-1);
+    /* Keeps the three status columns on the same grid line. */
+    min-width: 88px;
   }
   .stat-label {
-    font-size: 11px;
+    font-size: var(--fs-100);
     font-weight: 600;
-    letter-spacing: 0.06em;
+    letter-spacing: var(--track-label);
     text-transform: uppercase;
     color: var(--text-3);
   }
@@ -391,7 +425,7 @@ p {
   @media (max-width: 860px) {
     .overview-stats {
       margin-left: 0;
-      gap: 20px;
+      gap: var(--sp-5);
     }
     .metric-value {
       font-size: 36px;
@@ -451,12 +485,12 @@ p {
     margin-bottom: 12px;
   }
   .card-title {
-    font-size: 15px;
+    font-size: var(--fs-600);
     font-weight: 600;
     letter-spacing: -0.01em;
   }
   .card-sub {
-    font-size: 12px;
+    font-size: var(--fs-200);
     color: var(--text-3);
   }
   .seg {
@@ -586,8 +620,8 @@ p {
   .toolbar {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 6px;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-1);
     flex-wrap: wrap;
   }
   .search {
@@ -632,7 +666,7 @@ p {
     flex-direction: column;
   }
   .row {
-    padding: 11px 12px;
+    padding: var(--sp-3);
     border-radius: var(--r-md);
     transition: background 0.12s ease;
     animation: row-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -644,8 +678,15 @@ p {
     background: var(--surface-hover);
   }
   .row.unattr {
-    opacity: 0.62;
+    /* No container opacity: it would drag every child's text below 4.5:1.
+       De-emphasise with colour instead. */
     font-style: italic;
+  }
+  .row.unattr .r-name {
+    color: var(--text-2);
+  }
+  .row.unattr .appicon {
+    filter: saturate(0.45);
   }
   .r-top {
     display: flex;
@@ -665,10 +706,10 @@ p {
   }
   .r-name {
     font-weight: 550;
-    font-size: 13.5px;
+    font-size: var(--fs-500);
   }
   .r-meta {
-    font-size: 11.5px;
+    font-size: var(--fs-200);
     color: var(--text-3);
     margin-top: 1px;
   }
@@ -683,17 +724,17 @@ p {
   }
   .rates {
     display: flex;
-    gap: 18px;
+    gap: var(--sp-4);
     align-items: center;
     font-family: var(--mono);
-    font-size: 13px;
+    font-size: var(--fs-400);
     font-weight: 500;
   }
   .meta-item {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    font-size: 11.5px;
+    gap: var(--sp-1);
+    font-size: var(--fs-200);
     color: var(--text-3);
   }
   .rates .k {
@@ -829,13 +870,13 @@ p {
 @layer components {
   .btn-primary {
     background: var(--accent);
-    color: var(--appicon-ink);
+    color: var(--on-accent);
     border-color: transparent;
     font-weight: 600;
   }
   .btn-primary:hover {
     background: var(--accent-strong);
-    color: var(--appicon-ink);
+    color: var(--on-accent);
   }
   .btn {
     display: inline-flex;
@@ -868,15 +909,15 @@ p {
   .sheet-head {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 16px 18px;
+    gap: var(--sp-3);
+    padding: var(--sp-4) var(--sp-5);
     border-bottom: 1px solid var(--hairline);
   }
   .sheet-head .icon-btn {
     margin-left: auto;
   }
   .sheet-title {
-    font-size: 16px;
+    font-size: var(--fs-700);
     font-weight: 600;
     letter-spacing: -0.01em;
   }
@@ -886,16 +927,16 @@ p {
     margin-top: 2px;
   }
   .sheet-body {
-    padding: 16px 18px 28px;
+    padding: var(--sp-4) var(--sp-5) var(--sp-8);
     overflow: auto;
     display: flex;
     flex-direction: column;
-    gap: 22px;
+    gap: var(--sp-6);
   }
   .sheet-group {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--sp-3);
   }
   .sheet-group-title {
     font-size: 11px;
@@ -921,9 +962,9 @@ p {
     font-family: var(--mono);
   }
   .sheet-note {
-    font-size: 12px;
+    font-size: var(--fs-200);
     color: var(--text-3);
-    line-height: 1.5;
+    line-height: var(--lh-base);
   }
   .sheet-input {
     margin-left: auto;
@@ -1140,9 +1181,9 @@ p {
   .toast {
     background: var(--surface-2);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 14px;
-    font-size: 13px;
+    border-radius: var(--r-sm);
+    padding: var(--sp-3) var(--sp-4);
+    font-size: var(--fs-400);
     box-shadow: var(--shadow-2);
     animation: toast-in 0.18s ease-out;
   }
@@ -1226,7 +1267,7 @@ p {
 .menu {
   z-index: 45;
   min-width: 200px;
-  padding: 5px;
+  padding: var(--sp-1);
   border-radius: var(--r-md);
   background: color-mix(in oklab, var(--surface-2) 97%, transparent);
   border: 1px solid var(--border);
@@ -1271,7 +1312,7 @@ p {
   left: 0;
   z-index: 45;
   width: 264px;
-  padding: 10px;
+  padding: var(--sp-3);
   border-radius: var(--r-lg);
   background: color-mix(in oklab, var(--surface-2) 97%, transparent);
   border: 1px solid var(--border);
@@ -1533,8 +1574,9 @@ p {
 }
 .empty-text {
   max-width: 46ch;
-  font-size: 12.5px;
+  font-size: var(--fs-300);
   color: var(--text-3);
+  line-height: var(--lh-base);
   text-wrap: pretty;
 }
 .empty .btn {

@@ -189,7 +189,7 @@ export function LiveGraph({ history, matchedApps, peakApp }: Props) {
             </>
           )}
 
-          <g fill="var(--text-3)" fontFamily="var(--mono)" fontSize="10">
+          <g fill="var(--text-3)" fontFamily="var(--mono)" fontSize="11">
             <text x="4" y="18">
               {yLabel(metrics.yMax)}
             </text>
