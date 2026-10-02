@@ -1,0 +1,11 @@
+# Default owner for everything in the repository.
+* @Flenser42
+
+# Security-relevant surfaces.
+/.github/ @Flenser42
+/throtl/daemon.py @Flenser42
+/throtl/protocol.py @Flenser42
+/throtl/config.py @Flenser42
+/setup/ @Flenser42
+/packaging/ @Flenser42
+/throtl-app/src-tauri/ @Flenser42

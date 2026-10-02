@@ -207,6 +207,37 @@ class LoadConfigRobustnessTest(unittest.TestCase):
         self.assertEqual(cfg["global"]["download_priority"], "normal")
         self.assertIsNotNone(config.last_config_warning())
 
+    def test_one_bad_global_value_keeps_the_rest_of_the_config(self):
+        # Ein einzelner Tippfehler in [global] darf Regeln nicht mitreissen.
+        body = (
+            'unit = "kbps"\n\n'
+            "[global]\n"
+            'download_limit = "unlimited"\n'  # parse_rate kennt das nicht
+            'download_priority = "normal"\n\n'
+            "[[processes]]\n"
+            'key = "exe:/usr/bin/steam"\n'
+            'name = "Steam"\n'
+            'match_type = "exe"\n'
+            'match_value = "/usr/bin/steam"\n'
+            'download_limit = 4000\n'
+            'priority = "normal"\n'
+        )
+        cfg = self._load(body)
+        self.assertIsNone(cfg["global"]["download_limit"])
+        self.assertEqual([r["name"] for r in cfg["processes"]], ["Steam"])
+        self.assertIsNotNone(config.last_config_warning())
+
+    def test_broken_config_is_backed_up(self):
+        # Das Original muss gerettet werden, bevor die Defaults persistiert
+        # werden — sonst zerstoert ein Tippfehler die Datei.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "config.toml")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("this is = = not toml\n")
+            config.load_config(path)
+            backups = [name for name in os.listdir(tmp) if ".invalid-" in name]
+            self.assertEqual(len(backups), 1, os.listdir(tmp))
+
 
 class InterfaceDetectionTest(unittest.TestCase):
     def test_returns_string_or_none(self):

@@ -527,7 +527,7 @@ class DaemonMonitorResilienceTest(unittest.TestCase):
                        monitor_factory=None)
             ticks = []
 
-            def flaky():
+            def flaky(*_args, **_kwargs):
                 ticks.append(1)
                 if len(ticks) == 1:
                     raise RuntimeError("tick boom")

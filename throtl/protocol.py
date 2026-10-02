@@ -157,6 +157,10 @@ class Client:
             if "id" in message:
                 with self._cond:
                     self._responses[message["id"]] = message
+                    # Spaete Antworten auf bereits getimeoutete Calls duerfen
+                    # die Map nicht unbegrenzt wachsen lassen.
+                    while len(self._responses) > 256:
+                        self._responses.pop(next(iter(self._responses)))
                     self._cond.notify_all()
             elif "event" in message and self._on_event is not None:
                 try:
@@ -183,6 +187,9 @@ class Client:
                     raise ConnectionError("Verbindung zum Daemon geschlossen")
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
+                    # Ohne das bliebe der Eintrag fuer immer in _responses
+                    # (ein Client mit gelegentlichen Timeouts leckt Speicher).
+                    self._responses.pop(message_id, None)
                     raise TimeoutError_(f"Timeout bei '{method}' nach {timeout}s")
                 self._cond.wait(remaining)
             response = self._responses.pop(message_id)

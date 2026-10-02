@@ -45,8 +45,9 @@ def format_rate_kbps(kbit_per_s) -> str:
         return None
     value = round(kbit_per_s)
     if value >= 1_000_000:
+        # 1 Gbit/s = 1_000_000 kbit/s, so the divisor must match the unit.
         text = f"{value / 1_000_000:.3f}".rstrip("0").rstrip(".")
-        return f"{text}mbit"
+        return f"{text}gbit"
     return f"{value}kbit"
 
 
@@ -163,6 +164,7 @@ class TrafficTollEngine:
         self._exit_code = None
         self._stderr_tail = collections.deque(maxlen=50)
         self._stderr_path = log_path
+        self._LOG_MAX_BYTES = 1 << 20  # 1 MiB, dann wird beschnitten
         self._reader_thread = None
         self._watchdog = None
         self._last_error = None
@@ -269,6 +271,26 @@ class TrafficTollEngine:
         )
         self._watchdog.start()
 
+    def _append_stderr_log(self, line: str) -> None:
+        """Diag-Zeile anhaengen und die Datei bei Bedarf beschneiden.
+
+        ``/run/throtl`` ist tmpfs: eine unbegrenzt wachsende tt.log wuerde
+        Speicher fressen, deshalb bleibt nur der letzte Rest erhalten.
+        """
+        path = self._stderr_path
+        if not path:
+            return
+        try:
+            if os.path.getsize(path) > self._LOG_MAX_BYTES:
+                with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                    tail = handle.read()[-(self._LOG_MAX_BYTES // 4):]
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(tail)
+            with open(path, "a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+        except OSError:
+            pass
+
     def _drain_stderr(self) -> None:
         """tt-stderr zeilenweise sammeln (fuer Diagnose, z.B. tc-Fehler)."""
         proc = self._proc
@@ -280,12 +302,7 @@ class TrafficTollEngine:
                 continue
             with self._stderr_lock:
                 self._stderr_tail.append(line)
-                if self._stderr_path:
-                    try:
-                        with open(self._stderr_path, "a", encoding="utf-8") as handle:
-                            handle.write(line + "\n")
-                    except OSError:
-                        pass
+            self._append_stderr_log(line)
 
     def _watch(self) -> None:
         """Exit-Code des tt-Prozesses festhalten (frueher Absturz sichtbar)."""

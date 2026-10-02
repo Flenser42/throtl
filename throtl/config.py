@@ -49,6 +49,8 @@ TOML-Datei (flach, damit sie auch von Hand lesbar bleibt):
 import copy
 import os
 import re
+import shutil
+import time
 import tomllib
 from pathlib import Path
 
@@ -264,30 +266,72 @@ def config_path_for(config_dir: str) -> str:
     return str(Path(config_dir) / CONFIG_FILE_NAME)
 
 
-def normalize(data: dict) -> dict:
-    """Rohe (aus TOML geladene) Daten normalisieren und validieren."""
+def normalize(data: dict, *, lenient: bool = False, notes: list | None = None) -> dict:
+    """Rohe (aus TOML geladene) Daten normalisieren und validieren.
+
+    ``lenient`` (nur fuer :func:`load_config`): ein einzelner ungueltiger Wert
+    in ``[global]`` setzt nur dieses Feld auf den Default zurueck, statt die
+    ganze Datei zu verwerfen — sonst wuerde ein Tippfehler alle Regeln, Profile
+    und Budgets mitreissen. Was zurueckgesetzt wurde, landet in ``notes``.
+    ``import_config`` bleibt streng (``lenient=False``) und lehnt Muell ab.
+    """
+    repaired: list = [] if notes is None else notes
+
+    def repair(produce, fallback, what):
+        try:
+            return produce()
+        except (ConfigError, ValueError, TypeError) as error:
+            if not lenient:
+                raise
+            repaired.append(f"{what}={error}")
+            return fallback
+
     cfg = default_config()
     cfg["interface"] = (data.get("interface") or None) if isinstance(data.get("interface"), str) else None
     from .units import DISPLAY_UNITS
 
     unit = data.get("unit", "kbps")
-    if unit not in DISPLAY_UNITS:
-        raise ConfigError(f"ungueltige Anzeige-Einheit {unit!r}")
-    cfg["unit"] = unit
 
-    raw_global = data.get("global") or {}
+    def pick_unit():
+        if unit not in DISPLAY_UNITS:
+            raise ConfigError(f"ungueltige Anzeige-Einheit {unit!r}")
+        return unit
+
+    cfg["unit"] = repair(pick_unit, "kbps", "unit")
+
+    raw_global = data.get("global")
+    if not isinstance(raw_global, dict):
+        if raw_global is not None:
+            repaired.append(f"global={raw_global!r} ist keine Tabelle")
+        raw_global = {}
     g = cfg["global"]
     g["enabled"] = bool(raw_global.get("enabled", True))
-    g["download_limit"] = _rate_or_none(raw_global.get("download_limit"))
-    g["upload_limit"] = _rate_or_none(raw_global.get("upload_limit"))
+    g["download_limit"] = repair(
+        lambda: _rate_or_none(raw_global.get("download_limit")), None, "download_limit"
+    )
+    g["upload_limit"] = repair(
+        lambda: _rate_or_none(raw_global.get("upload_limit")), None, "upload_limit"
+    )
     # ``0`` ist ein gueltiger Wert ("kein Minimum"); nur None faellt auf den
     # Default zurueck. Truthiness (``or 100``) hat 0 still zu 100/10 gemacht.
-    download_minimum = _rate_or_none(raw_global.get("download_minimum"))
+    download_minimum = repair(
+        lambda: _rate_or_none(raw_global.get("download_minimum")), None, "download_minimum"
+    )
     g["download_minimum"] = 100 if download_minimum is None else download_minimum
-    upload_minimum = _rate_or_none(raw_global.get("upload_minimum"))
+    upload_minimum = repair(
+        lambda: _rate_or_none(raw_global.get("upload_minimum")), None, "upload_minimum"
+    )
     g["upload_minimum"] = 10 if upload_minimum is None else upload_minimum
-    g["download_priority"] = _priority_or_error(raw_global.get("download_priority", "normal"))
-    g["upload_priority"] = _priority_or_error(raw_global.get("upload_priority", "normal"))
+    g["download_priority"] = repair(
+        lambda: _priority_or_error(raw_global.get("download_priority", "normal")),
+        "normal",
+        "download_priority",
+    )
+    g["upload_priority"] = repair(
+        lambda: _priority_or_error(raw_global.get("upload_priority", "normal")),
+        "normal",
+        "upload_priority",
+    )
 
     processes = []
     for raw in data.get("processes") or []:
@@ -752,14 +796,30 @@ def active_scheduled_profile(cfg, when=None) -> str | None:
     return None
 
 
+def _backup_broken_config(path: str) -> str | None:
+    """Copy an unreadable config aside.
+
+    Without this the next persist would write the defaults over the user's
+    rules, profiles and budgets — a typo would silently destroy the file.
+    """
+    try:
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        target = f"{path}.invalid-{stamp}"
+        shutil.copy2(path, target)
+        return target
+    except OSError:
+        return None
+
+
 def load_config(path) -> dict:
     """Konfiguration laden (normalisiert). Fehlende Datei -> Defaults.
 
-    Eine syntaktisch kaputte TOML-Datei darf den Daemon nicht unstartbar
-    machen: frueher propagierte ``tomllib.load`` den ParseError direkt, der
-    Daemon starb beim Start und liess sich nur durch Loeschen der Config
-    wiederbeleben. Jetzt fallen wir auf die Defaults zurueck und melden den
-    Grund ueber ``CONFIG_WARNINGS`` (siehe :func:`last_config_warning`).
+    Eine kaputte Datei darf den Daemon nicht unstartbar machen: syntaktischer
+    Muell und (als Sicherheitsnetz) ein unerwarteter Normalisierungsfehler
+    fallen auf die Defaults zurueck, wobei das Original als ``*.invalid-*``
+    beiseitegelegt wird. Ein einzelner ungueltiger ``[global]``-Wert wird
+    dagegen nur fuer dieses Feld zurueckgesetzt, damit Regeln, Profile und
+    Budgets erhalten bleiben.
     """
     global _LAST_CONFIG_WARNING
     _LAST_CONFIG_WARNING = None
@@ -769,25 +829,35 @@ def load_config(path) -> dict:
         with open(path, "rb") as handle:
             data = tomllib.load(handle)
     except (tomllib.TOMLDecodeError, OSError, UnicodeDecodeError) as error:
+        backup = _backup_broken_config(path)
         _LAST_CONFIG_WARNING = (
             f"Config {path} konnte nicht gelesen werden "
             f"({type(error).__name__}: {error}) — es gelten die Defaults."
+            + (f" Das Original liegt unter {backup}." if backup else "")
         )
         print(f"Warnung: {_LAST_CONFIG_WARNING}", flush=True)
         return default_config()
+    notes: list = []
     try:
-        return normalize(data)
+        cfg = normalize(data, lenient=True, notes=notes)
     except (ConfigError, ValueError, TypeError, KeyError, AttributeError,
             IndexError) as error:
-        # Syntaktisch gueltig, aber inhaltlich kaputt (ungueltige Einheit,
-        # Rate oder Prioritaet). Auch das darf den Daemon nicht unstartbar
-        # machen: Defaults verwenden und den Grund sichtbar melden.
+        # Sollte mit lenient=True kaum noch passieren; bleibt als Netz.
+        backup = _backup_broken_config(path)
         _LAST_CONFIG_WARNING = (
             f"Config {path} konnte nicht geladen werden "
             f"({type(error).__name__}: {error}) — es gelten die Defaults."
+            + (f" Das Original liegt unter {backup}." if backup else "")
         )
         print(f"Warnung: {_LAST_CONFIG_WARNING}", flush=True)
         return default_config()
+    if notes:
+        _LAST_CONFIG_WARNING = (
+            f"Config {path}: ungueltige Werte auf Defaults zurueckgesetzt — "
+            + "; ".join(notes)
+        )
+        print(f"Warnung: {_LAST_CONFIG_WARNING}", flush=True)
+    return cfg
 
 
 def last_config_warning() -> str | None:

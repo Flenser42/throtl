@@ -108,7 +108,7 @@ class ConfigStore:
             if key not in allowed:
                 raise ValueError(f"unbekannter globaler Schluessel {key!r}")
         if "enabled" in changes:
-            g["enabled"] = bool(changes["enabled"])
+            g["enabled"] = _as_bool(changes["enabled"])
         for key in ("download_limit", "upload_limit", "download_minimum", "upload_minimum"):
             if key in changes:
                 if changes[key] in (None, ""):
@@ -204,6 +204,17 @@ class ConfigStore:
         return self._config
 
 
+def _as_bool(value) -> bool:
+    """Socket-Booleans robust lesen: ``"false"``/``"0"``/``"off"`` sind False.
+
+    ``bool("false")`` ist True — ein Fehler, der Budgets oder Shaping genau
+    andersherum schaltet als gewuenscht.
+    """
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "on", "ja", "an", "yes")
+    return bool(value)
+
+
 def parse_limit_param(value):
     """Param fuer ein Limit akzeptieren: None->unbegrenzt, Zahl, oder Rate-String."""
     if value is None or value in ("", "null", "none", "unbegrenzt", "unlimited"):
@@ -277,6 +288,10 @@ class Daemon:
         # Serialisiert Monitor-Ticks: der Ticker-Thread und RPC-Threads (nach
         # Regel-Aenderungen) duerfen nicht parallel Stats schreiben.
         self._tick_lock = threading.Lock()
+        # Leaf lock for the /proc/net/dev sample: several callers (monitor tick
+        # and GUI polls) share it, and it must not be the re-entrancy-prone
+        # _tick_lock because _collect_snapshot runs under it.
+        self._iface_lock = threading.Lock()
         self.interval = interval
         # Persistente Bandbreiten-Statistik (Punkt 5): Ringpuffer neben der
         # config.toml, wird im Monitor-Tick gefuettert.
@@ -431,10 +446,10 @@ class Daemon:
             self._safe_tick_monitor()
             time.sleep(self.interval)
 
-    def _safe_tick_monitor(self) -> None:
+    def _safe_tick_monitor(self, record_stats: bool = True) -> None:
         """Tick ausfuehren, der den Aufrufer nie mit einer Exception verlaesst."""
         try:
-            self._tick_monitor()
+            self._tick_monitor(record_stats)
         except Exception as error:
             print(
                 f"Warnung: Monitor-Tick fehlgeschlagen: "
@@ -442,11 +457,11 @@ class Daemon:
                 flush=True,
             )
 
-    def _tick_monitor(self) -> None:
+    def _tick_monitor(self, record_stats: bool = True) -> None:
         with self._tick_lock:
-            self._tick_monitor_locked()
+            self._tick_monitor_locked(record_stats)
 
-    def _tick_monitor_locked(self) -> None:
+    def _tick_monitor_locked(self, record_stats: bool = True) -> None:
         # Toten Monitor erkennen (nethogs beendet/abgestuerzt): Fehler merken,
         # aufraeumen; die Retry-Logik unten startet ihn dann neu. Monitor-Stubs
         # ohne is_alive() werden konservativ als lebendig behandelt.
@@ -480,7 +495,7 @@ class Daemon:
         # Echter Monitoring-Tick: Statistik fortschreiben. RPC-Snapshots
         # (list_processes) duerfen NICHT zusaetzlich zaehlen, sonst wuerde der
         # GUI-Poll die Raten doppelt verbuchen.
-        self._collect_snapshot(record_stats=True)
+        self._collect_snapshot(record_stats=record_stats)
 
     def _apply_schedule(self) -> None:
         """Passendes Zeitplan-Profil aktivieren (im Monitor-Tick).
@@ -551,38 +566,39 @@ class Daemon:
         """
         import time as _time
 
-        try:
-            rx = tx = None
-            with open("/proc/net/dev", "r", encoding="utf-8") as handle:
-                for line in handle:
-                    if ":" not in line:
-                        continue
-                    name, rest = line.split(":", 1)
-                    if name.strip() != self.interface:
-                        continue
-                    fields = rest.split()
-                    rx, tx = int(fields[0]), int(fields[8])
-                    break
-        except (OSError, ValueError, IndexError):
+        with self._iface_lock:
+            try:
+                rx = tx = None
+                with open("/proc/net/dev", "r", encoding="utf-8") as handle:
+                    for line in handle:
+                        if ":" not in line:
+                            continue
+                        name, rest = line.split(":", 1)
+                        if name.strip() != self.interface:
+                            continue
+                        fields = rest.split()
+                        rx, tx = int(fields[0]), int(fields[8])
+                        break
+            except (OSError, ValueError, IndexError):
+                return self._iface_rate
+            if rx is None:
+                return self._iface_rate
+            now = _time.monotonic()
+            previous = self._iface_sample
+            if previous is None:
+                self._iface_sample = (now, rx, tx)
+                return self._iface_rate
+            elapsed = now - previous[0]
+            # Sample nur aktualisieren, wenn genug Zeit vergangen ist. Mehrere
+            # Aufrufer (Monitor-Tick + GUI-Poll) teilen sich dieses Sample; frueher
+            # setzte jeder Aufruf das Sample zurueck und kurze Abstaende lieferten
+            # None -> die Global-Zeile flackerte auf "measuring...".
+            if elapsed >= 0.5:
+                down = max(0, rx - previous[1]) * 8.0 / 1000.0 / elapsed
+                up = max(0, tx - previous[2]) * 8.0 / 1000.0 / elapsed
+                self._iface_rate = (round(down, 1), round(up, 1))
+                self._iface_sample = (now, rx, tx)
             return self._iface_rate
-        if rx is None:
-            return self._iface_rate
-        now = _time.monotonic()
-        previous = self._iface_sample
-        if previous is None:
-            self._iface_sample = (now, rx, tx)
-            return self._iface_rate
-        elapsed = now - previous[0]
-        # Sample nur aktualisieren, wenn genug Zeit vergangen ist. Mehrere
-        # Aufrufer (Monitor-Tick + GUI-Poll) teilen sich dieses Sample; frueher
-        # setzte jeder Aufruf das Sample zurueck und kurze Abstaende lieferten
-        # None -> die Global-Zeile flackerte auf "measuring...".
-        if elapsed >= 0.5:
-            down = max(0, rx - previous[1]) * 8.0 / 1000.0 / elapsed
-            up = max(0, tx - previous[2]) * 8.0 / 1000.0 / elapsed
-            self._iface_rate = (round(down, 1), round(up, 1))
-            self._iface_sample = (now, rx, tx)
-        return self._iface_rate
 
     def _collect_snapshot(self, record_stats: bool = False) -> dict:
         """Prozess-Stats + echte Interface-Rate + angewendete Regeln.
@@ -596,8 +612,12 @@ class Daemon:
                 raw = self.monitor.snapshot()
             except Exception:
                 raw = {}
-        cfg = self.store.get()
-        rules = cfg.get("processes", [])
+        with self._state_lock:
+            # Regel-Liste kopieren: ein gleichzeitiges set_process/import darf
+            # die Iteration unten nicht sprengen ("list changed size").
+            cfg = self.store.get()
+            rules = list(cfg.get("processes", []))
+            enabled = cfg["global"].get("enabled", True)
         processes = []
         attributed_down = attributed_up = 0.0
         for pid, info in raw.items():
@@ -660,7 +680,7 @@ class Daemon:
         global_down, global_up = self._iface_throughput()
         return {
             "interface": self.interface,
-            "enabled": cfg["global"].get("enabled", True),
+            "enabled": enabled,
             "processes": processes,
             "apps": app_list,  # pro Anwendung gruppiert (Summe aller PIDs)
             "rules": rules,  # fuer GUI: union von Regel + Live-Stats
@@ -801,7 +821,12 @@ class Daemon:
                 # aus dem Thread (Log-Spam, billiger lokaler DoS).
                 pass
 
-    def _dispatch(self, message: dict) -> dict:
+    def _dispatch(self, message) -> dict:
+        if not isinstance(message, dict):
+            # Gueltiges JSON, aber kein Objekt (123, "x", [], true) wuerde
+            # sonst mit AttributeError den Verbindungs-Thread toeten.
+            return {"id": None,
+                    "error": make_error(INVALID_PARAMS, "Nachricht muss ein Objekt sein")}
         method = message.get("method")
         message_id = message.get("id")
         params = message.get("params") or {}
@@ -852,7 +877,9 @@ class Daemon:
             engine_status = self.engine.status() if self.engine else None
         except Exception:
             engine_status = None
-        cfg = self.store.get()
+        with self._state_lock:
+            # No live dict: json.dumps would race a concurrent write.
+            cfg = copy.deepcopy(self.store.get())
         tt_cmd = getattr(self, "_tt_command", "tt")
         return {
             "daemon": __version__,
@@ -904,7 +931,10 @@ class Daemon:
         }
 
     def _h_get_config(self, params):
-        return self.store.get()
+        with self._state_lock:
+            # Tiefe Kopie: json.dumps darf nicht mit einem gleichzeitigen
+            # set_budget kollidieren ("dict changed size during iteration").
+            return copy.deepcopy(self.store.get())
 
     def _h_get_state(self, params):
         return self._collect_snapshot()
@@ -938,9 +968,11 @@ class Daemon:
                 rule["download_limit"] = parse_limit_param(params.get("download_limit"))
             if "upload_limit" in params:
                 rule["upload_limit"] = parse_limit_param(params.get("upload_limit"))
-            if params.get("priority"):
+            if params.get("priority") is not None:
+                # ``0`` (kritisch) ist falsch-aber-wahr und wurde frueher
+                # uebersprungen; str(1) machte aus Integer-Prioritaeten Fehler.
                 rule["priority"] = priority_to_name(
-                    priority_to_int(str(params["priority"]))
+                    priority_to_int(params["priority"])
                 )
             if "recursive" in params:
                 rule["recursive"] = bool(params.get("recursive"))
@@ -957,13 +989,19 @@ class Daemon:
         match_value = str(params.get("match_value", ""))
         if not match_value:
             raise ValueError("match_value fehlt")
+        raw_priority = params.get("priority")
+        priority = (
+            priority_to_name(priority_to_int(raw_priority))
+            if raw_priority is not None
+            else "normal"
+        )
         rule = make_rule(
             name=name,
             match_type=match_type,
             match_value=match_value,
             download_limit=parse_limit_param(params.get("download_limit")),
             upload_limit=parse_limit_param(params.get("upload_limit")),
-            priority=str(params.get("priority") or "normal"),
+            priority=priority,
             recursive=bool(params.get("recursive", False)),
             key=params.get("key"),
             window=params.get("window"),
@@ -985,11 +1023,7 @@ class Daemon:
         return {"removed": removed}
 
     def _h_toggle_enabled(self, params):
-        raw = params.get("enabled")
-        if isinstance(raw, str):
-            enabled = raw.strip().lower() in ("1", "true", "on", "ja", "an")
-        else:
-            enabled = bool(raw)
+        enabled = _as_bool(params.get("enabled"))
         with self._state_lock:
             self.store.update_global(enabled=enabled)
         self._schedule_engine_apply()
@@ -998,7 +1032,9 @@ class Daemon:
 
     def _h_set_unit(self, params):
         unit = str(params.get("unit", "kbps"))
-        return {"unit": self.store.set_unit(unit)}
+        with self._state_lock:
+            unit = self.store.set_unit(unit)
+        return {"unit": unit}
 
     def _h_list_processes(self, params):
         return self._collect_snapshot()
@@ -1045,15 +1081,18 @@ class Daemon:
             if key in params:
                 fields[key] = parse_size(params.get(key))
         if "enabled" in params:
-            fields["enabled"] = bool(params.get("enabled"))
-        budgets = self.store.set_budget(app=app, **fields)
+            fields["enabled"] = _as_bool(params.get("enabled"))
+        with self._state_lock:
+            budgets = self.store.set_budget(app=app, **fields)
         return {"ok": True, "budgets": budgets}
 
     def _h_remove_budget(self, params):
         app = str(params.get("app") or "").strip()
         if not app:
             raise ValueError("app fehlt")
-        return {"removed": self.store.remove_budget(app)}
+        with self._state_lock:
+            removed = self.store.remove_budget(app)
+        return {"removed": removed}
 
     # --- Profile / Zeitplaene ---------------------------------------------
 
@@ -1121,6 +1160,17 @@ class Daemon:
         if not isinstance(data, dict):
             raise ValueError("config fehlt oder ist keine Tabelle")
         config = normalize(data)
+        # Das Interface ist beim Start in Engine und Monitor eingebrannt. Ein
+        # Wechsel im laufenden Daemon wuerde Config und Realitaet trennen
+        # (get_config meldet etwas anderes als tt/nethogs tun), darum klar
+        # ablehnen statt still das Alte zu behalten.
+        requested = _resolve_interface(config.get("interface"))
+        if requested != self.interface:
+            raise ValueError(
+                f"Interface-Wechsel {self.interface} -> {requested} ist im laufenden "
+                "Daemon nicht moeglich. Danach 'sudo systemctl restart throtl' und den "
+                "Import wiederholen."
+            )
         with self._state_lock:
             self.store.replace(config)
         self._schedule_engine_apply()
@@ -1132,7 +1182,11 @@ class Daemon:
         # naechste Abfrage aktuelle Raten liefert und der /proc-Sample-Delta
         # nicht veraltet. _safe_: eine kaputte Regel darf den Aufruf nicht
         # mit einer Exception aus dem RPC-Handler werfen.
-        self._safe_tick_monitor()
+        #
+        # ``record_stats=False``: dieser Zusatz-Tick misst denselben Moment wie
+        # der 1-Hz-Ticker; ihn als volle Sekunde zu verbuchen hat die
+        # Byte-Summen bei Regel-Aenderungen aufgeblaeht.
+        self._safe_tick_monitor(record_stats=False)
 
     # --- Shutdown ---
 

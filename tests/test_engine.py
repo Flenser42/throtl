@@ -32,9 +32,12 @@ class RateUnitTest(unittest.TestCase):
         self.assertEqual(engine.format_rate_kbps(1), "1kbit")
         self.assertNotIn("kbps", engine.format_rate_kbps(8000))
 
-    def test_large_values_switch_to_mbit(self):
-        self.assertEqual(engine.format_rate_kbps(8_000_000), "8mbit")
-        self.assertEqual(engine.format_rate_kbps(1_500_000), "1.5mbit")
+    def test_large_values_switch_to_gbit(self):
+        # 1 Gbit/s = 1_000_000 kbit/s; the divisor must match the unit.
+        self.assertEqual(engine.format_rate_kbps(8_000_000), "8gbit")
+        self.assertEqual(engine.format_rate_kbps(1_500_000), "1.5gbit")
+        self.assertEqual(engine.format_rate_kbps(1_000_000), "1gbit")
+        self.assertEqual(engine.format_rate_kbps(999_999), "999999kbit")
 
     def test_none_stays_none(self):
         self.assertIsNone(engine.format_rate_kbps(None))
