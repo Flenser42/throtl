@@ -1,4 +1,6 @@
-import { PlugZap, Refresh, TriangleAlert } from "./icons";
+import { useState } from "react";
+
+import { Check, Copy, PlugZap, Refresh, TriangleAlert } from "./icons";
 
 /** Skeleton shown while the first snapshot is on its way (§6.8). */
 export function ConnectingState() {
@@ -35,6 +37,18 @@ interface StateProps {
 }
 
 export function OfflineState({ message, onRetry }: StateProps) {
+  const [copied, setCopied] = useState(false);
+
+  const copyDoctor = async () => {
+    try {
+      await navigator.clipboard.writeText("throtl-cli doctor");
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard unavailable — the hint above still names the command */
+    }
+  };
+
   return (
     <section className="card state">
       <span className="state-icon">
@@ -51,8 +65,21 @@ export function OfflineState({ message, onRetry }: StateProps) {
         <button type="button" className="btn btn-primary" onClick={onRetry}>
           <Refresh size={15} /> Retry
         </button>
-        <button type="button" className="btn">
-          Run <code>throtl-cli doctor</code>
+        <button
+          type="button"
+          className="btn"
+          title="Copy the command"
+          onClick={() => void copyDoctor()}
+        >
+          {copied ? (
+            <>
+              <Check size={15} /> Copied
+            </>
+          ) : (
+            <>
+              <Copy size={15} /> <code>throtl-cli doctor</code>
+            </>
+          )}
         </button>
       </div>
     </section>

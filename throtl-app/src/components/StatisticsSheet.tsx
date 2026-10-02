@@ -15,15 +15,23 @@ export function StatisticsSheet({ onClose }: { onClose: () => void }) {
   const [range, setRange] = useState("minute");
   const [data, setData] = useState<StatsPayload | null>(null);
   const [history, setHistory] = useState<StatsHistory | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getStats(range), getStatsHistory(range)]).then(([s, h]) => {
-      if (!cancelled) {
+    // Drop the previous range so a slow answer cannot show stale bars.
+    setData(null);
+    setHistory(null);
+    Promise.all([getStats(range), getStatsHistory(range)])
+      .then(([s, h]) => {
+        if (cancelled) return;
         setData(s);
         setHistory(h);
-      }
-    });
+        setFailed(false);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -67,6 +75,10 @@ export function StatisticsSheet({ onClose }: { onClose: () => void }) {
           );
         })}
       </div>
+
+      {failed && !data && (
+        <p className="sheet-note">The daemon did not answer — reopen the sheet to retry.</p>
+      )}
 
       <div className="stats-list">
         {(data?.apps ?? []).map((app) => {

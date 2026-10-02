@@ -58,8 +58,10 @@ for name in throtl-cli throtl-daemon; do
 done
 
 # --- Optional: TrafficToll-Wheel fuer Offline-Installation ----------------
+# Ohne --no-deps, damit die Abhaengigkeiten (psutil, loguru, ruamel.yaml)
+# mitkommen — sonst scheitert der --no-index-Install in postinst offline.
 if command -v python3 >/dev/null 2>&1 && python3 -m pip --version >/dev/null 2>&1; then
-    if python3 -m pip download --no-deps --dest "$STAGE/opt/throtl/wheels" \
+    if python3 -m pip download --dest "$STAGE/opt/throtl/wheels" \
             traffictoll >/dev/null 2>&1; then
         echo "TrafficToll-Wheel mitgebundelt (Offline-Installation moeglich)."
     else

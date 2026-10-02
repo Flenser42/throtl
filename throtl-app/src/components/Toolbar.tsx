@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 
-import { Search } from "./icons";
+import { Plus, Search } from "./icons";
 
 interface Props {
   query: string;
@@ -44,7 +44,7 @@ export function Toolbar({ query, onQuery, sortKey, onSort, onAddRule, inputRef }
         ))}
       </div>
       <button type="button" className="btn" style={{ marginLeft: "auto" }} onClick={onAddRule}>
-        + Add rule
+        <Plus size={14} /> Add rule
       </button>
     </div>
   );
