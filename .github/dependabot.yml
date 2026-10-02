@@ -5,9 +5,39 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
 
   - package-ecosystem: pip
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+
+  # Dashboard frontend (React/Vite/Tailwind) — was not watched before.
+  - package-ecosystem: npm
+    directory: /throtl-app
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dashboard:
+        patterns: ["*"]
+
+  # Rust shell (Tauri + plugins).
+  - package-ecosystem: cargo
+    directory: /throtl-app/src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      rust:
+        patterns: ["*"]
+    ignore:
+      # RUSTSEC-2024-0429 ("unsound", informational): the VariantStrIter bug is
+      # fixed in glib 0.20, which needs gtk-rs 0.20 — Tauri 2.x still pins
+      # gtk 0.18, so the bump is not resolvable from this repository. Allow
+      # 0.20+ so the update lands as soon as Tauri moves.
+      - dependency-name: glib
+        versions: ["<0.20.0"]

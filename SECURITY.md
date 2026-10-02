@@ -9,6 +9,22 @@ Security fixes are provided for the latest release and `master`.
 | 0.10.x  | ✅        |
 | < 0.10  | ❌        |
 
+## Known advisories
+
+### `RUSTSEC-2024-0429` — `glib` < 0.20 (dashboard, informational)
+
+The dashboard's Rust shell pulls `glib` 0.18 through Tauri → gtk-rs, and that
+version carries an **informational** advisory (`informational = "unsound"`, no
+CVE): `glib::VariantStrIter`'s iterator impls wrote through a shared reference,
+which can lead to a NULL dereference. It is fixed in `glib` 0.20.
+
+Why it is not fixed here: the fix lives in gtk-rs 0.20, and Tauri 2.x still
+pins gtk 0.18 (checked with Tauri 2.12.1). It cannot be resolved from this
+repository, and Throtl's own Rust code never iterates `GVariant` string
+iterators — the affected API is only reachable from gtk-rs internals. The
+Dependabot rule in `.github/dependabot.yml` ignores `glib < 0.20` and allows the
+bump as soon as Tauri moves.
+
 ## Reporting a vulnerability
 
 **Please do not open a public issue for security problems.**
