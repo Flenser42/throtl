@@ -286,7 +286,7 @@ export function App() {
               />
             </section>
 
-            <div className="hint">
+            <div className="app-footer">
               Press <span className="kbd">L</span> for light/dark ·{" "}
               <span className="kbd">Ctrl/⌘ K</span> to filter.
             </div>

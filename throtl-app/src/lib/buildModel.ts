@@ -1,5 +1,5 @@
 import { formatWindow } from "./format";
-import { gradientFor, initialFor } from "./mock";
+import { initialFor } from "./mock";
 import type { AppRow, DashboardModel, HistoryPoint, Talker } from "./model";
 import type { AppEntry, BudgetEntry, Budgets, Config, ProcessState, Rule } from "./types";
 
@@ -80,7 +80,6 @@ export function buildModel(input: {
       key: app.name,
       name: app.name,
       initial: initialFor(app.name),
-      gradient: gradientFor(app.name),
       meta: metaFor(app),
       downKbit: app.download,
       upKbit: app.upload,
@@ -109,7 +108,6 @@ export function buildModel(input: {
   const topTalkers: Talker[] = topApps.map((t) => ({
     name: t.name,
     initial: t.initial,
-    gradient: t.gradient,
     value: (t.downKbit + t.upKbit) / 8000,
     ratio: (t.downKbit + t.upKbit) / peak,
   }));

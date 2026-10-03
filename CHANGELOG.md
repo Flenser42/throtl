@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The dashboard is a ruled panel now, not a card dashboard.** The visual world
+  was replaced: one continuous surface divided by 1px rules, edge to edge,
+  instead of rounded floating cards with glows, gradients and pill controls.
+  Light (paper) is the canonical ground and dark is its inversion.
+- **Colour is state, not decoration.** There is exactly one accent hue — a
+  signal red — and the two chart series are the two inks (black/white for
+  download, red for upload). All gradients, the background glows, the glowing
+  status dot, the gradient app icons and the soft shadows are gone; radii are 0.
+- **The application list is a real table**: one line per app with a header row
+  (`# | Application | DL | UL | Limit | Pri | Budget | Arm`), aligned tabular
+  numbers with the unit in the header, a mono index, an 18px ruled monogram
+  instead of a gradient icon, and a squared arm box instead of a switch.
+  Columns drop by priority on narrow windows.
+- **Type is smaller and tighter** (12px base, 10px labels, 30px readout) and
+  every number is mono with tabular figures and a slashed zero; one 4px spacing
+  scale replaces the ad-hoc values.
+- **The chart is a graticule**, not a gradient: ruled horizontals with faint
+  verticals, a flat wash under the download trace, 1.5px mitered traces and a
+  square cursor marker. No glow, no draw-in animation.
+- Contrast was re-measured for the new palette: 50 text/surface pairs, 0
+  failures in both themes.
+
 ## [0.11.0] - 2026-10-03
 
 ### Removed

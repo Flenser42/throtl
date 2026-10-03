@@ -148,7 +148,7 @@ function BudgetBar({
           style={{
             width: `${Math.round(Math.min(1, entry.ratio) * 100)}%`,
             background: over
-              ? "linear-gradient(90deg,var(--warn),color-mix(in oklab,var(--warn) 55%,white))"
+              ? "var(--warn)"
               : undefined,
           }}
         />

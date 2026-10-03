@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 
 import { autoRate, formatBytes, formatRate } from "../lib/format";
@@ -35,8 +35,6 @@ export function LiveGraph({ history, matchedApps, peakApp }: Props) {
     return Number.isFinite(n) ? n : null;
   });
   const wrapRef = useRef<HTMLDivElement>(null);
-  const areaId = useId();
-  const strokeId = useId();
 
   const data = useMemo(() => {
     const seconds = WINDOWS.find((w) => w.id === win)?.seconds ?? 60;
@@ -176,55 +174,40 @@ export function LiveGraph({ history, matchedApps, peakApp }: Props) {
         onClick={() => setPinned((prev) => (prev === hover ? null : hover))}
       >
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-          <defs>
-            <linearGradient id={areaId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="var(--graph-down)" stopOpacity=".30" />
-              <stop offset="1" stopColor="var(--graph-down)" stopOpacity=".02" />
-            </linearGradient>
-            <linearGradient id={strokeId} gradientUnits="userSpaceOnUse" x1={LEFT} y1="0" x2={W} y2="0">
-              <stop offset="0" stopColor="var(--graph-down)" stopOpacity=".72" />
-              <stop offset="1" stopColor="var(--graph-down)" />
-            </linearGradient>
-          </defs>
-
-          <g stroke="var(--hairline)" strokeWidth="1" strokeDasharray="2 5" opacity=".8">
+          {/* Graticule: a ruled measuring field, verticals and horizontals. */}
+          <g stroke="var(--rule)" strokeWidth="1">
             <line x1={LEFT} y1="24" x2={W} y2="24" />
             <line x1={LEFT} y1="72" x2={W} y2="72" />
             <line x1={LEFT} y1="120" x2={W} y2="120" />
+            {[0.25, 0.5, 0.75].map((f) => (
+              <line
+                key={f}
+                x1={LEFT + (W - LEFT) * f}
+                y1="24"
+                x2={LEFT + (W - LEFT) * f}
+                y2="168"
+                opacity=".18"
+              />
+            ))}
           </g>
-          <line x1={LEFT} y1="168" x2={W} y2="168" stroke="var(--border)" strokeWidth="1" />
+          <line x1={LEFT} y1="168" x2={W} y2="168" stroke="var(--rule-strong)" strokeWidth="1" />
 
-          <path d={downArea} fill={`url(#${areaId})`} className="graph-area" />
-          {/* A wide, faint copy reads as a glow without an SVG filter. */}
+          <path d={downArea} fill="var(--down-wash)" />
           <path
             d={downLine}
-            className="graph-glow"
             fill="none"
             stroke="var(--graph-down)"
-            strokeWidth="7"
-            strokeLinecap="round"
-            opacity=".12"
-            vectorEffect="non-scaling-stroke"
-          />
-          <path
-            d={downLine}
-            className="graph-line"
-            pathLength={1}
-            fill="none"
-            stroke={`url(#${strokeId})`}
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
+            strokeWidth="1.5"
+            strokeLinejoin="miter"
+            strokeLinecap="butt"
             vectorEffect="non-scaling-stroke"
           />
           <path
             d={upLine}
-            className="graph-line"
-            pathLength={1}
             fill="none"
             stroke="var(--graph-up)"
-            strokeWidth="1.7"
-            strokeLinejoin="round"
+            strokeWidth="1.5"
+            strokeLinejoin="miter"
             vectorEffect="non-scaling-stroke"
           />
 
@@ -232,59 +215,59 @@ export function LiveGraph({ history, matchedApps, peakApp }: Props) {
             <>
               <line
                 x1={x(active)}
-                y1="0"
+                y1="24"
                 x2={x(active)}
-                y2={H}
-                stroke="var(--accent)"
+                y2="168"
+                stroke="var(--text-3)"
                 strokeWidth="1"
-                strokeDasharray="3 3"
-                opacity=".85"
                 vectorEffect="non-scaling-stroke"
               />
-              <circle
-                cx={x(active)}
-                cy={y(activePoint.down)}
-                r="4.5"
-                fill="var(--surface)"
-                stroke="var(--graph-down)"
-                strokeWidth="2"
+              <rect
+                x={x(active) - 3}
+                y={y(activePoint.down) - 3}
+                width="6"
+                height="6"
+                fill="var(--down)"
+                stroke="var(--surface)"
+                strokeWidth="1"
                 vectorEffect="non-scaling-stroke"
               />
-              <circle
-                cx={x(active)}
-                cy={y(activePoint.up)}
-                r="4"
-                fill="var(--surface)"
-                stroke="var(--graph-up)"
-                strokeWidth="2"
+              <rect
+                x={x(active) - 3}
+                y={y(activePoint.up) - 3}
+                width="6"
+                height="6"
+                fill="var(--up)"
+                stroke="var(--surface)"
+                strokeWidth="1"
                 vectorEffect="non-scaling-stroke"
               />
             </>
           )}
 
-          <g fill="var(--text-3)" fontFamily="var(--mono)" fontSize="11" textAnchor="end">
-            <text x={LEFT - 10} y="18">
+          <g fill="var(--text-3)" fontFamily="var(--mono)" fontSize="10" textAnchor="end">
+            <text x={LEFT - 8} y="20">
               {yLabel(metrics.yMax)}
             </text>
-            <text x={LEFT - 10} y="66">
+            <text x={LEFT - 8} y="68">
               {yLabel(metrics.yMax * (2 / 3))}
             </text>
-            <text x={LEFT - 10} y="114">
+            <text x={LEFT - 8} y="116">
               {yLabel(metrics.yMax * (1 / 3))}
             </text>
-            <text x={LEFT - 10} y="162">
+            <text x={LEFT - 8} y="164">
               0
             </text>
           </g>
-          <g fill="var(--text-3)" fontFamily="var(--mono)" fontSize="11">
-            <text x={W - 6} y="192" textAnchor="end">
+          <g fill="var(--text-3)" fontFamily="var(--mono)" fontSize="10">
+            <text x={W - 4} y="182" textAnchor="end">
               now
             </text>
-            <text x={(LEFT + W) / 2} y="192" textAnchor="middle">
+            <text x={(LEFT + W) / 2} y="182" textAnchor="middle">
               -{Math.round((data.length - 1) / 2)}s
             </text>
             {data.length > 1 && (
-              <text x={LEFT} y="192">
+              <text x={LEFT} y="182">
                 -{data.length - 1}s
               </text>
             )}

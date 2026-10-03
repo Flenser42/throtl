@@ -6,37 +6,6 @@ import type { Budgets, Profiles, ScheduleEntry, StatsHistory } from "./types";
 
 const MBPS = 8000; // kbit/s per MB/s
 
-const KNOWN_GRADIENTS: Record<string, string> = {
-  Steam: "linear-gradient(140deg,#7dd3fc,#0ea5e9)",
-  Firefox: "linear-gradient(140deg,#fdba74,#f97316)",
-  Spotify: "linear-gradient(140deg,#bbf7d0,#22c55e)",
-  immich: "linear-gradient(140deg,#e9d5ff,#a855f7)",
-  vpn: "linear-gradient(140deg,#fecaca,#ef4444)",
-  "(not matched)": "linear-gradient(140deg,#cbd5e1,#64748b)",
-};
-
-const PALETTE = [
-  ["#7dd3fc", "#0ea5e9"],
-  ["#fdba74", "#f97316"],
-  ["#bbf7d0", "#22c55e"],
-  ["#e9d5ff", "#a855f7"],
-  ["#fecaca", "#ef4444"],
-  ["#a5f3fc", "#06b6d4"],
-  ["#fde68a", "#eab308"],
-];
-
-function hash(text: string): number {
-  let h = 0;
-  for (let i = 0; i < text.length; i += 1) h = (h * 31 + text.charCodeAt(i)) >>> 0;
-  return h;
-}
-
-export function gradientFor(name: string): string {
-  if (KNOWN_GRADIENTS[name]) return KNOWN_GRADIENTS[name];
-  const [a, b] = PALETTE[hash(name) % PALETTE.length];
-  return `linear-gradient(140deg,${a},${b})`;
-}
-
 export function initialFor(name: string): string {
   if (name.startsWith("(")) return "?";
   const clean = name.replace(/[^A-Za-z0-9]/g, "");
@@ -83,7 +52,6 @@ const APPS: AppRow[] = [
     key: "steam",
     name: "Steam",
     initial: "S",
-    gradient: gradientFor("Steam"),
     meta: "2 processes · pid 2211, 2247",
     downKbit: 5.65 * MBPS,
     upKbit: 0.09 * MBPS,
@@ -103,7 +71,6 @@ const APPS: AppRow[] = [
     key: "firefox",
     name: "Firefox",
     initial: "F",
-    gradient: gradientFor("Firefox"),
     meta: "2 processes · pid 41882, 41901",
     downKbit: 1.87 * MBPS,
     upKbit: 0.11 * MBPS,
@@ -122,7 +89,6 @@ const APPS: AppRow[] = [
     key: "spotify",
     name: "Spotify",
     initial: "Sp",
-    gradient: gradientFor("Spotify"),
     meta: "1 process · pid 9077",
     downKbit: 0.71 * MBPS,
     upKbit: 0.02 * MBPS,
@@ -142,7 +108,6 @@ const APPS: AppRow[] = [
     key: "not-matched",
     name: "(not matched)",
     initial: "?",
-    gradient: gradientFor("(not matched)"),
     meta: "3 processes · no rule applies",
     downKbit: 0.34 * MBPS,
     upKbit: 0.01 * MBPS,
@@ -160,11 +125,11 @@ const APPS: AppRow[] = [
 ];
 
 const TALKERS: Talker[] = [
-  { name: "Steam", initial: "S", gradient: gradientFor("Steam"), value: 5.65, ratio: 0.92 },
-  { name: "Firefox", initial: "F", gradient: gradientFor("Firefox"), value: 2.71, ratio: 0.44 },
-  { name: "Spotify", initial: "Sp", gradient: gradientFor("Spotify"), value: 1.34, ratio: 0.22 },
-  { name: "immich", initial: "I", gradient: gradientFor("immich"), value: 0.88, ratio: 0.14 },
-  { name: "vpn", initial: "V", gradient: gradientFor("vpn"), value: 0.47, ratio: 0.08 },
+  { name: "Steam", initial: "S", value: 5.65, ratio: 0.92 },
+  { name: "Firefox", initial: "F", value: 2.71, ratio: 0.44 },
+  { name: "Spotify", initial: "Sp", value: 1.34, ratio: 0.22 },
+  { name: "immich", initial: "I", value: 0.88, ratio: 0.14 },
+  { name: "vpn", initial: "V", value: 0.47, ratio: 0.08 },
 ];
 
 export function mockModel(): DashboardModel {

@@ -9,7 +9,7 @@ import {
 } from "../lib/api";
 import { buildModel } from "../lib/buildModel";
 import { isMock, listen, invokeDaemon } from "../lib/ipc";
-import { gradientFor, initialFor, mockModel, tickModel } from "../lib/mock";
+import { initialFor, mockModel, tickModel } from "../lib/mock";
 import type { AppRow, DaemonView, GlobalValues, HistoryPoint, RuleValues } from "../lib/model";
 import type { Budgets, Config, ProcessState, Unit } from "../lib/types";
 
@@ -59,7 +59,6 @@ function mockRow(values: RuleValues): AppRow {
     key: values.name,
     name: values.name,
     initial: initialFor(values.name),
-    gradient: gradientFor(values.name),
     meta: "new rule · not running yet",
     downKbit: 0,
     upKbit: 0,

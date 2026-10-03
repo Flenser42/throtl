@@ -4,7 +4,6 @@ export interface AppRow {
   key: string;
   name: string;
   initial: string;
-  gradient: string;
   meta: string;
   downKbit: number;
   upKbit: number;
@@ -52,7 +51,6 @@ export interface RuleValues {
 export interface Talker {
   name: string;
   initial: string;
-  gradient: string;
   value: number;
   ratio: number;
 }

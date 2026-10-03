@@ -1,43 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 
-import { formatBytes, formatRate, splitRate } from "../lib/format";
+import { formatRate, splitRate } from "../lib/format";
 import type { AppRow } from "../lib/model";
 import type { Unit } from "../lib/types";
 import {
-  ChevronsDown,
-  ChevronsUp,
   Clock,
   Copy,
   EllipsisVertical,
-  Gauge,
-  Minus,
   Plus,
   Refresh,
   Search,
   Trash,
 } from "./icons";
 
-const PRIORITY_LABEL: Record<string, string> = {
-  kritisch: "Critical",
-  hoch: "High",
-  normal: "Normal",
-  niedrig: "Low",
+/** Dense abbreviations: a table header carries the meaning, the cell stays short. */
+const PRIORITY_SHORT: Record<string, string> = {
+  kritisch: "CRIT",
+  hoch: "HIGH",
+  normal: "NORM",
+  niedrig: "LOW",
 };
-
-function PriorityIcon({ priority }: { priority: string }) {
-  if (priority === "kritisch" || priority === "hoch") return <ChevronsUp size={13} />;
-  if (priority === "niedrig") return <ChevronsDown size={13} />;
-  return <Minus size={13} />;
-}
-
-function limitChipText(app: AppRow, unit: Unit): string {
-  const dl = app.downloadLimit;
-  const ul = app.uploadLimit;
-  if (dl == null && ul == null) return "unlimited";
-  const dlText = dl != null ? `${splitRate(dl, unit, 2).value} ${splitRate(dl, unit, 2).unit} ↓` : "—";
-  const ulText = ul != null ? `${splitRate(ul, unit, 2).value} ↑` : "—";
-  return `${dlText} · ${ulText}`;
-}
 
 /** A runnable `throtl-cli set-process …` equivalent for the rule. */
 function cliFor(app: AppRow, unit: Unit): string {
@@ -50,18 +32,10 @@ function cliFor(app: AppRow, unit: Unit): string {
   return parts.join(" ");
 }
 
-function Rate({ kbit, unit, kind }: { kbit: number; unit: Unit; kind: "down" | "up" }) {
-  const { value, unit: label } = splitRate(kbit, unit, 2);
-  return (
-    <span className={kind === "down" ? "t-down" : "t-up"}>
-      <span className="k">{kind === "down" ? "DL" : "UL"}</span> {value} <span className="u">{label}</span>
-    </span>
-  );
-}
-
 interface RowProps {
   app: AppRow;
   unit: Unit;
+  index: number;
   onToggleArm: (key: string, armed: boolean) => void;
   onEdit: (app: AppRow) => void;
   onRemove: (app: AppRow) => void;
@@ -72,7 +46,18 @@ interface RowProps {
   autoMenu?: boolean;
 }
 
-function ProcessRow({ app, unit, onToggleArm, onEdit, onRemove, onAddRule, onReset, onToast, autoMenu }: RowProps) {
+function ProcessRow({
+  app,
+  unit,
+  index,
+  onToggleArm,
+  onEdit,
+  onRemove,
+  onAddRule,
+  onReset,
+  onToast,
+  autoMenu,
+}: RowProps) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -83,12 +68,12 @@ function ProcessRow({ app, unit, onToggleArm, onEdit, onRemove, onAddRule, onRes
       return;
     }
     const rect = target.getBoundingClientRect();
-    const width = 200;
-    const height = app.unattributed ? 140 : 180;
+    const width = 190;
+    const height = app.unattributed ? 130 : 160;
     const openUp = rect.bottom + height > window.innerHeight;
     setPos({
-      top: openUp ? rect.top - height - 6 : rect.bottom + 6,
-      left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+      top: openUp ? rect.top - height - 4 : rect.bottom + 4,
+      left: Math.max(4, Math.min(rect.right - width, window.innerWidth - width - 4)),
     });
     setOpen(true);
   };
@@ -106,160 +91,184 @@ function ProcessRow({ app, unit, onToggleArm, onEdit, onRemove, onAddRule, onRes
     );
   };
 
+  const dl = splitRate(app.downKbit, unit, 2);
+  const ul = splitRate(app.upKbit, unit, 2);
+  const limit =
+    app.downloadLimit == null && app.uploadLimit == null
+      ? null
+      : {
+          down: app.downloadLimit != null ? splitRate(app.downloadLimit, unit, 2) : null,
+          up: app.uploadLimit != null ? splitRate(app.uploadLimit, unit, 2) : null,
+        };
+
   return (
     <div className={`row${app.unattributed ? " unattr" : ""}`}>
-      <div className="r-top">
-        <span className="appicon" style={{ background: app.gradient }}>
-          {app.initial}
-        </span>
-        <div className="r-id">
-          <div className="r-name">{app.name}</div>
-          <div className="r-meta">{app.meta}</div>
-        </div>
+      <span className="r-index mono">{String(index + 1).padStart(2, "0")}</span>
+      <span className="appicon">{app.initial}</span>
 
-        <div className="r-actions">
-          <div className="rates">
-            <Rate kbit={app.downKbit} unit={unit} kind="down" />
-            <Rate kbit={app.upKbit} unit={unit} kind="up" />
-          </div>
-          {!app.unattributed && (
-            <button
-              type="button"
-              className={`switch${app.armed ? " on" : ""}`}
-              role="switch"
-              aria-checked={app.armed}
-              aria-label={`Limit ${app.name}`}
-              onClick={() => onToggleArm(app.key, !app.armed)}
-            />
-          )}
-          <div className="menu-wrap">
-            <button
-              type="button"
-              className="overflow"
-              aria-label={`More actions for ${app.name}`}
-              aria-haspopup="menu"
-              aria-expanded={open}
-              ref={btnRef}
-              onClick={(e) => toggleMenu(e.currentTarget)}
-            >
-              <EllipsisVertical size={16} />
-            </button>
-            {open && pos && (
-              <>
-                <div className="menu-backdrop" onClick={() => setOpen(false)} />
-                <div
-                  className="menu"
-                  role="menu"
-                  style={{ position: "fixed", top: pos.top, left: pos.left }}
-                >
-                  {app.unattributed ? (
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        setOpen(false);
-                        onAddRule(app);
-                      }}
-                    >
-                      <Plus size={14} /> Create rule…
-                    </button>
-                  ) : (
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        setOpen(false);
-                        onEdit(app);
-                      }}
-                    >
-                      <Gauge size={14} /> Edit rule
-                    </button>
-                  )}
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      setOpen(false);
-                      onReset();
-                    }}
-                  >
-                    <Refresh size={14} /> Reset counters
-                  </button>
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      setOpen(false);
-                      copyCli();
-                    }}
-                  >
-                    <Copy size={14} /> Copy CLI command
-                  </button>
-                  {!app.unattributed && (
-                    <>
-                      <div className="menu-sep" />
-                      <button
-                        role="menuitem"
-                        className="danger"
-                        onClick={() => {
-                          setOpen(false);
-                          onRemove(app);
-                        }}
-                      >
-                        <Trash size={14} /> Remove rule
-                      </button>
-                    </>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+      <span className="r-id">
+        <span className="r-name">{app.name}</span>
+        <span className="r-meta">{app.meta}</span>
+      </span>
 
-      <div className="r-bottom">
-        {app.unattributed ? (
-          <button type="button" className="btn" style={{ height: 24, fontSize: 11.5 }} onClick={() => onAddRule(app)}>
-            <Plus size={13} /> Create rule…
+      <span className="rate-cell mono t-down" title="download">
+        {dl.value}
+        <span className="rate-unit">{dl.unit}</span>
+      </span>
+      <span className="rate-cell mono t-up" title="upload">
+        {ul.value}
+        <span className="rate-unit">{ul.unit}</span>
+      </span>
+
+      <span className="r-limit">
+        {limit ? (
+          <button type="button" className="chip acc" onClick={() => onEdit(app)}>
+            {limit.down ? `${limit.down.value} ↓` : "—"}
+            {"  "}
+            {limit.up ? `${limit.up.value} ↑` : "—"}
           </button>
         ) : (
-          <>
-            <button
-              type="button"
-              className={`chip${app.downloadLimit != null || app.uploadLimit != null ? " acc" : ""}`}
-              onClick={() => onEdit(app)}
-            >
-              <Gauge />
-              {limitChipText(app, unit)}
-            </button>
-            <span className="meta-item">
-              <PriorityIcon priority={app.priority} />
-              {PRIORITY_LABEL[app.priority] ?? "Normal"}
+          <button type="button" className="chip" onClick={() => onEdit(app)}>
+            no limit
+          </button>
+        )}
+      </span>
+
+      <span className="r-pri">
+        {app.unattributed ? <span className="meta-item">—</span> : (
+          <span className="meta-item">{PRIORITY_SHORT[app.priority] ?? "NORM"}</span>
+        )}
+      </span>
+
+      <span className="r-budget">
+        {app.budget ? (
+          <span className="mini" title={`${app.budget.used} / ${app.budget.limit} bytes`}>
+            <span className="bar">
+              <i
+                style={{
+                  width: `${Math.round(Math.min(1, app.budget.ratio) * 100)}%`,
+                  background: app.budget.ratio >= 0.8 ? "var(--warn)" : undefined,
+                }}
+              />
             </span>
-            {app.windowLabel && (
-              <span className={`chip${app.windowActive ? " acc" : ""}`} style={app.windowActive ? undefined : { opacity: 0.6 }}>
-                <Clock />
-                {app.windowActive ? `${app.windowLabel} · now` : app.windowState ?? app.windowLabel}
-              </span>
-            )}
-            {app.budget && (
-              <span className="mini">
-                <span className="bar">
-                  <i
-                    style={{
-                      width: `${Math.round(Math.min(1, app.budget.ratio) * 100)}%`,
-                      background:
-                        app.budget.ratio >= 0.8
-                          ? "linear-gradient(90deg,var(--warn),color-mix(in oklab,var(--warn) 60%,white))"
-                          : undefined,
+            <span className={app.budget.ratio >= 0.8 ? "t-warn" : ""}>
+              {Math.round(app.budget.ratio * 100)}%
+            </span>
+          </span>
+        ) : app.windowLabel ? (
+          <span className="meta-item" title={app.windowState ?? app.windowLabel}>
+            <Clock size={11} />
+            {app.windowActive ? "now" : "off"}
+          </span>
+        ) : (
+          <span className="meta-item">—</span>
+        )}
+      </span>
+
+      {app.unattributed ? (
+        <span className="r-arm">
+          <button
+            type="button"
+            className="overflow"
+            aria-label={`Create a rule for ${app.name}`}
+            title="Create rule"
+            onClick={() => onAddRule(app)}
+          >
+            <Plus size={12} />
+          </button>
+        </span>
+      ) : (
+        <span className="r-arm">
+          <button
+            type="button"
+            className={`switch${app.armed ? " on" : ""}`}
+            role="switch"
+            aria-checked={app.armed}
+            aria-label={`Limit ${app.name}`}
+            title={app.armed ? "Limit applied" : "No limit applied"}
+            onClick={() => onToggleArm(app.key, !app.armed)}
+          />
+        </span>
+      )}
+
+      <span className="menu-wrap r-menu">
+        <button
+          type="button"
+          className="overflow"
+          aria-label={`More actions for ${app.name}`}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          ref={btnRef}
+          onClick={(e) => toggleMenu(e.currentTarget)}
+        >
+          <EllipsisVertical size={13} />
+        </button>
+        {open && pos && (
+          <>
+            <div className="menu-backdrop" onClick={() => setOpen(false)} />
+            <div
+              className="menu"
+              role="menu"
+              style={{ position: "fixed", top: pos.top, left: pos.left }}
+            >
+              {app.unattributed ? (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false);
+                    onAddRule(app);
+                  }}
+                >
+                  <Plus size={12} /> Create rule…
+                </button>
+              ) : (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false);
+                    onEdit(app);
+                  }}
+                >
+                  Edit rule
+                </button>
+              )}
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  onReset();
+                }}
+              >
+                <Refresh size={12} /> Reset counters
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  copyCli();
+                }}
+              >
+                <Copy size={12} /> Copy CLI command
+              </button>
+              {!app.unattributed && (
+                <>
+                  <div className="menu-sep" />
+                  <button
+                    role="menuitem"
+                    className="danger"
+                    onClick={() => {
+                      setOpen(false);
+                      onRemove(app);
                     }}
-                  />
-                </span>
-                <span>
-                  {formatBytes(app.budget.used, 1).replace(/ (GB|MB|TB)$/, "")}/
-                  {formatBytes(app.budget.limit, 0)}
-                </span>
-              </span>
-            )}
+                  >
+                    <Trash size={12} /> Remove rule
+                  </button>
+                </>
+              )}
+            </div>
           </>
         )}
-      </div>
+      </span>
     </div>
   );
 }
@@ -304,13 +313,27 @@ export function ProcessList({
 
   const menuParam = new URLSearchParams(location.search).get("menu") === "1";
   const firstRuleKey = sorted.find((a) => !a.unattributed)?.key;
+  const unitLabel = splitRate(0, unit, 0).unit;
 
   return (
     <div className="rows">
+      <div className="table-head">
+        <span className="r-index">#</span>
+        <span />
+        <span className="r-id">Application</span>
+        <span className="rate-cell">DL {unitLabel}</span>
+        <span className="rate-cell">UL {unitLabel}</span>
+        <span className="r-limit">Limit</span>
+        <span className="r-pri">Pri</span>
+        <span className="r-budget">Budget</span>
+        <span className="r-arm">Arm</span>
+        <span className="r-menu" />
+      </div>
+
       {sorted.length === 0 ? (
         <div className="empty">
           <span className="empty-icon">
-            <Search size={22} />
+            <Search size={16} />
           </span>
           <div className="empty-title">
             {query ? "No matching applications" : "Nothing to show yet"}
@@ -327,10 +350,11 @@ export function ProcessList({
           )}
         </div>
       ) : (
-        sorted.map((app) => (
+        sorted.map((app, i) => (
           <ProcessRow
             key={app.key}
             app={app}
+            index={i}
             unit={unit}
             onToggleArm={onToggleArm}
             onEdit={onEdit}
@@ -342,8 +366,9 @@ export function ProcessList({
           />
         ))
       )}
+
       <div className="hint">
-        Showing {groupsVisible} of {groupsTotal} groups · sorted by {sortKey}
+        {groupsVisible} of {groupsTotal} groups · sorted by {sortKey}
       </div>
     </div>
   );
