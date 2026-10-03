@@ -161,8 +161,25 @@ class ClientTest(unittest.TestCase):
             client.connect()
             with self.assertRaises(protocol.TimeoutError_):
                 client.call("slow", timeout=0.4)
+            # Der Eintrag muss beim Timeout verschwinden, sonst waechst die
+            # Map bei jedem Timeout weiter (Leak).
+            with client._cond:
+                self.assertEqual(len(client._responses), 0)
         finally:
             client.close()
+
+    def test_deeply_nested_json_is_a_protocol_error(self):
+        # ~200 KB Klammern: json.loads raist RecursionError (RuntimeError),
+        # was frueher am "except (ValueError, UnicodeDecodeError)" vorbei den
+        # Verbindungs-Thread killte.
+        left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            left.sendall(b"[" * 100_000 + b"]" * 100_000 + b"\n")
+            with self.assertRaises(protocol.ProtocolError):
+                protocol.read_message(right)
+        finally:
+            left.close()
+            right.close()
 
     def test_connect_failure(self):
         client = protocol.Client(self.path + ".nonexistent")

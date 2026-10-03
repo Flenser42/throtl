@@ -261,6 +261,34 @@ class TcCleanupTest(unittest.TestCase):
         run.assert_not_called()
 
 
+class YamlQuoteAndLogTest(unittest.TestCase):
+    """Escaping und Log-Deckel (Review: rohe Steuerzeichen / wachsende tt.log)."""
+
+    def test_escapes_controls_that_would_break_the_yaml(self):
+        out = engine.yaml_quote("a\rb\u2028c\x07d")
+        self.assertNotIn("\r", out)
+        self.assertNotIn("\u2028", out)
+        self.assertNotIn("\x07", out)
+        self.assertIn("\\r", out)
+        self.assertIn("\\u2028", out)
+        self.assertIn("\\u0007", out)
+
+    def test_keeps_ordinary_text_and_quotes(self):
+        self.assertEqual(engine.yaml_quote("Steam"), '"Steam"')
+        self.assertEqual(engine.yaml_quote('say "hi"'), '"say \\"hi\\""')
+
+    def test_log_is_truncated_when_it_grows_too_large(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tt.log"
+            eng = engine.TrafficTollEngine("lo", command="/bin/true")
+            eng._stderr_path = str(path)
+            eng._LOG_MAX_BYTES = 4096
+            for i in range(400):
+                eng._append_stderr_log("x" * 64 + str(i))
+            # Nach dem Beschneiden bleibt nur der Rest — nie unbegrenzt.
+            self.assertLessEqual(path.stat().st_size, eng._LOG_MAX_BYTES + 128)
+
+
 class GracefulStopTest(unittest.TestCase):
     """tt wird per SIGINT beendet, damit sein atexit-Cleanup die QDiscs raeumt."""
 

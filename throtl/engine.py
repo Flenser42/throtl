@@ -52,9 +52,15 @@ def format_rate_kbps(kbit_per_s) -> str:
 
 
 def yaml_quote(value: str) -> str:
-    """Minimaler Double-Quoted-YAML-Escaper fuer die Keys/Werte."""
+    """Minimaler Double-Quoted-YAML-Escaper fuer die Keys/Werte.
+
+    Escaped werden neben ``"``/``\\`` auch alle C0-Steuerzeichen (inkl. ``\r``)
+    sowie U+2028/U+2029 — ein rohes ``\r`` in einem Regelnamen liess das
+    gerenderte YAML unparsebar werden (tt startete dann nicht).
+    """
     out = ['"']
     for ch in value:
+        code = ord(ch)
         if ch == '"':
             out.append('\\"')
         elif ch == "\\":
@@ -63,6 +69,10 @@ def yaml_quote(value: str) -> str:
             out.append("\\n")
         elif ch == "\t":
             out.append("\\t")
+        elif ch == "\r":
+            out.append("\\r")
+        elif code < 0x20 or code == 0x7F or code in (0x2028, 0x2029):
+            out.append(f"\\u{code:04x}")
         else:
             out.append(ch)
     out.append('"')
@@ -275,21 +285,30 @@ class TrafficTollEngine:
         """Diag-Zeile anhaengen und die Datei bei Bedarf beschneiden.
 
         ``/run/throtl`` ist tmpfs: eine unbegrenzt wachsende tt.log wuerde
-        Speicher fressen, deshalb bleibt nur der letzte Rest erhalten.
+        Speicher fressen, deshalb bleibt nur der letzte Rest erhalten. Das
+        Beschneiden und Anhaengen passiert unter ``_stderr_lock``, damit zwei
+        Zeilen nicht gegeneinander verlieren.
         """
         path = self._stderr_path
         if not path:
             return
-        try:
-            if os.path.getsize(path) > self._LOG_MAX_BYTES:
-                with open(path, "r", encoding="utf-8", errors="replace") as handle:
-                    tail = handle.read()[-(self._LOG_MAX_BYTES // 4):]
-                with open(path, "w", encoding="utf-8") as handle:
-                    handle.write(tail)
-            with open(path, "a", encoding="utf-8") as handle:
-                handle.write(line + "\n")
-        except OSError:
-            pass
+        with self._stderr_lock:
+            try:
+                try:
+                    size = os.path.getsize(path)
+                except OSError:
+                    # Datei existiert noch nicht (erster Aufruf) — nicht als
+                    # Fehler behandeln, sonst wird nie etwas geschrieben.
+                    size = 0
+                if size >= self._LOG_MAX_BYTES:
+                    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                        tail = handle.read()[-(self._LOG_MAX_BYTES // 4):]
+                    with open(path, "w", encoding="utf-8") as handle:
+                        handle.write(tail)
+                with open(path, "a", encoding="utf-8") as handle:
+                    handle.write(line + "\n")
+            except OSError:
+                pass
 
     def _drain_stderr(self) -> None:
         """tt-stderr zeilenweise sammeln (fuer Diagnose, z.B. tc-Fehler)."""

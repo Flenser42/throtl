@@ -5,6 +5,8 @@ Die GUI kann die Anzeige zwischen kbps (kbit/s), mbps (Mbit/s), kBs (KB/s) und
 mBs (MB/s) umschalten.
 """
 
+import math
+
 # 1 kbit/s = 0.125 KB/s
 KB_PER_KBIT = 0.125
 
@@ -48,17 +50,44 @@ def kBs_to_kbit(kb_per_s: float) -> float:
     return kb_per_s / KB_PER_KBIT
 
 
+# Nothing real exceeds this; it keeps absurd input out of the config.
+MAX_RATE_KBIT = 100_000_000       # 100 Gbit/s
+MAX_SIZE_BYTES = 1_000_000_000_000_000  # 1 PB
+
+
+def _bounded_rate(amount: float) -> int:
+    """Validate a kbit/s amount: finite, non-negative, within a sane ceiling.
+
+    ``inf``/``nan`` and absurd sizes used to slip through (TOML's ``1e309`` is
+    ``inf``, and ``int(inf)`` raises OverflowError past every handler).
+    """
+    if not math.isfinite(amount) or amount < 0:
+        raise ValueError(f"ungueltige Rate: {amount!r}")
+    if amount > MAX_RATE_KBIT:
+        raise ValueError(f"Rate zu gross: {amount!r} kbit/s (max {MAX_RATE_KBIT})")
+    return round(amount)
+
+
+def _bounded_size(amount: float) -> int:
+    if not math.isfinite(amount) or amount < 0:
+        raise ValueError(f"ungueltiges Volumen: {amount!r}")
+    if amount > MAX_SIZE_BYTES:
+        raise ValueError(f"Volumen zu gross: {amount!r} Bytes (max {MAX_SIZE_BYTES})")
+    return int(round(amount))
+
+
 def parse_rate(value) -> int:
     """Raten-String wie '1.5mbps'/'512kbps'/'2000000' in ganzzahlige kbit/s parsen.
 
     Akzeptiert auch int/float (wird als kbit/s interpretiert) und None (-> None).
+    ``bool`` wird abgelehnt (``True`` waere sonst 1 kbit/s).
     """
     if value is None:
         return None
+    if isinstance(value, bool):
+        raise ValueError(f"ungueltige Rate: {value!r}")
     if isinstance(value, (int, float)):
-        if value < 0:
-            raise ValueError(f"negative Rate ungueltig: {value!r}")
-        return round(value)
+        return _bounded_rate(value)
     if not isinstance(value, str):
         raise ValueError(f"ungueltige Rate: {value!r}")
     text = value.strip().lower().replace(" ", "")
@@ -71,17 +100,13 @@ def parse_rate(value) -> int:
                 amount = float(number)
             except ValueError:
                 break
-            if amount < 0:
-                raise ValueError(f"negative Rate ungueltig: {value!r}")
-            return round(amount * factor)
+            return _bounded_rate(amount * factor)
     # nackte Zahl -> kbit/s
     try:
         amount = float(text)
     except ValueError:
         raise ValueError(f"ungueltige Rate: {value!r}") from None
-    if amount < 0:
-        raise ValueError(f"negative Rate ungueltig: {value!r}")
-    return round(amount)
+    return _bounded_rate(amount)
 
 
 def format_rate(kbit_per_s, unit: str = "auto", precision: int = 1,
@@ -216,7 +241,7 @@ def parse_size(value) -> int | None:
     if isinstance(value, (int, float)):
         if value < 0:
             raise ValueError(f"negatives Volumen ungueltig: {value!r}")
-        return int(value)
+        return _bounded_size(value)
     text = str(value).strip().lower().replace(" ", "").replace(",", ".")
     if not text:
         return None
@@ -229,13 +254,9 @@ def parse_size(value) -> int | None:
                 amount = float(number)
             except ValueError:
                 break
-            if amount < 0:
-                raise ValueError(f"negatives Volumen ungueltig: {value!r}")
-            return int(round(amount * _SIZE_UNITS[suffix]))
+            return _bounded_size(amount * _SIZE_UNITS[suffix])
     try:
         amount = float(text)
     except ValueError:
         raise ValueError(f"ungueltiges Volumen: {value!r}") from None
-    if amount < 0:
-        raise ValueError(f"negatives Volumen ungueltig: {value!r}")
-    return int(round(amount))
+    return _bounded_size(amount)

@@ -96,6 +96,10 @@ def read_message(sock: socket.socket):
         return json.loads(line.decode("utf-8"))
     except (ValueError, UnicodeDecodeError) as error:
         raise ProtocolError(f"ungueltiges JSON: {error}") from error
+    except RecursionError as error:
+        # Tief verschachteltes JSON (< MAX_MESSAGE_SIZE) sprengt den
+        # Parser-Rekursionslimit; das ist ein Protokollfehler, kein Crash.
+        raise ProtocolError("JSON zu tief verschachtelt") from error
 
 
 def iter_messages(sock: socket.socket):

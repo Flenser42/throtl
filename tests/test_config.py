@@ -238,6 +238,52 @@ class LoadConfigRobustnessTest(unittest.TestCase):
             backups = [name for name in os.listdir(tmp) if ".invalid-" in name]
             self.assertEqual(len(backups), 1, os.listdir(tmp))
 
+    def test_overflowing_numbers_are_repaired_not_fatal(self):
+        # TOML 1e309 ist inf; int(inf) raist OverflowError, was frueher an
+        # jeder except-Liste vorbei lief und den Daemon beim Start killte.
+        for body in (
+            "[global]\ndownload_limit = 1e309\n",
+            "[global]\nupload_minimum = 1e309\n",
+            "[budgets]\nday = 1e309\n",
+        ):
+            with self.subTest(body=body):
+                cfg = self._load(body)
+                self.assertIsInstance(cfg, dict)
+                self.assertIsNotNone(config.last_config_warning())
+
+    def test_absurd_and_boolean_values_are_rejected(self):
+        from throtl import units
+
+        for value in (1e20, float("inf"), float("nan"), True, -1):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    units.parse_rate(value)
+        for value in (1e20, float("inf"), float("nan"), True, -1):
+            with self.subTest(size=value):
+                with self.assertRaises(ValueError):
+                    units.parse_size(value)
+        with self.assertRaises(config.ConfigError):
+            config.priority_to_int(False)
+        with self.assertRaises(config.ConfigError):
+            config.priority_to_int(True)
+
+    def test_window_with_equal_start_and_end_is_rejected(self):
+        # Ein halboffenes Intervall mit start == end waere nie aktiv — das ist
+        # praktisch immer ein Tippfehler und wird deshalb gemeldet.
+        with self.assertRaises(config.ConfigError):
+            config.normalize_window({"days": ["mo"], "start": "20:00", "end": "20:00"})
+        cfg = self._load(
+            "[[processes]]\n"
+            'key = "exe:/usr/bin/x"\n'
+            'name = "X"\n'
+            'match_type = "exe"\n'
+            'match_value = "/usr/bin/x"\n'
+            'window_days = ["mo"]\n'
+            'window_start = "20:00"\n'
+            'window_end = "20:00"\n'
+        )
+        self.assertEqual(cfg["processes"], [])
+
 
 class InterfaceDetectionTest(unittest.TestCase):
     def test_returns_string_or_none(self):

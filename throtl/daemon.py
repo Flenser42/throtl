@@ -944,18 +944,24 @@ class Daemon:
         changes = dict(params)
         with self._state_lock:
             store.update_global(**changes)
+            # Kopie statt der lebenden Tabelle: json.dumps laeuft erst nach
+            # dem Handler, also nach dem Lock.
+            result = copy.deepcopy(store.get()["global"])
         self._schedule_engine_apply()
         self._emit_rules_changed()
-        return store.get()["global"]
+        return result
 
     def _h_set_process(self, params):
         key = params.get("key")
-        existing = None
-        if key:
-            existing = next(
-                (r for r in self.store.get().get("processes", []) if r.get("key") == key),
-                None,
-            )
+        with self._state_lock:
+            # Lookup unter dem Lock: zwei gleichzeitige Updates derselben Regel
+            # duerfen nicht beide den alten Stand lesen (lost update).
+            existing = None
+            if key:
+                existing = next(
+                    (r for r in self.store.get().get("processes", []) if r.get("key") == key),
+                    None,
+                )
         if existing is not None:
             # Update einer bestehenden Regel: match_type/match_value NICHT neu
             # ableiten. Die GUI schickt die gespeicherte Regel zurueck; ein
@@ -1066,7 +1072,8 @@ class Daemon:
     def _h_get_budgets(self, params):
         from .budgets import budget_status
 
-        cfg = self.store.get()
+        with self._state_lock:
+            cfg = copy.deepcopy(self.store.get())
         return {
             "enabled": (cfg.get("budgets") or {}).get("enabled", True),
             "entries": budget_status(cfg, self.stats),
@@ -1083,7 +1090,7 @@ class Daemon:
         if "enabled" in params:
             fields["enabled"] = _as_bool(params.get("enabled"))
         with self._state_lock:
-            budgets = self.store.set_budget(app=app, **fields)
+            budgets = copy.deepcopy(self.store.set_budget(app=app, **fields))
         return {"ok": True, "budgets": budgets}
 
     def _h_remove_budget(self, params):
@@ -1097,7 +1104,8 @@ class Daemon:
     # --- Profile / Zeitplaene ---------------------------------------------
 
     def _h_list_profiles(self, params):
-        cfg = self.store.get()
+        with self._state_lock:
+            cfg = copy.deepcopy(self.store.get())
         return {
             "profiles": profile_names(cfg),
             "active": cfg.get("active_profile"),
@@ -1173,9 +1181,10 @@ class Daemon:
             )
         with self._state_lock:
             self.store.replace(config)
+            result = copy.deepcopy(config)
         self._schedule_engine_apply()
         self._emit_rules_changed()
-        return config
+        return result
 
     def _emit_rules_changed(self) -> None:
         # Nach einer Aenderung sofort einen frischen Snapshot ziehen, damit die
@@ -1197,6 +1206,11 @@ class Daemon:
             self._apply_thread.join(timeout=5.0)
             self._apply_thread = None
         self._stop_monitor()
+        # Ticker-Thread beenden, damit nach dem Shutdown kein Tick mehr einen
+        # nethogs-Prozess starten kann (sonst blieb ein Waisenkind zurueck).
+        if self._monitor_thread is not None:
+            self._monitor_thread.join(timeout=2.0 * max(0.1, self.interval) + 2.0)
+            self._monitor_thread = None
         # Statistik beim Herunterfahren sichern (sonst gingen die letzten
         # <save_every Ticks verloren).
         try:
@@ -1226,13 +1240,26 @@ def _match_rules(rules, name=None, pid=None) -> dict:
     Prozessnamen. Gespeicherte ``match_value``-Muster sind fuer TrafficToll
     regex-escaped — fuer den Vergleich hier muessen sie zurueckgewandelt
     werden, sonst passt keine einzige Regel.
+
+    ``cmdline``-Regeln werden bewusst **literal** geprueft (Substring): das
+    Muster ist eine Regex, aber eine vom Nutzer gelieferte Regex darf im
+    Root-Daemon nicht ausgefuehrt werden (ReDoS). Die massgebliche
+    Regex-Auswertung passiert in ``tt`` selbst; hier geht es nur um die
+    Anzeige-Zuordnung (``rule_name``).
     """
     if not name:
         return {}
     for rule in rules:
         if rule.get("name") and rule["name"] == name:
             return rule
-        mv = unescape_pattern(rule.get("match_value"))
+        match_value = rule.get("match_value")
+        if not match_value:
+            continue
+        if rule.get("match_type") == "cmdline":
+            if match_value in name:
+                return rule
+            continue
+        mv = unescape_pattern(match_value)
         if mv and mv == name:
             return rule
         if mv and (name.startswith(mv) or name.endswith(mv.rstrip("/"))):

@@ -109,6 +109,9 @@ def priority_to_int(priority) -> int:
                 f"unbekannte Prioritaet {priority!r} (erlaubt: {', '.join(PRIORITY_NAMES)})"
             )
         return PRIORITY_TO_INT[name]
+    # ``bool`` ist ein ``int``: ``True``/``False`` waeren sonst 1/0 ("kritisch").
+    if isinstance(priority, bool):
+        raise ConfigError(f"ungueltige Prioritaet {priority!r}")
     if isinstance(priority, int) and 0 <= priority <= MAX_PRIORITY_INT:
         return priority
     raise ConfigError(f"ungueltige Prioritaet {priority!r}")
@@ -207,16 +210,20 @@ def _default_name(match_value: str) -> str:
 
 
 def _rate_or_none(value):
+    """Rate parsen und Fehler als ConfigError melden (einheitlich fuer Aufrufer).
+
+    ``parse_rate`` lehnt bool, ``inf``/``nan`` und absurde Werte ab; das wird
+    hier auf ConfigError abgebildet, damit jede Aufrufstelle nur einen Typ
+    fangen muss.
+    """
     if value is None:
         return None
-    if isinstance(value, str):
-        from .units import parse_rate
+    from .units import parse_rate
 
+    try:
         return parse_rate(value)
-    value = int(value)
-    if value < 0:
-        raise ConfigError(f"negative Rate ungueltig: {value}")
-    return value
+    except ValueError as error:
+        raise ConfigError(str(error)) from error
 
 
 def _size_or_none(value):
@@ -225,7 +232,10 @@ def _size_or_none(value):
         return None
     from .units import parse_size
 
-    return parse_size(value)
+    try:
+        return parse_size(value)
+    except ValueError as error:
+        raise ConfigError(str(error)) from error
 
 
 def default_config() -> dict:
@@ -280,7 +290,7 @@ def normalize(data: dict, *, lenient: bool = False, notes: list | None = None) -
     def repair(produce, fallback, what):
         try:
             return produce()
-        except (ConfigError, ValueError, TypeError) as error:
+        except (ConfigError, ValueError, TypeError, OverflowError) as error:
             if not lenient:
                 raise
             repaired.append(f"{what}={error}")
@@ -377,7 +387,8 @@ def normalize(data: dict, *, lenient: bool = False, notes: list | None = None) -
         for key in ("day", "week"):
             try:
                 budgets[key] = _size_or_none(raw_budgets.get(key))
-            except (ConfigError, ValueError):
+            except (ConfigError, ValueError, OverflowError) as error:
+                repaired.append(f"budgets.{key}={error}")
                 budgets[key] = None
     rules = []
     for raw in data.get("budget_rules") or []:
@@ -390,7 +401,8 @@ def normalize(data: dict, *, lenient: bool = False, notes: list | None = None) -
         for key in ("day", "week"):
             try:
                 entry[key] = _size_or_none(raw.get(key))
-            except (ConfigError, ValueError):
+            except (ConfigError, ValueError, OverflowError) as error:
+                repaired.append(f"budget_rules[{app}].{key}={error}")
                 entry[key] = None
         rules.append(entry)
     budgets["rules"] = rules
@@ -589,7 +601,7 @@ def normalize_schedule(rules) -> list:
             continue
         start = _parse_time(raw.get("start"))
         end = _parse_time(raw.get("end"))
-        if start is None or end is None:
+        if start is None or end is None or start == end:
             continue
         result.append({"profile": name, "days": sorted(days),
                        "start": start, "end": end})
@@ -600,7 +612,10 @@ def normalize_window(raw) -> dict | None:
     """Optionales Zeitfenster einer Regel normalisieren.
 
     Akzeptiert ``{"days": [...], "start": "HH:MM", "end": "HH:MM"}``.
-    Fehlende/kaputte Angaben -> ``None`` (= Regel gilt immer).
+    Fehlende/kaputte Angaben -> ``None`` (= Regel gilt immer). ``start == end``
+    wird abgelehnt: als halboffenes Intervall waere das Fenster *nie* aktiv,
+    was fast immer ein Tippfehler ist — beim Laden wird die Regel uebersprungen,
+    per RPC gibt es einen Fehler statt eines stillen Nichts.
     """
     if not isinstance(raw, dict):
         return None
@@ -609,6 +624,10 @@ def normalize_window(raw) -> dict | None:
     end = _parse_time(raw.get("end"))
     if not days or start is None or end is None:
         return None
+    if start == end:
+        raise ConfigError(
+            f"Zeitfenster mit gleichem Start und Ende ({start}) ist nie aktiv"
+        )
     return {"days": sorted(days), "start": start, "end": end}
 
 
@@ -841,7 +860,7 @@ def load_config(path) -> dict:
     try:
         cfg = normalize(data, lenient=True, notes=notes)
     except (ConfigError, ValueError, TypeError, KeyError, AttributeError,
-            IndexError) as error:
+            IndexError, OverflowError) as error:
         # Sollte mit lenient=True kaum noch passieren; bleibt als Netz.
         backup = _backup_broken_config(path)
         _LAST_CONFIG_WARNING = (

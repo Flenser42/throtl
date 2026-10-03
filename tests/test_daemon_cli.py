@@ -638,5 +638,115 @@ class DaemonEngineRecoveryTest(unittest.TestCase):
             self.assertFalse(d._apply_event.is_set())
 
 
+class RpcHardeningTest(unittest.TestCase):
+    """Regressionen aus dem Robustheits-/Security-Review (0.12)."""
+
+    def _daemon(self, tmp):
+        instance = daemon.Daemon(
+            socket_path=os.path.join(tmp, "d.sock"), config_dir=tmp,
+            engine=SimEngine("lo"), interval=0.05, monitor_factory=None,
+        )
+        instance.interface = "lo"
+        return instance
+
+    def _call(self, instance, method, params=None):
+        return instance._dispatch({"id": 1, "method": method, "params": params or {}})
+
+    def test_non_object_json_is_rejected_not_fatal(self):
+        # 123/"hi"/[]/true sind gueltiges JSON, aber kein Objekt: das darf den
+        # Verbindungs-Thread nicht mit AttributeError toeten.
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            for payload in (123, "hi", [], True, None):
+                with self.subTest(payload=payload):
+                    reply = instance._dispatch(payload)
+                    self.assertIn("error", reply)
+                    self.assertIsNone(reply["id"])
+
+    def test_get_config_returns_a_copy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            result = self._call(instance, "get_config")["result"]
+            result["processes"].append({"key": "injected"})
+            self.assertEqual(instance.store.get()["processes"], [])
+
+    def test_set_global_and_budget_return_copies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            globals_result = self._call(
+                instance, "set_global", {"download_limit": 1000}
+            )["result"]
+            globals_result["download_limit"] = 1
+            self.assertEqual(instance.store.get()["global"]["download_limit"], 1000)
+
+            budgets_result = self._call(instance, "set_budget", {"day": 1000})["result"]
+            budgets_result["budgets"]["day"] = 999999
+            self.assertEqual(instance.store.get()["budgets"]["day"], 1000)
+
+    def test_cmdline_rule_matches_literally_and_is_not_unescaped(self):
+        from throtl.daemon import _match_rules
+
+        plain = {"name": "JD", "match_type": "cmdline", "match_value": "JDownloader"}
+        self.assertEqual(
+            _match_rules([plain], "java -jar /opt/JDownloader/JDownloader.jar").get("name"),
+            "JD",
+        )
+        # Eine Regex mit Escape darf NICHT zurueckgewandelt werden: sonst
+        # matchte \\.  als "." und die Regel passte auf einen anderen Prozess.
+        escaped = {"name": "Jar", "match_type": "cmdline", "match_value": r"foo\.jar"}
+        self.assertEqual(_match_rules([escaped], "foo.jar -x"), {})
+        # exe/name bleiben escaped-verglichen (unveraendert).
+        exe_rule = {"name": "X", "match_type": "exe", "match_value": r"/usr/bin/x\.y"}
+        self.assertEqual(_match_rules([exe_rule], "/usr/bin/x.y").get("name"), "X")
+
+    def test_string_false_is_coerced(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            reply = self._call(instance, "toggle_enabled", {"enabled": "false"})["result"]
+            self.assertFalse(reply["enabled"])
+            self.assertFalse(instance.store.get()["global"]["enabled"])
+            budget = self._call(instance, "set_budget", {"enabled": "false"})["result"]
+            self.assertFalse(budget["budgets"]["enabled"])
+
+    def test_priority_zero_is_critical(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            self._call(instance, "set_process", {
+                "name": "X", "match_type": "exe", "match_value": "/usr/bin/x",
+                "priority": 0,
+            })
+            self.assertEqual(instance.store.get()["processes"][0]["priority"], "kritisch")
+
+    def test_rules_changed_tick_does_not_record_stats(self):
+        # Ein Regelwechsel loest einen Extra-Tick aus; der darf die
+        # Byte-Summen nicht ein zweites Mal verbuchen.
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            seen = []
+            instance._collect_snapshot = lambda record_stats=False: (
+                seen.append(record_stats) or {}
+            )
+            instance._safe_tick_monitor(record_stats=False)
+            self.assertEqual(seen, [False])
+
+    def test_import_config_refuses_interface_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            reply = self._call(
+                instance, "import_config", {"config": {"interface": "eth9"}}
+            )
+            self.assertIn("error", reply)
+            self.assertIn("Interface", reply["error"]["message"])
+
+    def test_bad_window_is_reported_not_silently_dropped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            reply = self._call(instance, "set_process", {
+                "name": "X", "match_type": "exe", "match_value": "/usr/bin/x",
+                "window": {"days": [0], "start": "20:00", "end": "20:00"},
+            })
+            self.assertIn("error", reply)
+
+
 if __name__ == "__main__":
     unittest.main()
