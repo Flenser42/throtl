@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-03
+
 ### Removed
 
 - **The classic GTK4 + libadwaita GUI** (`throtl/gui/`, the `throtl-gui` entry
@@ -53,6 +55,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and denies Rust warnings (`cargo clippy --all-targets -D warnings` plus
   `cargo test`); the release workflow builds and attaches the dashboard `.deb`
   and `.rpm` next to the backend packages.
+- **Supply-chain hardening.** Every GitHub Action is pinned to a full commit
+  SHA and the repository enforces `sha_pinning_required`; secret scanning with
+  push protection, Dependabot security updates and vulnerability alerts are on;
+  a new Security workflow runs dependency-review, `pip-audit`, `npm audit` and
+  a `zizmor` lint of the workflows on pull requests and weekly. Dependabot now
+  also watches the dashboard's npm and cargo dependencies. See
+  [`SECURITY.md`](SECURITY.md) for the one advisory that cannot be fixed here
+  (`glib` < 0.20 via Tauri's gtk-rs pin).
 
 ### Fixed
 
@@ -71,6 +81,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   versioned correctly.
 - **The README's light dashboard screenshot was actually dark** — the dashboard
   overwrote the pre-paint `?theme=` resolution from `index.html`.
+- **A rate of 1 Gbit/s or more was written 1000× too small.** `format_rate_kbps`
+  divided by 1,000,000 but labelled the result `mbit`, so a `2gbps` limit
+  reached `tc` as `2mbit`. The unit is `gbit` now (the test asserted the bug).
+- **A single bad `[global]` value no longer wipes the configuration.** Loading is
+  lenient per field (the rest of the rules, profiles and budgets survive) and an
+  unreadable file is copied aside as `*.invalid-<timestamp>` before any persist
+  can overwrite it.
+- **`Client.close()` blocked for two seconds.** It only closed the socket, which
+  on Linux does not wake a thread blocked in `recv()`; it now calls
+  `shutdown(SHUT_RDWR)` first. Also fixed in this round: non-object JSON killed
+  the connection thread, the config handlers now hold the state lock (and
+  `get_config` returns a copy), `priority: 0` and `"false"` are coerced
+  correctly, the interface sample is locked, `tt.log` is capped, timed-out
+  responses no longer leak, and a rule change no longer double-counts stats.
+- **Contrast, typography and grid of the dashboard.** The light theme failed AA
+  (danger 2.92:1, warn 3.77:1, accent 4.34:1 for small text) and the primary
+  button used dark ink on a mid-tone accent; every text/surface pair now
+  measures >= 4.5:1 in both themes. One type ladder, one 4px spacing scale and
+  real line heights replace the ad-hoc values. The `Gauge` icon drew a cross,
+  the `(not matched)` row dimmed its own text below AA, and the graph's y-labels
+  were clipped — all fixed.
+- **The offline state's "Run `throtl-cli doctor`" button did nothing**; it copies
+  the command now. The statistics sheet swallowed load errors and showed stale
+  bars from the previous range.
+
+### Changed
+
+- **The bandwidth graph is smoother and more legible**: Fritsch-Carlson
+  monotone cubic interpolation (no invented peaks), a gradient stroke with a
+  soft glow, a draw-in on mount and a proper y-axis gutter.
+- **The test suite is 4.4× faster** (88 s -> 20 s): the engine tests no longer
+  wait ~32 s per test for a shell that is holding a `sleep`, and `Client.close()`
+  no longer eats a 2 s timeout per connection. CI's Python jobs run in ~30 s.
 
 ## [0.10.3] - 2026-09-30
 
@@ -551,7 +594,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.10.3...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/Flenser42/throtl/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/Flenser42/throtl/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/Flenser42/throtl/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/Flenser42/throtl/compare/v0.10.0...v0.10.1
