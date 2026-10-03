@@ -1,6 +1,6 @@
 # Maintainer: Flenser42 <https://github.com/Flenser42>
 pkgname=throtl
-pkgver=0.10.3
+pkgver=0.11.0
 pkgrel=1
 pkgdesc="Per-application bandwidth limits and traffic prioritisation (daemon + CLI)"
 arch=('any')
@@ -13,7 +13,7 @@ makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools
 install=throtl.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 # Bei jedem Versionssprung mit 'updpkgsums' aktualisieren.
-sha256sums=('f37e9e87650738f44578b26a02ecafd038cad54db5855db3b62487ed87742029')
+sha256sums=('02e9e142d7068aaf0c42c3084d1239131a24e826f0ecbc8f35d67248e982af86')
 
 build() {
   cd "$pkgname-$pkgver"
