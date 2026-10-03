@@ -112,7 +112,10 @@ class EngineProcessTest(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         fake = Path(self._tmp.name) / "tt"
         fake.write_text(
-            "#!/bin/sh\nprintf '%s\\n' \"$@\">> \"$TT_FAKE_LOG\"\nsleep 30\n"
+            # ``exec``: der Prozess IST danach der sleep, statt eine Shell, die
+            # auf ihr Kind wartet. Ohne das braucht SIGINT ~30 s statt sofort
+            # (jeder Engine-Test kostete damit mehrere Sekunden).
+            "#!/bin/sh\nprintf '%s\\n' \"$@\">> \"$TT_FAKE_LOG\"\nexec sleep 30\n"
         )
         fake.chmod(0o755)
         self.fake = str(fake)

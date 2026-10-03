@@ -202,6 +202,14 @@ class Client:
         self._closed = True
         if self._sock is not None:
             try:
+                # shutdown() weckt einen in recv() blockierten Reader sofort.
+                # Ein blosses close() laesst ihn auf Linux bis zum naechsten
+                # Paket/EOF haengen — der join() lief dann voll in den Timeout
+                # (im Test 2 s pro Verbindung).
+                self._sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
                 self._sock.close()
             except OSError:
                 pass
