@@ -58,8 +58,9 @@ export const Search = (p: IconProps) => (
 
 export const Gauge = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M12 3v6m0 6v6" />
-    <path d="M5 12h14" />
+    <path d="M4 18a8 8 0 1 1 16 0" />
+    <path d="m12 18 4.4-5.6" />
+    <circle cx="12" cy="18" r="1.1" fill="currentColor" stroke="none" />
   </Svg>
 );
 
