@@ -1,6 +1,7 @@
 # Standard-Interpreter fuer Tests/Lint (keine GUI-Abhaengigkeiten mehr).
 PYTHON ?= python3
-RUFF ?= ruff
+# ruff: installiertes Binary bevorzugen, sonst ueber uvx (kein pip noetig).
+RUFF ?= $(shell command -v ruff >/dev/null 2>&1 && echo ruff || echo "uvx ruff")
 
 .PHONY: test lint lint-fix contrast check build clean install install-app uninstall deb app-build
 
