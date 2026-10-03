@@ -21,23 +21,38 @@ if [[ ! -d "$APP_DIR" ]]; then
   exit 1
 fi
 
+# Version, die installiert werden soll (Single Source: die Tauri-Config).
+VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+  "$APP_DIR/src-tauri/tauri.conf.json" | head -1)"
+if [[ -z "$VERSION" ]]; then
+  echo "Fehler: Version nicht aus tauri.conf.json gelesen."
+  exit 1
+fi
+
+# Nur ein Bundle DIESER Version akzeptieren: sonst wuerde ein liegengebliebenes
+# AppImage einer alten Version installiert (genau das passierte mit 0.1.0).
 find_appimage() {
-  ls -1 "$BUNDLE_DIR"/appimage/*.AppImage 2>/dev/null | head -1 || true
+  local candidate
+  for candidate in "$BUNDLE_DIR/appimage/"*_"$VERSION"_*.AppImage; do
+    [[ -f "$candidate" ]] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  return 0
 }
 
 APPIMAGE="$(find_appimage)"
 if [[ -z "$APPIMAGE" ]]; then
   if [[ "${1:-}" == "--no-build" ]]; then
-    echo "Kein AppImage vorhanden und --no-build gesetzt."
+    echo "Kein AppImage fuer Version $VERSION vorhanden und --no-build gesetzt."
+    echo "Vorhanden: $(ls -1 "$BUNDLE_DIR"/appimage/*.AppImage 2>/dev/null | tr '\n' ' ')"
     exit 1
   fi
-  echo "Baue die GUI (einmalig, ~2–3 Min) …"
+  echo "Baue die GUI fuer Version $VERSION (~2–3 Min) …"
   command -v npm   >/dev/null || { echo "npm fehlt (Node installieren)."; exit 1; }
   command -v cargo >/dev/null || { echo "cargo fehlt (rustup installieren, siehe README)."; exit 1; }
   ( cd "$APP_DIR" && npm ci --no-audit --no-fund && npm run tauri build )
   APPIMAGE="$(find_appimage)"
 fi
-[[ -n "$APPIMAGE" ]] || { echo "Build fehlgeschlagen."; exit 1; }
+[[ -n "$APPIMAGE" ]] || { echo "Build fehlgeschlagen (kein AppImage fuer $VERSION)."; exit 1; }
 
 PREFIX="$HOME/.local"
 OPT="$PREFIX/opt/throtl"
