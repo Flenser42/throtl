@@ -35,7 +35,13 @@ export function useUpdateCheck(currentVersion: string) {
       return;
     }
     if (isMock || !enabled || params.has("static")) return;
-    void check();
+    // Debounce: App passes a fallback version first and the resolved bundle
+    // version a moment later. Without the delay that identity change would
+    // fire a second request against the release API.
+    const timer = window.setTimeout(() => {
+      void check();
+    }, 400);
+    return () => window.clearTimeout(timer);
   }, [enabled, check]);
 
   const setEnabledPref = (value: boolean) => {

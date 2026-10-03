@@ -96,8 +96,8 @@
   --surface-3: oklch(0.255 0.01 265);
   --surface-hover: oklch(0.24 0.01 265);
 
-  --rule: oklch(0.3 0.01 265);
-  --rule-strong: oklch(0.44 0.012 265);
+  --rule: oklch(0.4 0.01 265);
+  --rule-strong: oklch(0.52 0.012 265);
 
   --text: oklch(0.97 0.003 265);
   --text-2: oklch(0.79 0.006 265);
@@ -513,16 +513,7 @@ p {
   .btn.danger:hover {
     background: color-mix(in oklab, var(--danger) 12%, transparent);
   }
-  .btn-ghost {
-    background: transparent;
-    border-color: transparent;
-    color: var(--text-3);
-  }
-  .btn-ghost:hover {
-    color: var(--text);
-    background: var(--surface-hover);
-  }
-  .seg {
+      .seg {
     display: inline-flex;
     align-items: stretch;
     border: 1px solid var(--rule);
@@ -716,6 +707,13 @@ p {
     cursor: pointer;
     flex: 0 0 auto;
   }
+  /* A 13px box is a small pointer target; the pseudo-element widens the hit
+     area to ~23px without changing the drawn control. */
+  .switch::before {
+    content: "";
+    position: absolute;
+    inset: -5px;
+  }
   .switch::after {
     content: "";
     position: absolute;
@@ -774,16 +772,7 @@ p {
     border-color: var(--text-3);
     color: var(--text);
   }
-  .chip.warn {
-    border-color: color-mix(in oklab, var(--warn) 60%, transparent);
-    color: var(--warn);
-  }
-  .chip svg {
-    width: 11px;
-    height: 11px;
-    flex: 0 0 auto;
-  }
-  .meta-item {
+      .meta-item {
     display: inline-flex;
     align-items: center;
     gap: 3px;
@@ -824,6 +813,17 @@ p {
     color: var(--text-3);
     border-bottom: 1px solid var(--rule);
     background: var(--surface);
+  }
+  /* Visually hidden, still announced (table header of the actions column). */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .app-footer {
     display: block;
@@ -1512,10 +1512,7 @@ p {
   .t-up {
     color: var(--up);
   }
-  .t-acc {
-    color: var(--signal);
-  }
-  .t-warn {
+    .t-warn {
     color: var(--warn);
   }
 }

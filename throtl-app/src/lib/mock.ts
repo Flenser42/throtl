@@ -15,15 +15,6 @@ export function initialFor(name: string): string {
     : clean[0].toUpperCase();
 }
 
-function spark(seed: number, n = 11, lo = 6, hi = 20): number[] {
-  const out: number[] = [];
-  for (let i = 0; i < n; i += 1) {
-    const v = Math.sin(seed * 1.7 + i * 0.9) * 0.5 + 0.5;
-    out.push(lo + v * (hi - lo));
-  }
-  return out;
-}
-
 function history(): HistoryPoint[] {
   const n = 61;
   const rawDown: number[] = [];
@@ -63,7 +54,6 @@ const APPS: AppRow[] = [
     windowState: null,
     window: { days: [0, 1, 2, 3, 4], start: "20:00", end: "00:00" },
     budget: { used: 14e9, limit: 20e9, ratio: 0.7 },
-    spark: spark(1, 11, 4, 18),
     armed: true,
     unattributed: false,
   },
@@ -81,7 +71,6 @@ const APPS: AppRow[] = [
     windowActive: false,
     windowState: null,
     budget: null,
-    spark: spark(2, 11, 8, 17),
     armed: false,
     unattributed: false,
   },
@@ -100,7 +89,6 @@ const APPS: AppRow[] = [
     windowState: "off-hours · starts 22:00",
     window: { days: [0, 1, 2, 3, 4], start: "22:00", end: "00:00" },
     budget: { used: 17.6e9, limit: 20e9, ratio: 0.88 },
-    spark: spark(3, 11, 11, 15),
     armed: true,
     unattributed: false,
   },
@@ -118,18 +106,17 @@ const APPS: AppRow[] = [
     windowActive: false,
     windowState: null,
     budget: null,
-    spark: [],
     armed: false,
     unattributed: true,
   },
 ];
 
 const TALKERS: Talker[] = [
-  { name: "Steam", initial: "S", value: 5.65, ratio: 0.92 },
-  { name: "Firefox", initial: "F", value: 2.71, ratio: 0.44 },
-  { name: "Spotify", initial: "Sp", value: 1.34, ratio: 0.22 },
-  { name: "immich", initial: "I", value: 0.88, ratio: 0.14 },
-  { name: "vpn", initial: "V", value: 0.47, ratio: 0.08 },
+  { name: "Steam" },
+  { name: "Firefox" },
+  { name: "Spotify" },
+  { name: "immich" },
+  { name: "vpn" },
 ];
 
 export function mockModel(): DashboardModel {
@@ -140,11 +127,8 @@ export function mockModel(): DashboardModel {
     downKbit: 10.4 * MBPS,
     upKbit: 0.42 * MBPS,
     matchedApps: 6,
-    trendDownPct: 12,
-    trendUpPct: 4,
     activeRules: 6,
     totalRules: 9,
-    scheduledRules: 3,
     globalDownLimit: 20 * MBPS,
     globalUpLimit: 5 * MBPS,
     globalDownMinimum: 0,
@@ -152,12 +136,10 @@ export function mockModel(): DashboardModel {
     globalPriority: "normal",
     globalUpPriority: "normal",
     history: history(),
-    windowSumBytes: 1.24e9,
     apps: APPS.map((a) => ({ ...a, matchType: "exe", matchValue: a.name.toLowerCase() })),
     topTalkers: TALKERS.map((t) => ({ ...t })),
     groupsVisible: 4,
     groupsTotal: 9,
-    sortKey: "download",
   };
 }
 

@@ -22,9 +22,13 @@ The suite needs neither a display nor root.
 Bump the same version everywhere else it is pinned, so the built packages and
 the About row agree:
 
-- `throtl-app/package.json`, `throtl-app/src-tauri/tauri.conf.json` and
-  `throtl-app/src-tauri/Cargo.toml` (the dashboard bundle version),
-- `packaging/aur/PKGBUILD` (plus its `sha256sums`).
+- `throtl-app/package.json` **and** `throtl-app/package-lock.json` (two places),
+- `throtl-app/src-tauri/tauri.conf.json` and
+  `throtl-app/src-tauri/Cargo.toml` (the dashboard bundle version; the lockfile
+  follows on the next `cargo` run),
+- `throtl-app/src/App.tsx` (`APP_VERSION_FALLBACK`, the browser fallback),
+- `packaging/aur/PKGBUILD` (plus its `sha256sums`, taken from the pushed tag:
+  `curl -sL https://github.com/Flenser42/throtl/archive/refs/tags/vX.Y.Z.tar.gz | sha256sum`).
 
 ## 3. Tag
 

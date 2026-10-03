@@ -61,6 +61,22 @@ function ProcessRow({
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Escape closes the menu and focus returns to the trigger it came from.
+  useEffect(() => {
+    if (!open) return;
+    menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setOpen(false);
+        btnRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   const toggleMenu = (target: HTMLElement) => {
     if (open) {
@@ -102,25 +118,29 @@ function ProcessRow({
         };
 
   return (
-    <div className={`row${app.unattributed ? " unattr" : ""}`}>
-      <span className="r-index mono">{String(index + 1).padStart(2, "0")}</span>
-      <span className="appicon">{app.initial}</span>
+    <div className={`row${app.unattributed ? " unattr" : ""}`} role="row">
+      <span className="r-index mono" role="cell">
+        {String(index + 1).padStart(2, "0")}
+      </span>
+      <span className="appicon" aria-hidden="true">
+        {app.initial}
+      </span>
 
-      <span className="r-id">
+      <span className="r-id" role="cell">
         <span className="r-name">{app.name}</span>
         <span className="r-meta">{app.meta}</span>
       </span>
 
-      <span className="rate-cell mono t-down" title="download">
+      <span className="rate-cell mono t-down" role="cell" title="download">
         {dl.value}
         <span className="rate-unit">{dl.unit}</span>
       </span>
-      <span className="rate-cell mono t-up" title="upload">
+      <span className="rate-cell mono t-up" role="cell" title="upload">
         {ul.value}
         <span className="rate-unit">{ul.unit}</span>
       </span>
 
-      <span className="r-limit">
+      <span className="r-limit" role="cell">
         {limit ? (
           <button type="button" className="chip acc" onClick={() => onEdit(app)}>
             {limit.down ? `${limit.down.value} ↓` : "—"}
@@ -134,13 +154,13 @@ function ProcessRow({
         )}
       </span>
 
-      <span className="r-pri">
+      <span className="r-pri" role="cell">
         {app.unattributed ? <span className="meta-item">—</span> : (
           <span className="meta-item">{PRIORITY_SHORT[app.priority] ?? "NORM"}</span>
         )}
       </span>
 
-      <span className="r-budget">
+      <span className="r-budget" role="cell">
         {app.budget ? (
           <span className="mini" title={`${app.budget.used} / ${app.budget.limit} bytes`}>
             <span className="bar">
@@ -166,7 +186,7 @@ function ProcessRow({
       </span>
 
       {app.unattributed ? (
-        <span className="r-arm">
+        <span className="r-arm" role="cell">
           <button
             type="button"
             className="overflow"
@@ -178,20 +198,24 @@ function ProcessRow({
           </button>
         </span>
       ) : (
-        <span className="r-arm">
+        <span className="r-arm" role="cell">
           <button
             type="button"
             className={`switch${app.armed ? " on" : ""}`}
             role="switch"
             aria-checked={app.armed}
-            aria-label={`Limit ${app.name}`}
+            aria-label={
+              app.armed
+                ? `Remove the bandwidth limit for ${app.name}`
+                : `Apply a bandwidth limit to ${app.name}`
+            }
             title={app.armed ? "Limit applied" : "No limit applied"}
             onClick={() => onToggleArm(app.key, !app.armed)}
           />
         </span>
       )}
 
-      <span className="menu-wrap r-menu">
+      <span className="menu-wrap r-menu" role="cell">
         <button
           type="button"
           className="overflow"
@@ -209,6 +233,7 @@ function ProcessRow({
             <div
               className="menu"
               role="menu"
+              ref={menuRef}
               style={{ position: "fixed", top: pos.top, left: pos.left }}
             >
               {app.unattributed ? (
@@ -250,7 +275,7 @@ function ProcessRow({
               >
                 <Copy size={12} /> Copy CLI command
               </button>
-              {!app.unattributed && (
+              {!app.unattributed && app.ruleKey && (
                 <>
                   <div className="menu-sep" />
                   <button
@@ -316,18 +341,36 @@ export function ProcessList({
   const unitLabel = splitRate(0, unit, 0).unit;
 
   return (
-    <div className="rows">
-      <div className="table-head">
-        <span className="r-index">#</span>
-        <span />
-        <span className="r-id">Application</span>
-        <span className="rate-cell">DL {unitLabel}</span>
-        <span className="rate-cell">UL {unitLabel}</span>
-        <span className="r-limit">Limit</span>
-        <span className="r-pri">Pri</span>
-        <span className="r-budget">Budget</span>
-        <span className="r-arm">Arm</span>
-        <span className="r-menu" />
+    <div className="rows" role="table" aria-label="Applications" aria-colcount={10}>
+      <div className="table-head" role="row">
+        <span className="r-index" role="columnheader">
+          #
+        </span>
+        <span role="cell" aria-hidden="true" />
+        <span className="r-id" role="columnheader">
+          Application
+        </span>
+        <span className="rate-cell" role="columnheader">
+          DL {unitLabel}
+        </span>
+        <span className="rate-cell" role="columnheader">
+          UL {unitLabel}
+        </span>
+        <span className="r-limit" role="columnheader">
+          Limit
+        </span>
+        <span className="r-pri" role="columnheader">
+          Pri
+        </span>
+        <span className="r-budget" role="columnheader">
+          Budget
+        </span>
+        <span className="r-arm" role="columnheader">
+          Arm
+        </span>
+        <span className="r-menu" role="columnheader">
+          <span className="sr-only">Actions</span>
+        </span>
       </div>
 
       {sorted.length === 0 ? (

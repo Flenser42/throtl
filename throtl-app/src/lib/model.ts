@@ -15,7 +15,6 @@ export interface AppRow {
   /** "off-hours · starts 22:00" style label when a window exists but is off. */
   windowState: string | null;
   budget: { used: number; limit: number; ratio: number } | null;
-  spark: number[];
   armed: boolean;
   unattributed: boolean;
   matchType?: string;
@@ -50,9 +49,6 @@ export interface RuleValues {
 
 export interface Talker {
   name: string;
-  initial: string;
-  value: number;
-  ratio: number;
 }
 
 export interface HistoryPoint {
@@ -68,11 +64,8 @@ export interface DashboardModel {
   downKbit: number;
   upKbit: number;
   matchedApps: number;
-  trendDownPct: number;
-  trendUpPct: number;
   activeRules: number;
   totalRules: number;
-  scheduledRules: number;
   globalDownLimit: number | null;
   globalUpLimit: number | null;
   globalDownMinimum: number;
@@ -80,12 +73,10 @@ export interface DashboardModel {
   globalPriority: string;
   globalUpPriority: string;
   history: HistoryPoint[];
-  windowSumBytes: number;
   apps: AppRow[];
   topTalkers: Talker[];
   groupsVisible: number;
   groupsTotal: number;
-  sortKey: "download" | "upload" | "name";
 }
 
 

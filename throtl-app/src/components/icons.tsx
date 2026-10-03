@@ -56,32 +56,6 @@ export const Search = (p: IconProps) => (
   </Svg>
 );
 
-export const Gauge = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M4 18a8 8 0 1 1 16 0" />
-    <path d="m12 18 4.4-5.6" />
-    <circle cx="12" cy="18" r="1.1" fill="currentColor" stroke="none" />
-  </Svg>
-);
-
-export const ChevronsUp = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="m5 15 7-7 7 7" />
-  </Svg>
-);
-
-export const Minus = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M5 12h14" />
-  </Svg>
-);
-
-export const ChevronsDown = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="m19 9-7 7-7-7" />
-  </Svg>
-);
-
 export const Clock = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="12" cy="12" r="9" />
@@ -94,20 +68,6 @@ export const EllipsisVertical = (p: IconProps) => (
     <circle cx="12" cy="5" r="1" />
     <circle cx="12" cy="12" r="1" />
     <circle cx="12" cy="19" r="1" />
-  </Svg>
-);
-
-export const ArrowDown = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M12 5v14" />
-    <path d="m19 12-7 7-7-7" />
-  </Svg>
-);
-
-export const ArrowUp = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M12 19V5" />
-    <path d="m5 12 7-7 7 7" />
   </Svg>
 );
 
@@ -157,13 +117,6 @@ export const Refresh = (p: IconProps) => (
   <Svg {...p}>
     <path d="M21 12a9 9 0 1 1-2.6-6.4" />
     <path d="M21 3v6h-6" />
-  </Svg>
-);
-
-export const CircleDot = (p: IconProps) => (
-  <Svg {...p}>
-    <circle cx="12" cy="12" r="9" />
-    <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
   </Svg>
 );
 

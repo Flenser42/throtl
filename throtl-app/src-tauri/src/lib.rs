@@ -25,7 +25,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::daemon_call,
             commands::daemon_status,
             commands::daemon_get_config,
             commands::daemon_get_state,

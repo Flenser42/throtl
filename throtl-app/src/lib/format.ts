@@ -18,6 +18,13 @@ const UNIT_FACTOR: Record<Unit, number> = {
 
 export const RATE_UNITS = ["B/s", "KB/s", "MB/s", "GB/s", "TB/s"] as const;
 
+/** Placeholder for a value that cannot be shown (NaN, Infinity, negative). */
+export const NO_VALUE = "—";
+
+function isRate(n: number | null | undefined): n is number {
+  return typeof n === "number" && Number.isFinite(n) && n >= 0;
+}
+
 export function trimNum(text: string): string {
   if (!text.includes(".")) return text;
   return text.replace(/0+$/, "").replace(/\.$/, "");
@@ -38,6 +45,7 @@ export function splitRate(
   precision = 2,
 ): { value: string; unit: string } {
   if (kbit == null) return { value: "unlimited", unit: "" };
+  if (!isRate(kbit)) return { value: NO_VALUE, unit: "" };
   return {
     value: trimNum(inUnit(kbit, unit).toFixed(precision)),
     unit: UNIT_LABEL[unit],
@@ -55,6 +63,7 @@ export function formatRate(
 
 /** Auto-scale a kbit/s rate to the friendliest unit (for graph axes). */
 export function autoRate(kbit: number, precision = 1): { value: string; unit: string } {
+  if (!isRate(kbit)) return { value: NO_VALUE, unit: "" };
   let bytes = (kbit * 1000) / 8;
   let i = 0;
   while (bytes >= 1000 && i < RATE_UNITS.length - 1) {
@@ -76,6 +85,7 @@ export function formatBytes(
   precision = 1,
   trimTrailing = false,
 ): string {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes)) return NO_VALUE;
   let value = Math.max(0, bytes);
   let i = 0;
   while (value >= 1000 && i < VOLUME.length - 1) {
@@ -122,7 +132,11 @@ export function parseSize(text: string): number | null {
   if (!match) return null;
   const amount = Number(match[1]);
   if (!Number.isFinite(amount)) return null;
-  const factor = SIZE_FACTORS[(match[2] ?? "b").replace(/\//g, "")] ?? 1;
+  const token = (match[2] ?? "b").replace(/\//g, "");
+  const factor = SIZE_FACTORS[token];
+  // Ein unbekanntes Einheiten-Token wird abgelehnt statt als Bytes geraten
+  // ("20 gg" war sonst still ein 20-Byte-Budget).
+  if (factor === undefined) return null;
   return amount * factor;
 }
 

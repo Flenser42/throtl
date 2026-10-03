@@ -30,6 +30,8 @@ jobs:
         run: python -m compileall -q throtl tests
       - name: Unit tests
         run: python -m unittest discover -s tests -v
+      - name: Design-token contrast (WCAG AA)
+        run: python tools/check_contrast.py
       - name: Build sdist + wheel
         run: python -m build
 

@@ -90,7 +90,6 @@ export function buildModel(input: {
       windowActive,
       windowState: rule?.window && !windowActive ? "off-hours" : null,
       budget: budget ? { used: budget.used, limit: budget.limit, ratio: budget.ratio } : null,
-      spark: [],
       armed: rule != null && (rule.download_limit != null || rule.upload_limit != null),
       unattributed: app.unattributed,
       matchType: rule?.match_type ?? "exe",
@@ -104,17 +103,8 @@ export function buildModel(input: {
     .filter((a) => !a.unattributed)
     .sort((a, b) => b.downKbit + b.upKbit - (a.downKbit + a.upKbit))
     .slice(0, 5);
-  const peak = Math.max(1, ...topApps.map((t) => t.downKbit + t.upKbit));
-  const topTalkers: Talker[] = topApps.map((t) => ({
-    name: t.name,
-    initial: t.initial,
-    value: (t.downKbit + t.upKbit) / 8000,
-    ratio: (t.downKbit + t.upKbit) / peak,
-  }));
+  const topTalkers: Talker[] = topApps.map((t) => ({ name: t.name }));
 
-  // Integral of the 1 Hz samples (kbit/s -> bytes) for the shown window.
-  const windowSumBytes = (history.reduce((sum, p) => sum + p.down + p.up, 0) * 1000) / 8;
-  const scheduled = rules.filter((r) => r.window).length;
   const active = rules.filter(
     (r) => r.download_limit != null || r.upload_limit != null,
   ).length;
@@ -126,11 +116,8 @@ export function buildModel(input: {
     downKbit: state.global.download ?? 0,
     upKbit: state.global.upload ?? 0,
     matchedApps: apps.filter((a) => !a.unattributed).length,
-    trendDownPct: 0,
-    trendUpPct: 0,
     activeRules: active,
     totalRules: rules.length,
-    scheduledRules: scheduled,
     globalDownLimit: config.global.download_limit,
     globalUpLimit: config.global.upload_limit,
     globalDownMinimum: config.global.download_minimum ?? 0,
@@ -138,11 +125,9 @@ export function buildModel(input: {
     globalPriority: config.global.download_priority,
     globalUpPriority: config.global.upload_priority,
     history,
-    windowSumBytes,
     apps,
     topTalkers,
     groupsVisible: apps.length,
     groupsTotal: apps.length,
-    sortKey: "download",
   };
 }

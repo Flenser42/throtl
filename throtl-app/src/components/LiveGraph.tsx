@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 
 import { autoRate, formatBytes, formatRate } from "../lib/format";
 import type { HistoryPoint } from "../lib/model";
+import type { Unit } from "../lib/types";
 
 const W = 820;
 const H = 196;
@@ -22,9 +23,10 @@ interface Props {
   history: HistoryPoint[];
   matchedApps: number;
   peakApp: string;
+  unit: Unit;
 }
 
-export function LiveGraph({ history, matchedApps, peakApp }: Props) {
+export function LiveGraph({ history, matchedApps, peakApp, unit }: Props) {
   const [win, setWin] = useState("1m");
   const [hover, setHover] = useState<number | null>(null);
   // `?pin=N` pins a sample for deterministic screenshots; otherwise the
@@ -115,32 +117,36 @@ export function LiveGraph({ history, matchedApps, peakApp }: Props) {
 
   const downLine = smoothPath(data.map((d) => d.down));
   const upLine = smoothPath(data.map((d) => d.up));
-  const downArea = `${downLine} L${W},${H} L${LEFT},${H} Z`;
+  // Only a real area needs a closed path; with 0 or 1 samples the empty string
+  // would be parsed as "L W,H …" and SVG would fill a triangle from the origin.
+  const downArea =
+    data.length > 1 ? `${downLine} L${W},${H} L${LEFT},${H} Z` : "";
 
-  const active = hover ?? pinned;
+  // A pinned index can point outside the current window (e.g. pinned on "all",
+  // then switched to "30s"); clamp instead of silently showing nothing.
+  const active =
+    hover ?? (pinned == null ? null : Math.max(0, Math.min(data.length - 1, pinned)));
   const activePoint = active != null ? data[active] : undefined;
   const secondsAgo = active != null ? data.length - 1 - active : 0;
 
   const onMove = (event: ReactMouseEvent) => {
     const rect = wrapRef.current?.getBoundingClientRect();
-    if (!rect || data.length < 2) return;
+    if (!rect || data.length < 2 || rect.width === 0) return;
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
     setHover(Math.round(ratio * (data.length - 1)));
   };
 
   const yLabel = (v: number) => {
-    const { value, unit } = autoRate(v, 1);
-    return `${value} ${unit}`;
+    const { value, unit: label } = autoRate(v, 1);
+    return `${value} ${label}`;
   };
 
   return (
     <div className="graph-section">
       <div className="card-head">
-        <div>
-          <div className="card-title">Live traffic</div>
-          <div className="card-sub">
-            Σ {formatBytes(windowSumBytes, 2, true)} in this window · {matchedApps} apps matched
-          </div>
+        <div className="card-title">Live traffic</div>
+        <div className="card-sub">
+          Σ {formatBytes(windowSumBytes, 2, true)} in this window · {matchedApps} apps matched
         </div>
         <div className="seg" style={{ marginLeft: "auto" }}>
           {WINDOWS.map((w) => (
@@ -192,24 +198,28 @@ export function LiveGraph({ history, matchedApps, peakApp }: Props) {
           </g>
           <line x1={LEFT} y1="168" x2={W} y2="168" stroke="var(--rule-strong)" strokeWidth="1" />
 
-          <path d={downArea} fill="var(--down-wash)" />
-          <path
-            d={downLine}
-            fill="none"
-            stroke="var(--graph-down)"
-            strokeWidth="1.5"
-            strokeLinejoin="miter"
-            strokeLinecap="butt"
-            vectorEffect="non-scaling-stroke"
-          />
-          <path
-            d={upLine}
-            fill="none"
-            stroke="var(--graph-up)"
-            strokeWidth="1.5"
-            strokeLinejoin="miter"
-            vectorEffect="non-scaling-stroke"
-          />
+          {downArea && <path d={downArea} fill="var(--down-wash)" />}
+          {downLine && (
+            <path
+              d={downLine}
+              fill="none"
+              stroke="var(--graph-down)"
+              strokeWidth="1.5"
+              strokeLinejoin="miter"
+              strokeLinecap="butt"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          {upLine && (
+            <path
+              d={upLine}
+              fill="none"
+              stroke="var(--graph-up)"
+              strokeWidth="1.5"
+              strokeLinejoin="miter"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
 
           {activePoint && active != null && (
             <>
@@ -275,17 +285,20 @@ export function LiveGraph({ history, matchedApps, peakApp }: Props) {
         </svg>
 
         {activePoint && active != null && (
-          <div className="tooltip" style={{ left: `${(x(active) / W) * 100}%` }}>
+          <div
+            className="tooltip"
+            style={{ left: `${Math.max(0.11, Math.min(0.89, x(active) / W)) * 100}%` }}
+          >
             <div className="tt-time mono">-{secondsAgo}s · {clockLabel(secondsAgo)}</div>
             <div className="tt-row">
               <i className="swatch" style={{ background: "var(--graph-down)" }} />
               Download
-              <b className="t-down">{formatRate(activePoint.down, "mBs", 2)}</b>
+              <b className="t-down">{formatRate(activePoint.down, unit, 2)}</b>
             </div>
             <div className="tt-row" style={{ marginTop: 4 }}>
               <i className="swatch" style={{ background: "var(--graph-up)" }} />
               Upload
-              <b className="t-up">{formatRate(activePoint.up, "mBs", 2)}</b>
+              <b className="t-up">{formatRate(activePoint.up, unit, 2)}</b>
             </div>
           </div>
         )}
@@ -293,13 +306,13 @@ export function LiveGraph({ history, matchedApps, peakApp }: Props) {
 
       <div className="graph-stats">
         <span>
-          min <b>{formatRate(metrics.min, "mBs", 1)}</b>
+          min <b>{formatRate(metrics.min, unit, 1)}</b>
         </span>
         <span>
-          avg <b>{formatRate(metrics.avg, "mBs", 1)}</b>
+          avg <b>{formatRate(metrics.avg, unit, 1)}</b>
         </span>
         <span>
-          max <b>{formatRate(metrics.max, "mBs", 1)}</b>
+          max <b>{formatRate(metrics.max, unit, 1)}</b>
         </span>
         <span>
           peak app <b>{peakApp}</b>

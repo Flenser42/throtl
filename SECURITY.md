@@ -6,7 +6,8 @@ Security fixes are provided for the latest release and `master`.
 
 | Version | Supported |
 |---------|-----------|
-| 0.10.x  | ✅        |
+| 0.11.x  | ✅        |
+| 0.10.x  | ⚠️ security fixes only |
 | < 0.10  | ❌        |
 
 ## Known advisories
@@ -50,12 +51,13 @@ Throtl's daemon runs as **root** and exposes a **local** Unix socket
 
 The socket is owned by `root:throtl` and has mode `0660`, so only members of
 the `throtl` group (created by `setup/install.sh`, which also adds the invoking
-user) can manage bandwidth limits. The daemon falls back to `0666` with a clear
-warning only if the `throtl` group does not exist and the daemon was started
-manually without `install.sh`. No network port is ever opened.
+user) can manage bandwidth limits. If the `throtl` group does not exist (a
+manual start without `install.sh`), the daemon **fails closed** to `0600`
+(root only) and logs a hint — it never falls back to a world-writable socket.
+`throtl-cli doctor` reports the effective permissions and `throtl-cli status`
+exposes them as `socket.restricted`. No network port is ever opened.
 
-If the socket is world-writable (`0666`), any local account can set global
-limits (including `0`, which blocks all traffic) and can delete rules — treat
-that as a misconfiguration rather than the intended mode. `throtl-cli doctor`
-reports the effective socket permissions and `throtl-cli status` exposes them
-as `socket.restricted`.
+The trust boundary is therefore "anything running as root or as a member of
+group `throtl`" — the GUI/CLI run in the user session and reach the daemon
+through that socket only. `setup/install-app.sh` installs the dashboard
+per-user, so it inherits exactly those rights and nothing more.

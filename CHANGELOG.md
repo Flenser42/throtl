@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A one-value config typo could still kill the daemon.** TOML's `1e309` is
+  `inf`; `int(inf)` raises `OverflowError`, which escaped every fallback list.
+  Rates and volumes now reject non-finite, boolean and absurd values, and the
+  repair path reports what it replaced — budgets included.
+- **Deeply nested JSON killed a connection thread** (`RecursionError` is not a
+  `ValueError`); it is a protocol error now.
+- **`cmdline` rules never matched their process for display** — the matcher
+  unescaped every pattern. It compares `cmdline` literally now, on purpose: a
+  user-supplied regex must not run inside the root daemon (ReDoS).
+- **Several RPC handlers returned live config objects** that were serialised
+  after the lock had been released; all of them copy now, and the remaining
+  unlocked config reads take the state lock.
+- **A time window with `start == end` was silently never active**; it is
+  rejected with a message instead. **`priority: false` no longer becomes
+  "critical"** (`bool` is an `int`).
+- **`yaml_quote` did not escape `\r` and other control characters**, so a rule
+  name could make the rendered YAML unparseable for `tt`.
+- **`tt.log` truncation skipped the append when the file did not exist yet**
+  (caught by its own new test) and was not atomic; `shutdown()` also joins the
+  monitor ticker now.
+- **The dashboard no longer lies about writes.** Optimistic updates were
+  overwritten by the 1 Hz poll before the daemon confirmed them and were not
+  rolled back when a write failed; writes are awaited and followed by a
+  refetch. A daemon that goes offline after the first load now shows the
+  offline state instead of frozen rates.
+- **The Rust bridge** survives a non-UTF8 frame, a timed-out call removes its
+  pending entry, a dropped connection wakes its waiters immediately, and the
+  unrestricted `daemon_call` passthrough (which reached every privileged
+  daemon method) is gone.
+- **Chart and settings details**: the crosshair and tooltip no longer sit ~11px
+  off, the tooltip and min/avg/max follow the selected unit, an empty history
+  no longer draws a phantom area, `?pin` is clamped to the window, an unknown
+  unit in a budget field is rejected instead of silently meaning bytes, and
+  NaN/Infinity render as `—`.
+- **Accessibility**: the application table carries real table semantics, the
+  row menu closes on Escape and returns focus to its trigger, the arm control
+  has a ~23px hit area and a label that names its action, and the dark theme's
+  control outlines reach 3:1.
+
 ### Changed
 
 - **The dashboard is a ruled panel now, not a card dashboard.** The visual world
@@ -18,18 +59,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   download, red for upload). All gradients, the background glows, the glowing
   status dot, the gradient app icons and the soft shadows are gone; radii are 0.
 - **The application list is a real table**: one line per app with a header row
-  (`# | Application | DL | UL | Limit | Pri | Budget | Arm`), aligned tabular
-  numbers with the unit in the header, a mono index, an 18px ruled monogram
-  instead of a gradient icon, and a squared arm box instead of a switch.
-  Columns drop by priority on narrow windows.
+  (`# | mark | Application | DL | UL | Limit | Pri | Budget | Arm | actions`),
+  aligned tabular numbers with the unit in the header, a mono index, an 18px
+  ruled monogram instead of a gradient icon, and a squared arm box instead of a
+  switch. Columns drop by priority on narrow windows.
 - **Type is smaller and tighter** (12px base, 10px labels, 30px readout) and
   every number is mono with tabular figures and a slashed zero; one 4px spacing
   scale replaces the ad-hoc values.
 - **The chart is a graticule**, not a gradient: ruled horizontals with faint
   verticals, a flat wash under the download trace, 1.5px mitered traces and a
   square cursor marker. No glow, no draw-in animation.
-- Contrast was re-measured for the new palette: 50 text/surface pairs, 0
-  failures in both themes.
+- **`make check` and CI enforce the design-token contrast** through
+  `tools/check_contrast.py` (50 pairs, 0 failures) instead of trusting a
+  written claim. Dead CSS, seven unused icons and the leftover model fields
+  from the removed sparklines/trends are gone.
 
 ## [0.11.0] - 2026-10-03
 

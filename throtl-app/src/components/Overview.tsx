@@ -76,6 +76,7 @@ export function Overview({
         history={model.history}
         matchedApps={model.matchedApps}
         peakApp={peakApp}
+        unit={model.unit}
       />
     </section>
   );

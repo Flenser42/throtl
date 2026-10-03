@@ -2,7 +2,7 @@
 PYTHON ?= python3
 RUFF ?= ruff
 
-.PHONY: test lint lint-fix check build clean install install-app uninstall deb app-build
+.PHONY: test lint lint-fix contrast check build clean install install-app uninstall deb app-build
 
 test:
 	$(PYTHON) -m unittest discover -s tests -v
@@ -13,7 +13,11 @@ lint:
 lint-fix:
 	$(RUFF) check --fix .
 
-check: lint test
+# WCAG-Kontrast der Design-Tokens (Standardbibliothek, kein Display noetig).
+contrast:
+	$(PYTHON) tools/check_contrast.py
+
+check: lint contrast test
 
 build:
 	$(PYTHON) -m build

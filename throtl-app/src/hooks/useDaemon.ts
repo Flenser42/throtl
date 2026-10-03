@@ -10,7 +10,14 @@ import {
 import { buildModel } from "../lib/buildModel";
 import { isMock, listen, invokeDaemon } from "../lib/ipc";
 import { initialFor, mockModel, tickModel } from "../lib/mock";
-import type { AppRow, DaemonView, GlobalValues, HistoryPoint, RuleValues } from "../lib/model";
+import type {
+  AppRow,
+  DaemonView,
+  DashboardModel,
+  GlobalValues,
+  HistoryPoint,
+  RuleValues,
+} from "../lib/model";
 import type { Budgets, Config, ProcessState, Unit } from "../lib/types";
 
 // 30 minutes at 1 Hz covers the "15m"/"all" graph windows.
@@ -69,7 +76,6 @@ function mockRow(values: RuleValues): AppRow {
     windowActive: false,
     windowState: null,
     budget: null,
-    spark: [],
     armed: values.download != null || values.upload != null,
     unattributed: false,
     matchType: values.matchType,
@@ -83,9 +89,11 @@ function mockRow(values: RuleValues): AppRow {
  * drives a deterministic mock so the UI can be developed and screenshotted.
  * Inside Tauri it subscribes to the Rust bridge events and invokes commands.
  *
- * Write actions update the view optimistically and return a promise that
- * rejects when the daemon refuses the change, so the caller can report it
- * instead of claiming success.
+ * Write actions are **not** optimistic: the daemon is the single source of
+ * truth, so a write is awaited and then followed by an immediate refetch. An
+ * optimistic value would be replaced by the 1 Hz poll before the daemon had
+ * confirmed it, which made the UI flip back and forth — and it lied whenever
+ * the write failed.
  */
 export function useDaemon(options: Options = {}): DaemonView & {
   toggle: (enabled: boolean) => void;
@@ -123,6 +131,12 @@ export function useDaemon(options: Options = {}): DaemonView & {
   const refreshRef = useRef<() => void>(() => {});
   // Limits remembered while a row is disarmed, so arming restores them.
   const disarmedRef = useRef<Map<string, { download: number | null; upload: number | null }>>(new Map());
+
+  /** Mock mode has no daemon: change the view directly. */
+  const mutate = (patch: (model: DashboardModel) => DashboardModel) =>
+    setView((prev) => (prev.model ? { ...prev, model: patch(prev.model) } : prev));
+
+  const refetch = () => refreshRef.current();
 
   // ---- mock mode ----
   useEffect(() => {
@@ -193,7 +207,9 @@ export function useDaemon(options: Options = {}): DaemonView & {
           // (Re)fetch config so a daemon that started later brings the UI up.
           void fetchAll();
         } else if (state === "offline" || state === "denied") {
-          setView((prev) => ({ ...prev, state: state as DaemonView["state"] }));
+          // Drop the model too: keeping it would freeze the last graph and
+          // rates on screen while the daemon is gone, with no indication.
+          setView((prev) => ({ ...prev, state: state as DaemonView["state"], model: null }));
         }
       });
       const offError = await listen<string>("daemon:error", (message) => {
@@ -220,132 +236,113 @@ export function useDaemon(options: Options = {}): DaemonView & {
   }, [onError]);
 
   const toggle = (enabled: boolean) => {
-    setView((prev) => (prev.model ? { ...prev, model: { ...prev.model, enabled } } : prev));
-    if (!isMock) {
-      invokeDaemon("toggle", { enabled }).catch((error) => onError?.(`Shaping: ${String(error)}`));
+    if (isMock) {
+      mutate((model) => ({ ...model, enabled }));
+      return;
     }
+    invokeDaemon("toggle", { enabled })
+      .then(refetch)
+      .catch((error) => onError?.(`Shaping: ${String(error)}`));
   };
 
   const setApp = async (app: AppRow, values: RuleValues) => {
-    setView((prev) =>
-      prev.model
-        ? {
-            ...prev,
-            model: {
-              ...prev.model,
-              apps: prev.model.apps.map((a) =>
-                a.key === app.key
-                  ? {
-                      ...a,
-                      downloadLimit: values.download,
-                      uploadLimit: values.upload,
-                      priority: values.priority,
-                      window: values.window,
-                      armed: values.download != null || values.upload != null,
-                    }
-                  : a,
-              ),
-            },
-          }
-        : prev,
-    );
-    if (!isMock) await setRuleApi(ruleParams(values, app.ruleKey));
+    if (isMock) {
+      mutate((model) => ({
+        ...model,
+        apps: model.apps.map((a) =>
+          a.key === app.key
+            ? {
+                ...a,
+                downloadLimit: values.download,
+                uploadLimit: values.upload,
+                priority: values.priority,
+                window: values.window,
+                armed: values.download != null || values.upload != null,
+              }
+            : a,
+        ),
+      }));
+      return;
+    }
+    await setRuleApi(ruleParams(values, app.ruleKey));
+    refetch();
   };
 
   const createRule = async (values: RuleValues) => {
-    setView((prev) =>
-      prev.model
-        ? {
-            ...prev,
-            model: {
-              ...prev.model,
-              apps: [...prev.model.apps.filter((a) => a.key !== values.name), mockRow(values)],
-              totalRules: prev.model.totalRules + 1,
-              groupsTotal: prev.model.groupsTotal + 1,
-            },
-          }
-        : prev,
-    );
-    if (!isMock) await setRuleApi(ruleParams(values));
+    if (isMock) {
+      mutate((model) => ({
+        ...model,
+        apps: [...model.apps.filter((a) => a.key !== values.name), mockRow(values)],
+        totalRules: model.totalRules + 1,
+      }));
+      return;
+    }
+    await setRuleApi(ruleParams(values));
+    refetch();
   };
 
   const removeRule = async (app: AppRow) => {
-    setView((prev) =>
-      prev.model
-        ? {
-            ...prev,
-            model: {
-              ...prev.model,
-              apps: prev.model.apps.map((a) =>
-                a.key === app.key
-                  ? {
-                      ...a,
-                      unattributed: true,
-                      armed: false,
-                      downloadLimit: null,
-                      uploadLimit: null,
-                      priority: "normal",
-                      windowLabel: null,
-                      windowActive: false,
-                      windowState: null,
-                      ruleKey: undefined,
-                      window: null,
-                      meta: `${a.meta.split(" · ")[0]} · no rule applies`,
-                    }
-                  : a,
-              ),
-            },
-          }
-        : prev,
-    );
+    if (isMock) {
+      mutate((model) => ({
+        ...model,
+        apps: model.apps.map((a) =>
+          a.key === app.key ? { ...a, unattributed: true, armed: false, ruleKey: undefined } : a,
+        ),
+      }));
+      return;
+    }
+    // Without a key there is nothing to delete; say so instead of claiming
+    // success and letting the next poll undo it.
+    if (!app.ruleKey) throw new Error("no stored rule for this row");
+    await removeRuleApi(app.ruleKey);
     disarmedRef.current.delete(app.key);
-    if (!isMock && app.ruleKey) await removeRuleApi(app.ruleKey);
+    refetch();
   };
 
   const resetStats = async () => {
     historyRef.current = [];
-    setView((prev) =>
-      prev.model ? { ...prev, model: { ...prev.model, history: [], windowSumBytes: 0 } } : prev,
-    );
-    if (!isMock) await resetStatsApi();
+    if (isMock) {
+      mutate((model) => ({ ...model, history: [] }));
+      return;
+    }
+    await resetStatsApi();
+    refetch();
   };
 
   const changeUnit = (unit: Unit) => {
-    setView((prev) => (prev.model ? { ...prev, model: { ...prev.model, unit } } : prev));
-    if (!isMock) {
-      setUnitApi(unit).catch((error) => onError?.(`Display unit: ${String(error)}`));
+    if (isMock) {
+      mutate((model) => ({ ...model, unit }));
+      return;
     }
+    setUnitApi(unit)
+      .then(refetch)
+      .catch((error) => onError?.(`Display unit: ${String(error)}`));
   };
 
   const saveGlobal = async (values: GlobalValues) => {
-    setView((prev) =>
-      prev.model
-        ? {
-            ...prev,
-            model: {
-              ...prev.model,
-              enabled: values.enabled,
-              globalDownLimit: values.download,
-              globalUpLimit: values.upload,
-              globalDownMinimum: values.downloadMinimum,
-              globalUpMinimum: values.uploadMinimum,
-              globalPriority: values.downloadPriority,
-              globalUpPriority: values.uploadPriority,
-            },
-          }
-        : prev,
-    );
-    if (!isMock) {
-      await setGlobalApi({
+    if (isMock) {
+      mutate((model) => ({
+        ...model,
         enabled: values.enabled,
-        download_limit: values.download,
-        upload_limit: values.upload,
-        download_minimum: values.downloadMinimum,
-        upload_minimum: values.uploadMinimum,
-        download_priority: values.downloadPriority,
-        upload_priority: values.uploadPriority,
-      });
+        globalDownLimit: values.download,
+        globalUpLimit: values.upload,
+        globalDownMinimum: values.downloadMinimum,
+        globalUpMinimum: values.uploadMinimum,
+        globalPriority: values.downloadPriority,
+        globalUpPriority: values.uploadPriority,
+      }));
+      return;
     }
+    await setGlobalApi({
+      enabled: values.enabled,
+      download_limit: values.download,
+      upload_limit: values.upload,
+      download_minimum: values.downloadMinimum,
+      upload_minimum: values.uploadMinimum,
+      download_priority: values.downloadPriority,
+      upload_priority: values.uploadPriority,
+    });
+    refetch();
   };
 
   /**
@@ -368,32 +365,21 @@ export function useDaemon(options: Options = {}): DaemonView & {
       next = { download: null, upload: null };
     }
 
-    const values = valuesFromApp(app, next.download, next.upload);
-    setView((prev) =>
-      prev.model
-        ? {
-            ...prev,
-            model: {
-              ...prev.model,
-              apps: prev.model.apps.map((a) =>
-                a.key === key
-                  ? {
-                      ...a,
-                      downloadLimit: next.download,
-                      uploadLimit: next.upload,
-                      armed: next.download != null || next.upload != null,
-                    }
-                  : a,
-              ),
-            },
-          }
-        : prev,
-    );
-    if (!isMock) {
-      setRuleApi(ruleParams(values, app.ruleKey)).catch((error) =>
-        onError?.(`Limit for ${app.name}: ${String(error)}`),
-      );
+    if (isMock) {
+      mutate((model) => ({
+        ...model,
+        apps: model.apps.map((a) =>
+          a.key === key
+            ? { ...a, downloadLimit: next.download, uploadLimit: next.upload, armed }
+            : a,
+        ),
+      }));
+      return;
     }
+    const values = valuesFromApp(app, next.download, next.upload);
+    setRuleApi(ruleParams(values, app.ruleKey))
+      .then(refetch)
+      .catch((error) => onError?.(`Limit for ${app.name}: ${String(error)}`));
   };
 
   return {
@@ -406,7 +392,7 @@ export function useDaemon(options: Options = {}): DaemonView & {
     resetStats,
     changeUnit,
     saveGlobal,
-    refresh: () => refreshRef.current(),
+    refresh: refetch,
     sortKey,
     setSort,
   };
