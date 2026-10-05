@@ -264,8 +264,8 @@ Rust side never exposes the socket to the webview.
 ### Updates
 
 On start, Throtl asks the public GitHub release API which version is current
-and shows a banner when yours is older — *“Throtl 0.11.0 is available — you have
-0.10.3”* — with a **View release** button that opens the release page in your
+and shows a banner when yours is older — *“Throtl 0.12.0 is available — you have
+0.11.0”* — with a **View release** button that opens the release page in your
 browser. Throtl never downloads or installs anything, needs no root for this and
 asks nothing of the daemon.
 

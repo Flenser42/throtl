@@ -1602,7 +1602,7 @@ p {
   }
 }
 
-/* The panel is keyboard-operated: the ring is a hard 1px red outline. */
+/* The panel is keyboard-operated: the ring is a hard 1px signal outline. */
 :focus-visible {
   outline: 1px solid var(--signal);
   outline-offset: 0;
