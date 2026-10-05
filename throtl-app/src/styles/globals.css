@@ -1,64 +1,65 @@
 @import "tailwindcss";
 
 /* ============================================================
-   THROTL — High-density panel
+   THROTL — Field instrument ("moss & brass")
 
-   One world: a bright sheet ruled into modules. Black ink, cool
-   greys, one signal red. Two data series only (black + red).
-   No gradients, no glows, no radii, no floating cards — the
+   One warm ruled panel, not a white/black flag. Warm ink and ivory
+   in the light theme, warm graphite in the dark. One live signal —
+   moss green — for download, armed, active and primary actions,
+   and brass for the upload series. No gradients, no glows; the
    structure is carried by 1px rules and density alone.
 
-   Light is the canonical ground (paper); the dark theme is its
-   faithful inversion, not a second design.
+   Light is the canonical ground; the dark theme is its inversion.
    ============================================================ */
 :root {
-  --bg: oklch(1 0 0);
-  --surface: oklch(1 0 0);
-  --surface-2: oklch(0.968 0.003 265);
-  --surface-3: oklch(0.945 0.004 265);
-  --surface-hover: oklch(0.955 0.004 265);
+  --bg: oklch(0.975 0.008 85);
+  --surface: oklch(0.995 0.004 85);
+  --surface-2: oklch(0.955 0.009 85);
+  --surface-3: oklch(0.93 0.011 85);
+  --surface-hover: oklch(0.95 0.009 85);
 
-  --rule: oklch(0.795 0.005 265);
-  --rule-strong: oklch(0.6 0.01 265);
+  --rule: oklch(0.86 0.009 85);
+  --rule-strong: oklch(0.68 0.013 85);
   --border: var(--rule);
   --hairline: var(--rule);
 
-  --text: oklch(0.19 0.006 265);
-  --text-2: oklch(0.38 0.008 265);
-  --text-3: oklch(0.545 0.008 265);
+  --text: oklch(0.25 0.022 65);
+  --text-2: oklch(0.43 0.02 65);
+  --text-3: oklch(0.515 0.016 65);
 
-  /* The single signal colour. Interaction is ink, not hue. */
-  --signal: oklch(0.545 0.21 27);
-  --signal-strong: oklch(0.47 0.21 27);
-  --signal-soft: oklch(0.545 0.21 27 / 0.1);
-  --on-signal: oklch(0.99 0 0);
+  /* Moss green — the live/active/armed signal and the download series. */
+  --signal: oklch(0.45 0.11 165);
+  --signal-strong: oklch(0.4 0.11 165);
+  --signal-soft: oklch(0.45 0.11 165 / 0.12);
+  --on-signal: oklch(0.99 0.004 85);
   --accent: var(--signal);
   --accent-strong: var(--signal-strong);
   --accent-soft: var(--signal-soft);
   --on-accent: var(--on-signal);
 
-  /* Two series, two inks. */
-  --down: oklch(0.19 0.006 265);
-  --up: oklch(0.545 0.21 27);
-  --graph-down: oklch(0.19 0.006 265);
-  --graph-up: oklch(0.545 0.21 27);
-  --down-wash: oklch(0.19 0.006 265 / 0.07);
-  --warn: oklch(0.55 0.16 65);
-  --danger: oklch(0.5 0.22 27);
+  /* Two series: moss (download) + brass (upload). */
+  --down: oklch(0.45 0.11 165);
+  --up: oklch(0.45 0.13 80);
+  --graph-down: oklch(0.45 0.11 165);
+  --graph-up: oklch(0.45 0.13 80);
+  --down-wash: oklch(0.45 0.11 165 / 0.08);
+  --warn: oklch(0.44 0.16 50);
+  --danger: oklch(0.44 0.2 25);
 
-  /* Squared: the panel has no rounded corners. */
-  --r-xs: 0px;
-  --r-sm: 0px;
-  --r-md: 0px;
-  --r-lg: 0px;
-  --r-xl: 0px;
-  --shadow-1: none;
-  --shadow-2: none;
+  /* Crisp, not sharp: tiny radii on controls, tinted elevation on floaters. */
+  --r-xs: 2px;
+  --r-sm: 3px;
+  --r-md: 4px;
+  --r-lg: 6px;
+  --r-xl: 8px;
+  --shadow-1: 0 1px 2px oklch(0.25 0.015 70 / 0.07);
+  --shadow-2: 0 4px 12px oklch(0.25 0.015 70 / 0.11);
+  --shadow-3: 0 12px 32px oklch(0.25 0.015 70 / 0.17);
   --card-highlight: transparent;
   --veil: transparent;
   --bg-glow: transparent;
-  --appicon-ink: oklch(0.19 0.006 265);
-  --brand-2: oklch(0.545 0.21 27);
+  --appicon-ink: oklch(0.25 0.022 65);
+  --brand-2: oklch(0.45 0.11 165);
 
   /* Type: small, tight, tabular. */
   --fs-100: 10px;
@@ -90,32 +91,35 @@
 
 /* Dark: the same panel, inverted. */
 :root[data-theme="dark"] {
-  --bg: oklch(0.145 0.008 265);
-  --surface: oklch(0.185 0.008 265);
-  --surface-2: oklch(0.225 0.01 265);
-  --surface-3: oklch(0.255 0.01 265);
-  --surface-hover: oklch(0.24 0.01 265);
+  --bg: oklch(0.15 0.012 60);
+  --surface: oklch(0.19 0.014 60);
+  --surface-2: oklch(0.24 0.016 60);
+  --surface-3: oklch(0.28 0.018 60);
+  --surface-hover: oklch(0.26 0.016 60);
 
-  --rule: oklch(0.4 0.01 265);
-  --rule-strong: oklch(0.52 0.012 265);
+  --rule: oklch(0.35 0.015 60);
+  --rule-strong: oklch(0.5 0.016 60);
 
-  --text: oklch(0.97 0.003 265);
-  --text-2: oklch(0.79 0.006 265);
-  --text-3: oklch(0.63 0.008 265);
+  --text: oklch(0.93 0.01 75);
+  --text-2: oklch(0.77 0.012 75);
+  --text-3: oklch(0.64 0.012 75);
 
-  --signal: oklch(0.68 0.2 27);
-  --signal-strong: oklch(0.74 0.19 27);
-  --signal-soft: oklch(0.68 0.2 27 / 0.16);
-  --on-signal: oklch(0.14 0.01 265);
+  --signal: oklch(0.72 0.13 165);
+  --signal-strong: oklch(0.78 0.12 165);
+  --signal-soft: oklch(0.72 0.13 165 / 0.16);
+  --on-signal: oklch(0.16 0.01 60);
 
-  --down: oklch(0.97 0.003 265);
-  --up: oklch(0.68 0.2 27);
-  --graph-down: oklch(0.97 0.003 265);
-  --graph-up: oklch(0.68 0.2 27);
-  --down-wash: oklch(0.97 0.003 265 / 0.08);
-  --warn: oklch(0.78 0.15 75);
-  --danger: oklch(0.68 0.19 27);
-  --appicon-ink: oklch(0.19 0.006 265);
+  --down: oklch(0.72 0.13 165);
+  --up: oklch(0.78 0.14 85);
+  --graph-down: oklch(0.72 0.13 165);
+  --graph-up: oklch(0.78 0.14 85);
+  --down-wash: oklch(0.72 0.13 165 / 0.1);
+  --warn: oklch(0.78 0.16 60);
+  --danger: oklch(0.7 0.19 25);
+  --shadow-1: 0 1px 2px oklch(0 0 0 / 0.4);
+  --shadow-2: 0 4px 14px oklch(0 0 0 / 0.5);
+  --shadow-3: 0 12px 34px oklch(0 0 0 / 0.6);
+  --appicon-ink: oklch(0.25 0.022 65);
 }
 
 /* Expose the tokens as Tailwind theme variables. */
@@ -210,6 +214,32 @@ p {
 }
 
 @layer components {
+  /* Quiet motion: interactive controls transition colour/transform only. */
+  .btn,
+  .icon-btn,
+  .chip,
+  .seg button,
+  .day,
+  .status-pill,
+  .pill-caret,
+  .overflow,
+  .pop-item,
+  .pop-star,
+  .pop-del,
+  .menu button {
+    transition: background-color 0.12s ease, color 0.12s ease,
+      border-color 0.12s ease, transform 0.08s ease;
+  }
+  .switch::after {
+    transition: background-color 0.12s ease;
+  }
+  .btn:active:not(:disabled),
+  .icon-btn:active:not(:disabled),
+  .seg button:active:not(:disabled),
+  .day:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
   /* ---------- Masthead ----------------------------------------------
      A dense top strip: wordmark, state, controls. Ruled, 34px. */
   header.app-header {
@@ -223,6 +253,10 @@ p {
     padding: 0 var(--sp-3);
     background: var(--surface);
     border-bottom: 1px solid var(--rule-strong);
+  }
+  header.app-header.scrolled {
+    border-bottom-color: var(--rule);
+    box-shadow: var(--shadow-2);
   }
   .brand {
     display: flex;
@@ -256,6 +290,8 @@ p {
     align-items: stretch;
     height: 22px;
     border: 1px solid var(--rule);
+    border-radius: var(--r-sm);
+    overflow: hidden;
     background: var(--surface);
     font-size: var(--fs-200);
   }
@@ -312,7 +348,7 @@ p {
     width: 24px;
     height: 22px;
     border: 1px solid transparent;
-    border-radius: 0;
+    border-radius: var(--r-sm);
     background: transparent;
     color: var(--text-2);
     cursor: pointer;
@@ -475,7 +511,7 @@ p {
     height: 22px;
     padding: 0 8px;
     border: 1px solid var(--rule);
-    border-radius: 0;
+    border-radius: var(--r-sm);
     background: var(--surface);
     color: var(--text-2);
     font: inherit;
@@ -517,6 +553,8 @@ p {
     display: inline-flex;
     align-items: stretch;
     border: 1px solid var(--rule);
+    border-radius: var(--r-sm);
+    overflow: hidden;
     background: var(--surface);
   }
   .seg button {
@@ -551,6 +589,7 @@ p {
     font-size: var(--fs-100);
     padding: 0 4px;
     border: 1px solid var(--rule);
+    border-radius: var(--r-xs);
     color: var(--text-3);
     vertical-align: middle;
   }
@@ -577,6 +616,7 @@ p {
     padding: 0 6px;
     background: var(--surface);
     border: 1px solid var(--rule);
+    border-radius: var(--r-sm);
     color: var(--text-3);
   }
   .search input {
@@ -638,6 +678,7 @@ p {
     width: 18px;
     height: 18px;
     border: 1px solid var(--rule);
+    border-radius: var(--r-sm);
     background: var(--surface-2);
     display: grid;
     place-items: center;
@@ -703,6 +744,7 @@ p {
     height: 13px;
     padding: 0;
     border: 1px solid var(--rule-strong);
+    border-radius: var(--r-xs);
     background: var(--surface);
     cursor: pointer;
     flex: 0 0 auto;
@@ -719,9 +761,6 @@ p {
     position: absolute;
     inset: 2px;
     background: transparent;
-  }
-  .switch.on {
-    border-color: var(--signal);
   }
   .switch.on::after {
     background: var(--signal);
@@ -754,6 +793,7 @@ p {
     height: 16px;
     padding: 0 4px;
     border: 1px solid var(--rule);
+    border-radius: var(--r-xs);
     background: transparent;
     color: var(--text-2);
     font: inherit;
@@ -796,6 +836,7 @@ p {
     width: 100%;
     height: 4px;
     background: var(--surface-3);
+    border-radius: var(--r-xs);
     overflow: hidden;
   }
   .bar i {
@@ -871,8 +912,8 @@ p {
     padding: 5px 7px;
     background: var(--surface);
     border: 1px solid var(--rule-strong);
-    border-radius: 0;
-    box-shadow: none;
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-2);
     backdrop-filter: none;
     pointer-events: none;
     animation: none;
@@ -947,6 +988,7 @@ p {
     font-size: var(--fs-200);
     padding: 2px 5px;
     border: 1px solid var(--rule);
+    border-radius: var(--r-sm);
     background: var(--surface-2);
     color: var(--text);
   }
@@ -1000,17 +1042,30 @@ p {
     max-width: 380px;
   }
   .toast {
-    padding: 6px 9px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
     background: var(--surface);
     border: 1px solid var(--rule-strong);
-    border-left: 3px solid var(--text);
+    border-radius: var(--r-sm);
     font-size: var(--fs-200);
-    box-shadow: none;
-    animation: none;
+    box-shadow: var(--shadow-2);
+    animation: toast-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .toast::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 1px;
+    background: var(--text-2);
+    flex: 0 0 auto;
   }
   .toast-error {
-    border-left-color: var(--danger);
     color: var(--danger);
+  }
+  .toast-error::before {
+    background: var(--danger);
   }
   .update-banner {
     display: flex;
@@ -1071,9 +1126,10 @@ p {
     flex-direction: column;
     background: var(--surface);
     border-left: 1px solid var(--rule-strong);
-    box-shadow: none;
+    border-radius: var(--r-md) 0 0 var(--r-md);
+    box-shadow: var(--shadow-3);
     outline: none;
-    animation: sheet-in 0.12s linear;
+    animation: sheet-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .sheet-head {
     display: flex;
@@ -1154,7 +1210,7 @@ p {
     height: 22px;
     padding: 0 6px;
     border: 1px solid var(--rule);
-    border-radius: 0;
+    border-radius: var(--r-sm);
     background: var(--surface);
     color: var(--text);
     font: inherit;
@@ -1210,6 +1266,7 @@ p {
     width: 26px;
     height: 20px;
     border: 1px solid var(--rule);
+    border-radius: var(--r-xs);
     background: var(--surface);
     color: var(--text-3);
     font: inherit;
@@ -1257,7 +1314,7 @@ p {
     color: var(--text-2);
   }
   .pill-state.connected {
-    border-color: var(--signal);
+    background: var(--signal-soft);
     color: var(--signal);
   }
   .popover {
@@ -1269,9 +1326,10 @@ p {
     padding: var(--sp-2);
     background: var(--surface);
     border: 1px solid var(--rule-strong);
-    border-radius: 0;
-    box-shadow: none;
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-2);
     backdrop-filter: none;
+    animation: pop-in 0.12s ease-out;
   }
   .pop-title {
     padding: 0 0 4px;
@@ -1386,10 +1444,10 @@ p {
     padding: 0;
     background: var(--surface);
     border: 1px solid var(--rule-strong);
-    border-radius: 0;
-    box-shadow: none;
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-2);
     backdrop-filter: none;
-    animation: none;
+    animation: pop-in 0.12s ease-out;
   }
   .menu button {
     display: flex;
@@ -1524,6 +1582,20 @@ p {
   }
 }
 
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
 @keyframes skel {
   to {
     background-position: -200% 0;
@@ -1547,6 +1619,23 @@ p {
     animation-duration: 0.001ms !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* ---------- Density: Compact tightens rows and readouts ---------- */
+:root[data-density="compact"] .row {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+:root[data-density="compact"] .metric,
+:root[data-density="compact"] .stat {
+  padding-top: 6px;
+  padding-bottom: 7px;
+}
+:root[data-density="compact"] .table-head,
+:root[data-density="compact"] .card-head,
+:root[data-density="compact"] .toolbar {
+  padding-top: 3px;
+  padding-bottom: 3px;
 }
 
 /* ---------- Responsive: the mosaic drops cells by priority ---------- */
