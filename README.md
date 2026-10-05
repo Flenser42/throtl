@@ -53,46 +53,63 @@ over the Unix socket — the daemon, CLI and socket protocol are unchanged.
 
 ## Features
 
-- **Per-application limits** — download/upload caps for a single app, even when
-  it runs many processes (they are grouped into one row and summed).
-- **Time windows** — give any rule a weekday + time window ("Firefox,
-  Mon–Fri 20:00–00:00"); the rule only applies inside it. Windows across
-  midnight work, and the engine re-applies automatically when a window opens
-  or closes.
-- **Priorities** — Critical / High / Normal / Low for individual apps, plus a
-  global default priority for everything that has no rule.
+Throtl is one loop: **watch who uses the connection, then decide who wins.**
+The features split into monitoring, control, budgets and automation.
+
+### Monitor
+
 - **Live graph** — download/upload over time on a real time axis. Shows the last
   60 s by default and auto-scrolls; switch the window to 30 s / 1 min / 5 min /
   15 min / All and scroll back through history at any time.
 - **Live process table** — per-app rates, editable limits and priority, sortable
   columns, colour-coded up/down values, and a filter box to focus on one app.
-- **Global switch** — turn all shaping on/off without losing your rules.
-- **Consumption budgets** — a rolling daily/weekly volume limit (global or per
-  app); the GUI warns and shows a desktop notification when it is exceeded.
-- **Budgets, editable in the app** — the **Budgets** sheet sets the global
-  daily/weekly volume and per-application budgets, showing how much is already
-  used. A desktop notification arrives at 80 % of a budget, so there is still
-  time to react.
 - **Explains itself** — every affected row says which rule applies (own limit,
   global limit, time window and whether it is active right now).
+
+### Control
+
+- **Per-application limits** — download/upload caps for a single app, even when
+  it runs many processes (they are grouped into one row and summed).
+- **Priorities** — Critical / High / Normal / Low for individual apps, plus a
+  global default priority for everything that has no rule.
+- **Time windows** — give any rule a weekday + time window ("Firefox,
+  Mon–Fri 20:00–00:00"); the rule only applies inside it. Windows across
+  midnight work, and the engine re-applies automatically when a window opens
+  or closes.
+- **Global switch** — turn all shaping on/off without losing your rules.
+
+### Budgets & statistics
+
+- **Consumption budgets** — a rolling daily/weekly volume limit (global or per
+  app); the GUI warns and shows a desktop notification when it is exceeded.
+- **Editable budgets** — the **Budgets** sheet sets the global daily/weekly
+  volume and per-application budgets, showing how much is already used. A
+  desktop notification arrives at 80 % of a budget, so there is still time to
+  react.
+- **Statistics** — persistent per-app history over 1 h / 2 days / 30 days,
+  shown as a table and a graph.
+
+### Automation
+
+- **Profiles, schedules & startup profile** — save the current limits as named
+  profiles ("University", "Evening", "Night"), switch between them automatically
+  by weekday and time, and pick one to activate on daemon startup.
+
+### Experience & platform
+
+- **Native-feeling design** — follows your system light/dark preference (or pin
+  Light/Dark in Settings); the graph and rate colours adapt with it. A guided
+  tour introduces the layout on first launch.
+- **Responsive** — TrafficToll restarts are coalesced and happen off the UI
+  thread, so the window never freezes while a change is applied.
+- **Headless CLI** — everything the GUI can do, plus `monitor`, `top`, `watch`
+  (a timed report with an optional alert threshold) and a simulation mode that
+  needs neither root nor TrafficToll.
+- **Local only** — a Unix socket, no network port. The one outbound request is
+  the optional update check (below).
 - **Knows when the service is missing** — if the daemon is not reachable, the
   window shows a status page with **Try again** and **Setup guide** instead of an
   empty table.
-- **Statistics** — persistent per-app history over 1 h / 2 days / 30 days,
-  shown as a table and a graph.
-- **Profiles, schedules & startup profile** — save the current limits as named
-  profiles ("University", "Evening", "Night"), switch between them automatically by
-  weekday and time, and pick one to activate on daemon startup.
-- **Native-feeling design** — the dashboard follows your system light/dark
-  preference (or pin Light/Dark in Settings); the graph and rate colours adapt
-  with it.
-- **Responsive** — TrafficToll restarts are coalesced and happen off the UI
-  thread, so the window never freezes while a change is applied.
-- **Headless CLI** — everything the GUI can do, plus `monitor`, `top`,
-  `watch` (a timed report with an optional alert threshold) and a simulation
-  mode that needs neither root nor TrafficToll.
-- **Local only** — a Unix socket, no network port. The one outbound request is
-  the optional update check (below).
 - **Update notice** — tells you when a newer release exists and opens its page
   in your browser. Throtl never installs anything by itself.
 
