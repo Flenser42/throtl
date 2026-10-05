@@ -1638,6 +1638,85 @@ p {
   padding-bottom: 3px;
 }
 
+/* ---------- Guided tour ------------------------------------------- */
+.tour-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 69;
+}
+.tour-highlight {
+  position: fixed;
+  z-index: 70;
+  border-radius: var(--r-sm);
+  box-shadow: 0 0 0 9999px oklch(0 0 0 / 0.55);
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  pointer-events: none;
+  transition: top 0.2s ease, left 0.2s ease, width 0.2s ease, height 0.2s ease;
+}
+.tour-card {
+  position: fixed;
+  z-index: 71;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-3);
+  padding: var(--sp-3);
+  animation: pop-in 0.14s ease-out;
+}
+.tour-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-2);
+}
+.tour-step {
+  font-size: var(--fs-100);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.tour-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.tour-close:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.tour-title {
+  font-size: var(--fs-700);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+.tour-body {
+  font-size: var(--fs-300);
+  line-height: var(--lh-base);
+  color: var(--text-2);
+  margin-bottom: var(--sp-3);
+}
+.tour-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tour-nav {
+  display: flex;
+  gap: 1px;
+}
+
 /* ---------- Responsive: the mosaic drops cells by priority ---------- */
 @media (max-width: 1080px) {
   .rows {

@@ -202,6 +202,7 @@ function ProcessRow({
           <button
             type="button"
             className={`switch${app.armed ? " on" : ""}`}
+            data-tour="arm"
             role="switch"
             aria-checked={app.armed}
             aria-label={
@@ -342,7 +343,7 @@ export function ProcessList({
 
   return (
     <div className="rows" role="table" aria-label="Applications" aria-colcount={10}>
-      <div className="table-head" role="row">
+      <div className="table-head" role="row" data-tour="table">
         <span className="r-index" role="columnheader">
           #
         </span>

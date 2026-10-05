@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { ChartLine, ChevronDown, Pause, Play, Settings, Wallet } from "./icons";
+import { ChartLine, ChevronDown, CircleHelp, Pause, Play, Settings, Wallet } from "./icons";
 
 interface Props {
   enabled: boolean;
@@ -9,6 +9,7 @@ interface Props {
   onSettings: () => void;
   onStats: () => void;
   onBudgets: () => void;
+  onTour: () => void;
   profileOpen: boolean;
   onProfileToggle: () => void;
   /** Adds a soft shadow once the page scrolls under the sticky header. */
@@ -24,6 +25,7 @@ export function Header({
   onSettings,
   onStats,
   onBudgets,
+  onTour,
   profileOpen,
   onProfileToggle,
   scrolled,
@@ -32,7 +34,7 @@ export function Header({
   return (
     <header className={`app-header${scrolled ? " scrolled" : ""}`}>
       <div className="pill-anchor">
-        <div className={`pill-group${enabled ? "" : " paused"}`}>
+        <div className={`pill-group${enabled ? "" : " paused"}`} data-tour="status">
           <button
             type="button"
             className="status-pill"
@@ -63,7 +65,7 @@ export function Header({
         Throtl
       </div>
 
-      <div className="hright">
+      <div className="hright" data-tour="actions">
         <button
           type="button"
           className="icon-btn"
@@ -99,6 +101,15 @@ export function Header({
           onClick={onSettings}
         >
           <Settings />
+        </button>
+        <button
+          type="button"
+          className="icon-btn"
+          title="Take a tour"
+          aria-label="Take a tour"
+          onClick={onTour}
+        >
+          <CircleHelp />
         </button>
       </div>
     </header>

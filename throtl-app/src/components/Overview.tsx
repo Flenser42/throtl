@@ -27,7 +27,7 @@ export function Overview({
 
   return (
     <section className="card overview">
-      <div className="overview-top">
+      <div className="overview-top" data-tour="readout">
         <div className="metric">
           <span className="metric-label">↓ Download</span>
           <div className="metric-value mono t-down">

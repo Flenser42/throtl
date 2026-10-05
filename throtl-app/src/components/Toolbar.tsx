@@ -19,7 +19,7 @@ const SORTS: { id: "download" | "upload" | "name"; label: string }[] = [
 
 export function Toolbar({ query, onQuery, sortKey, onSort, onAddRule, inputRef }: Props) {
   return (
-    <div className="toolbar">
+    <div className="toolbar" data-tour="toolbar">
       <label className="search">
         <Search size={15} />
         <input

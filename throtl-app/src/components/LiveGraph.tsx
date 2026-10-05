@@ -142,7 +142,7 @@ export function LiveGraph({ history, matchedApps, peakApp, unit }: Props) {
   };
 
   return (
-    <div className="graph-section">
+    <div className="graph-section" data-tour="graph">
       <div className="card-head">
         <div className="card-title">Live traffic</div>
         <div className="card-sub">

@@ -14,6 +14,7 @@ import { UpdateBanner } from "./components/UpdateBanner";
 import { ConnectingState, DeniedState, OfflineState } from "./components/States";
 import { ToastHost, useToasts } from "./components/Toast";
 import { Toolbar } from "./components/Toolbar";
+import { Tour } from "./components/Tour";
 import { useDaemon } from "./hooks/useDaemon";
 import { useBudgetAlerts } from "./hooks/useBudgetAlerts";
 import { useUpdateCheck } from "./hooks/useUpdateCheck";
@@ -86,6 +87,7 @@ export function App() {
   );
   const [version, setVersion] = useState(APP_VERSION_FALLBACK);
   const [scrolled, setScrolled] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -152,6 +154,23 @@ export function App() {
     }
   }, [model, editApp]);
 
+  // First run: offer the guided tour once the dashboard has data — but never
+  // during screenshot/deep-link runs, which pin a deterministic view.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (
+      params.has("static") ||
+      params.has("sheet") ||
+      params.has("mockstate") ||
+      params.has("menu") ||
+      params.has("pop")
+    )
+      return;
+    if (!model || localStorage.getItem("throtl-tour-seen")) return;
+    localStorage.setItem("throtl-tour-seen", "1");
+    setTourOpen(true);
+  }, [model]);
+
   const apps = useMemo(() => {
     if (!model) return [];
     const q = query.trim().toLowerCase();
@@ -164,6 +183,8 @@ export function App() {
     setCreateOpen(false);
     setCreateApp(null);
   }, []);
+
+  const closeTour = useCallback(() => setTourOpen(false), []);
 
   const openCreate = useCallback((app?: AppRow) => {
     setCreateApp(app ?? null);
@@ -219,6 +240,7 @@ export function App() {
         onBudgets={() => setSheet("budgets")}
         profileOpen={profileOpen}
         scrolled={scrolled}
+        onTour={() => setTourOpen(true)}
         onProfileToggle={() => setProfileOpen((v) => !v)}
         profiles={
           <ProfileMenu
@@ -390,6 +412,7 @@ export function App() {
       )}
 
       <ToastHost toasts={toasts} />
+      {tourOpen && <Tour onClose={closeTour} />}
     </div>
   );
 }
