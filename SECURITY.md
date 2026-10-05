@@ -6,9 +6,9 @@ Security fixes are provided for the latest release and `master`.
 
 | Version | Supported |
 |---------|-----------|
-| 0.11.x  | ✅        |
-| 0.10.x  | ⚠️ security fixes only |
-| < 0.10  | ❌        |
+| 0.12.x  | ✅        |
+| 0.11.x  | ⚠️ security fixes only |
+| < 0.11  | ❌        |
 
 ## Known advisories
 
