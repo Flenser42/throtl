@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-05
+
+### Changed
+
+- **A warm "moss & brass" palette replaces the signal-red instrument.** Ivory
+  and graphite neutrals take over from stark black and white, moss green marks
+  the download series and every live/active/armed state, and brass marks the
+  upload series. Controls gain small radii (2–4px), floating surfaces cast a
+  tinted soft shadow, hover/press states animate quietly, and the
+  Comfortable/Compact density setting now actually tightens the layout. WCAG AA
+  contrast is preserved (the token checker still passes 50/50).
+
 ### Fixed
 
 - **A one-value config typo could still kill the daemon.** TOML's `1e309` is
@@ -43,6 +55,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no longer draws a phantom area, `?pin` is clamped to the window, an unknown
   unit in a budget field is rejected instead of silently meaning bytes, and
   NaN/Infinity render as `—`.
+- **`setup/install-app.sh` could install a stale bundle.** It took the first
+  `*.AppImage` it found, so a leftover 0.1.0 build (from a much older release)
+  was installed as "the new version" — with a fresh timestamp, so it looked
+  current. The installer now reads the version from `tauri.conf.json`, accepts
+  only a bundle of that version, and rebuilds otherwise.
 - **Accessibility**: the application table carries real table semantics, the
   row menu closes on Escape and returns focus to its trigger, the arm control
   has a ~23px hit area and a label that names its action, and the dark theme's
@@ -661,7 +678,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/Flenser42/throtl/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Flenser42/throtl/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/Flenser42/throtl/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/Flenser42/throtl/compare/v0.10.1...v0.10.2
