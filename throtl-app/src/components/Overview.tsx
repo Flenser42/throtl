@@ -29,7 +29,7 @@ export function Overview({
     <section className="card overview">
       <div className="overview-top">
         <div className="metric">
-          <span className="metric-label">Download</span>
+          <span className="metric-label">↓ Download</span>
           <div className="metric-value mono t-down">
             <AnimatedNumber
               value={model.downKbit}
@@ -41,7 +41,7 @@ export function Overview({
         </div>
 
         <div className="metric">
-          <span className="metric-label">Upload</span>
+          <span className="metric-label">↑ Upload</span>
           <div className="metric-value mono t-up">
             <AnimatedNumber
               value={model.upKbit}
