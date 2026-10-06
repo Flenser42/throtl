@@ -1,46 +1,43 @@
-"""Persistente Bandbreiten-Statistik pro Anwendung (Punkt 5).
+"""Persistent per-application bandwidth statistics (item 5).
 
-Die GUI zeigt Live-Bandbreite nur im RAM — beim Schliessen ist alles weg.
-Dieses Modul haelt im Daemon ein rollierendes Ringpuffer-Archiv vor, damit
-spaeter Fragen wie "Wie viel habe ich diese Woche pro App geladen?" beantwortet
-werden koennen.
+The GUI shows live bandwidth only in RAM — on close it is all gone. This module
+keeps a rolling ring-buffer archive in the daemon so that questions like "how
+much did I download per app this week?" can be answered later.
 
-Datenmodell
------------
+Data model
+----------
 
-Pro Monitoring-Tick wird fuer jede App die Momentanrate (kbit/s) in **Bytes**
-umgerechnet und auf den aktuellen Bucket der jeweiligen Aufloesung addiert::
+Per monitoring tick the instantaneous rate (kbit/s) of each app is converted to
+**bytes** and added to the current bucket of the respective resolution::
 
     bytes += rate_kbit_per_s * 1000 / 8 * interval_s
 
-Drei feste Aufloesungen werden parallel gepflegt (rollierend):
+Three fixed resolutions are maintained in parallel (rolling):
 
 ===========  =============  =============  =====================
-Window       Bucket-Groesse  Anzahl Buckets  Abdeckung
+Window       Bucket size    Bucket count   Coverage
 ===========  =============  =============  =====================
-``minute``   60 s           60              1 Stunde
-``hour``     3600 s         48              2 Tage
-``day``      86400 s        30              30 Tage
+``minute``   60 s           60              1 hour
+``hour``     3600 s         48              2 days
+``day``      86400 s        30              30 days
 ===========  =============  =============  =====================
 
-Jeder Bucket ist ein ``dict`` von App-Name auf ``{"download", "upload"}`` in
-Bytes. Ein Bucket wird ueber seine ABSOLUTE Bucket-Nummer (``int(now) //
-bucket_size``) adressiert; sein Ring-Index ist ``id % count``. Wird ein Slot
-fuer eine neue absolute ID verwendet, wird er geleert — damit fallen alte
-Buckets automatisch heraus (Ringschluss). Zusaetzlich werden beim Sprung ueber
-mehr als eine Ringlaenge alle veralteten Slots verworfen.
+Each bucket is a ``dict`` of app name to ``{"download", "upload"}`` in bytes. A
+bucket is addressed by its ABSOLUTE bucket number (``int(now) // bucket_size``);
+its ring index is ``id % count``. When a slot is reused for a new absolute id it
+is cleared — so old buckets fall out automatically (ring wrap). Additionally,
+when jumping more than one ring length all stale slots are discarded.
 
-Persistenz
-----------
+Persistence
+-----------
 
-Gespeichert wird atomar (``write_text_atomic``) unter
-``<config_dir>/stats.json`` — aber nur alle ``save_every`` Ticks (Default 30)
-und bei ``flush()``/``reset()``, damit nicht jede Sekunde geschrieben wird.
-Eine kaputte Datei fuehrt zu einem leeren Start (analog zu ``load_config``),
-niemals zu einem Crash.
+Stored atomically (``write_text_atomic``) under ``<config_dir>/stats.json`` —
+but only every ``save_every`` ticks (default 30) and on ``flush()``/``reset()``,
+so it is not written every second. A broken file leads to an empty start (like
+``load_config``), never to a crash.
 
-Das Modul kommt bewusst ohne Third-Party-Dependencies aus; die Zeit kommt aus
-``time.time()`` und ist ueber den ``now``-Parameter injizierbar (Tests).
+The module deliberately has no third-party dependencies; time comes from
+``time.time()`` and is injectable via the ``now`` parameter (tests).
 """
 
 import functools
@@ -55,7 +52,7 @@ STATS_FILE_NAME = "stats.json"
 DEFAULT_INTERVAL = 1.0
 DEFAULT_SAVE_EVERY = 30
 
-# window -> (bucket_size in s, anzahl buckets)
+# window -> (bucket_size in s, bucket count)
 RESOLUTIONS = {
     "minute": (60, 60),
     "hour": (3600, 48),
@@ -65,12 +62,12 @@ VALID_WINDOWS = tuple(RESOLUTIONS)
 
 
 def _synchronized(method):
-    """Serialisiert einen StatsStore-Zugriff ueber ``self._lock``.
+    """Serialise a StatsStore access via ``self._lock``.
 
-    Der Monitor-Thread schreibt, waehrend RPC-Threads (GUI/CLI) lesen. Ohne
-    Lock koennen sich Read-Modify-Write der Buckets ueberlappen (verlorene
-    Bytes) und ``json.dumps`` waehrend einer Mutation laufen. Reentrant, weil
-    z. B. ``record`` intern ``flush`` aufruft.
+    The monitor thread writes while RPC threads (GUI/CLI) read. Without the lock
+    the buckets' read-modify-write could overlap (lost bytes) and ``json.dumps``
+    could run during a mutation. Reentrant, because e.g. ``record`` internally
+    calls ``flush``.
     """
 
     @functools.wraps(method)
@@ -82,11 +79,11 @@ def _synchronized(method):
 
 
 class StatsStore:
-    """Rollierender Byte-Zaehler pro App in drei Aufloesungen.
+    """Rolling byte counter per app in three resolutions.
 
-    ``path`` kann explizit gesetzt werden; alternativ wird ``config_dir`` +
-    ``stats.json`` verwendet. Ohne ``path`` (und ohne ``config_dir``) arbeitet
-    der Store rein im Speicher (praktisch fuer Tests).
+    ``path`` can be set explicitly; alternatively ``config_dir`` + ``stats.json``
+    is used. Without ``path`` (and without ``config_dir``) the store works purely
+    in memory (handy for tests).
     """
 
     def __init__(self, config_dir: str | None = None, path: str | None = None,
@@ -120,28 +117,28 @@ class StatsStore:
                 data = json.load(handle)
             self._from_json(data)
         except (OSError, ValueError, TypeError, KeyError):
-            # Kaputte/inkompatible Datei: leer starten statt crashen.
+            # Broken/incompatible file: start empty instead of crashing.
             self._reset_rings()
 
     def _from_json(self, data: dict) -> None:
         if not isinstance(data, dict):
-            raise ValueError("stats.json: Wurzel ist keine Tabelle")
+            raise ValueError("stats.json: root is not a table")
         raw_rings = data.get("rings")
         if not isinstance(raw_rings, dict):
-            raise ValueError("stats.json: 'rings' fehlt")
-        # Erst vollstaendig validieren, dann uebernehmen — sonst bliebe bei
-        # einem Fehler in der Mitte ein halb geladener Zustand zurueck.
+            raise ValueError("stats.json: 'rings' missing")
+        # Validate completely first, then adopt — otherwise an error in the
+        # middle would leave a half-loaded state behind.
         loaded = {}
         for name, (size, count) in RESOLUTIONS.items():
             raw = raw_rings.get(name)
             if not isinstance(raw, dict):
-                raise ValueError(f"stats.json: Aufloesung {name!r} fehlt")
+                raise ValueError(f"stats.json: resolution {name!r} missing")
             ids = raw.get("ids")
             buckets = raw.get("buckets")
             if not isinstance(ids, list) or len(ids) != count:
-                raise ValueError(f"stats.json: 'ids' fuer {name!r} ungueltig")
+                raise ValueError(f"stats.json: 'ids' for {name!r} invalid")
             if not isinstance(buckets, list) or len(buckets) != count:
-                raise ValueError(f"stats.json: 'buckets' fuer {name!r} ungueltig")
+                raise ValueError(f"stats.json: 'buckets' for {name!r} invalid")
             clean_buckets = []
             for bucket in buckets:
                 clean_buckets.append(self._clean_bucket(bucket))
@@ -189,12 +186,12 @@ class StatsStore:
 
     @_synchronized
     def flush(self) -> None:
-        """Aktuellen Stand atomar schreiben und Tick-Zaehler zuruecksetzen."""
+        """Write the current state atomically and reset the tick counter."""
         self._ticks = 0
         if not self.path:
             return
         text = json.dumps(self._to_json(), ensure_ascii=False, indent=2)
-        # 0600: die Statistik beschreibt das Nutzungsverhalten des Kontos.
+        # 0600: the statistics describe the account's usage behaviour.
         write_text_atomic(self.path, text + "\n", mode=0o600)
 
     # --- Aufzeichnen ------------------------------------------------------
@@ -203,11 +200,10 @@ class StatsStore:
     def record(self, app_name: str, download_kbit: float = 0.0,
                upload_kbit: float = 0.0, now: float | None = None,
                interval: float | None = None) -> None:
-        """Einen Monitoring-Tick fuer eine App verbuchen.
+        """Record one monitoring tick for an app.
 
-        ``interval`` ist die Laenge des Ticks in Sekunden (Default:
-        ``self.interval``). Raten (kbit/s) werden in Bytes umgerechnet und auf
-        die drei Aufloesungen addiert.
+        ``interval`` is the tick length in seconds (default: ``self.interval``).
+        Rates (kbit/s) are converted to bytes and added to the three resolutions.
         """
         if now is None:
             now = time.time()
@@ -237,11 +233,11 @@ class StatsStore:
 
     @staticmethod
     def _expire_old(ring: dict, bucket_id: int) -> None:
-        """Slots verwerfen, die nicht mehr ins aktuelle Fenster gehoeren.
+        """Discard slots that no longer belong in the current window.
 
-        Notwendig, wenn die Uhr weiterspringt (z. B. > Ringlaenge), ohne dass
-        jeder Zwischenbucket beschrieben wurde. Ohne diese Bereinigung wuerden
-        uralte Buckets im Snapshot auftauchen.
+        Necessary when the clock jumps (e.g. > ring length) without every
+        intermediate bucket having been written. Without this cleanup very old
+        buckets would show up in the snapshot.
         """
         lower = bucket_id - ring["count"] + 1
         for index, slot_id in enumerate(ring["ids"]):
@@ -256,13 +252,13 @@ class StatsStore:
             return self._rings[window]
         except KeyError:
             raise ValueError(
-                f"unbekanntes Zeitfenster {window!r} "
-                f"(erlaubt: {', '.join(VALID_WINDOWS)})"
+                f"unknown time window {window!r} "
+                f"(allowed: {', '.join(VALID_WINDOWS)})"
             ) from None
 
     @_synchronized
     def snapshot(self, window: str = "minute") -> list:
-        """Aggregierte Bytes pro App im Fenster, absteigend nach Gesamtvolumen."""
+        """Aggregated bytes per app in the window, descending by total volume."""
         ring = self._ring(window)
         totals: dict = {}
         for bucket in ring["buckets"]:
@@ -290,12 +286,12 @@ class StatsStore:
     @_synchronized
     def recent_totals(self, window: str, buckets: int,
                       now: float | None = None) -> dict:
-        """Bytes pro App ueber die letzten ``buckets`` Zeiteinheiten (rollierend).
+        """Bytes per app over the last ``buckets`` time units (rolling).
 
-        Fuer Budgets: "letzte 24 h" = 24 volle Stundenbuckets + der laufende
-        (partielle) Bucket, "letzte 7 Tage" = 7 Tagesbuckets + der laufende.
-        Der laufende Bucket zaehlt mit, damit ein rollierendes Fenster nie
-        unterzaehlt (die Grenze schneidet sonst bis zu einen Bucket ab).
+        For budgets: "last 24 h" = 24 full hour buckets + the current (partial)
+        bucket, "last 7 days" = 7 day buckets + the current one. The current
+        bucket counts, so a rolling window never undercounts (the boundary would
+        otherwise cut off up to one bucket).
         """
         ring = self._ring(window)
         timestamp = int(now if now is not None else time.time())
@@ -313,7 +309,7 @@ class StatsStore:
 
     @_synchronized
     def series(self, window: str, now: float | None = None) -> list:
-        """Bucket-Zeitreihe (aelteste zuerst) fuer den Statistik-Graph."""
+        """Bucket time series (oldest first) for the statistics graph."""
         ring = self._ring(window)
         timestamp = int(now if now is not None else time.time())
         count = ring["count"]
@@ -330,7 +326,7 @@ class StatsStore:
 
     @_synchronized
     def reset(self, persist: bool = True) -> None:
-        """Alle Buckets leeren. Standardmaessig wird der leere Stand geschrieben."""
+        """Clear all buckets. By default the empty state is written."""
         self._reset_rings()
         self._ticks = 0
         if persist and self.path:

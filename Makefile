@@ -1,6 +1,6 @@
-# Standard-Interpreter fuer Tests/Lint (keine GUI-Abhaengigkeiten mehr).
+# Standard interpreter for tests/lint (no GUI dependencies anymore).
 PYTHON ?= python3
-# ruff: installiertes Binary bevorzugen, sonst ueber uvx (kein pip noetig).
+# ruff: prefer the installed binary, otherwise via uvx (no pip needed).
 RUFF ?= $(shell command -v ruff >/dev/null 2>&1 && echo ruff || echo "uvx ruff")
 
 .PHONY: test lint lint-fix contrast check build clean install install-app uninstall deb app-build
@@ -14,7 +14,7 @@ lint:
 lint-fix:
 	$(RUFF) check --fix .
 
-# WCAG-Kontrast der Design-Tokens (Standardbibliothek, kein Display noetig).
+# WCAG contrast of the design tokens (standard library, no display needed).
 contrast:
 	$(PYTHON) tools/check_contrast.py
 

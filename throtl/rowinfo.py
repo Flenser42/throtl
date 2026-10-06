@@ -1,20 +1,20 @@
-"""Warum laeuft diese App gerade so? — die Erklaerzeile einer Tabellenzeile.
+"""Why is this app behaving like this right now? — the explainer line of a row.
 
-Beantwortet die Frage, die sonst nur das README beantwortet: gilt ein eigenes
-Limit, ein globales, und ist ein Zeitfenster gerade aktiv? Bewusst ohne Widgets
-und ohne GTK, damit die Erklaerung ohne Display (und im CI) pruefbar bleibt.
+Answers the question that otherwise only the README answers: does an own limit
+apply, a global one, and is a time window active right now? Deliberately free of
+widgets and GTK, so the explanation stays testable without a display (and in CI).
 """
 
 from .config import PRIORITY_LABELS, format_window, rule_active
 from .units import format_rate
 
-# Reihenfolge der Nennung: erst das eigene Limit, dann das Fenster.
+# Order of mention: first the own limit, then the window.
 MAX_LENGTH = 120
 
 
 def _limits(rule: dict, unit: str) -> list[str]:
-    # Gleiche Genauigkeit wie das Eingabefeld, ohne abschliessende Nullen:
-    # die Erklaerung soll den Wert nennen, den der Nutzer dort sieht.
+    # Same precision as the input field, without trailing zeros: the explanation
+    # should name the value the user sees there.
     parts = []
     down = rule.get("download_limit")
     up = rule.get("upload_limit")
@@ -38,7 +38,7 @@ def _window(rule: dict, when) -> str | None:
 
 
 def _priority(rule: dict) -> str | None:
-    """Anzeigename, wenn eine Prioritaet gesetzt ist (Normal ist die Ruhe)."""
+    """Display name, when a priority is set (Normal is the quiet default)."""
     name = rule.get("priority") or "normal"
     if name == "normal":
         return None
@@ -46,11 +46,11 @@ def _priority(rule: dict) -> str | None:
 
 
 def explain(rule, global_limits, unit: str = "mBs", when=None) -> str | None:
-    """Ein Satz, der den Zustand dieser Zeile erklaert.
+    """One sentence explaining the state of this row.
 
-    ``None`` bedeutet: es gibt nichts zu erklaeren — keine Prioritaet, kein
-    Limit, kein Fenster. Dann bleibt die Zeile still, statt in jeder Zeile
-    "kein Limit" zu wiederholen.
+    ``None`` means: there is nothing to explain — no priority, no limit, no
+    window. Then the row stays silent instead of repeating "no limit" in every
+    row.
     """
     rule = rule or {}
     global_limits = global_limits or {}

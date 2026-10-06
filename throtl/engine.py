@@ -1,22 +1,21 @@
-"""TrafficToll-Engine: YAML-Konfiguration rendern und tt-Prozess steuern.
+"""TrafficToll engine: render the YAML config and steer the tt process.
 
-Die TrafficToll-Config wird bei jeder Aenderung (Limit setzen, Prioritaet,
-global an/aus, globale Limits) neu gerendert und der `tt`-Subprozess mit der
-neuen YAML **neu gestartet**. TrafficToll hat keinen dynamischen Reload
-(Config wird einmal beim Start gelesen; er richtet die tc-Auflagen nur fuer die
-gefundenem Ports/Verbindungen nach), daher ist Neustart der zuverlaessige Weg.
+The TrafficToll config is re-rendered on every change (set a limit, priority,
+global on/off, global limits) and the ``tt`` subprocess is **restarted** with the
+new YAML. TrafficToll has no dynamic reload (the config is read once at startup;
+it installs the tc rules only for the ports/connections found then), so a restart
+is the reliable path.
 
-Semantik des YAML-Formats (vgl. example.yaml in cryzed/TrafficToll):
-- download/upload: Interface-Obergrenzen (global). Ohne sie funktioniert
-  Priorisierung nur eingeschraenkt. Fuer "kein globales Limit" lassen wir sie
-  weg (unbegrenzt); fuer die Priorisierung setzen wir ein hohes Kap (z.B. die
-  gemessene Leitung, falls der User es konfiguriert).
-- download-minimum/upload-minimum: garantierte Mindestrate fuer nicht
-  gematchten Traffic.
-- processes: Regeln mit download/upload (kbps) und -priority (int).
+Semantics of the YAML format (cf. example.yaml in cryzed/TrafficToll):
+- download/upload: interface caps (global). Without them prioritisation only
+  works in a limited way. For "no global limit" we leave them out (unlimited);
+  for prioritisation we set a high cap (e.g. the measured line, if the user
+  configured it).
+- download-minimum/upload-minimum: guaranteed minimum rate for unmatched traffic.
+- processes: rules with download/upload (kbps) and -priority (int).
 
-Da eine Prioritaet in TrafficToll pro Anwendung getrennt Download/UPLOAD haben
-kann, wir aber einen einzelnen GUI-Wert haben, werden beide gleich gesetzt.
+Since a TrafficToll priority can differ for download/upload per application, but
+we have a single GUI value, both are set equal.
 """
 
 import collections
@@ -28,18 +27,18 @@ import time
 
 from .config import priority_to_int, rule_active
 
-# Standardwerte (aus traffictoll/cli.py) in kbit/s
+# Defaults (from traffictoll/cli.py) in kbit/s
 GLOBAL_MINIMUM_DOWNLOAD = 100
 GLOBAL_MINIMUM_UPLOAD = 10
 
 
 def format_rate_kbps(kbit_per_s) -> str:
-    """Rate (kbit/s) als TrafficToll-/tc-tauglichen String.
+    """Rate (kbit/s) as a TrafficToll-/tc-compatible string.
 
-    Ausschliesslich die Bit-Formen von iproute2 verwenden (``kbit``/``mbit``).
-    ``kbps`` wird von ``tc`` ohne Ruecksicht auf die Schreibweise als ``KBps``
-    gelesen — also als Kilobyte pro Sekunde. Ein Limit von 8000 kbit/s landete
-    damit als 8000 KB/s = 64 Mbit/s in der Klasse: jedes Limit war 8x zu hoch.
+    Use only the bit forms of iproute2 (``kbit``/``mbit``). ``kbps`` is read by
+    ``tc`` as ``KBps`` regardless of spelling — i.e. kilobytes per second. A
+    limit of 8000 kbit/s landed as 8000 KB/s = 64 Mbit/s in the class: every
+    limit was 8x too high.
     """
     if kbit_per_s is None:
         return None
@@ -52,11 +51,11 @@ def format_rate_kbps(kbit_per_s) -> str:
 
 
 def yaml_quote(value: str) -> str:
-    """Minimaler Double-Quoted-YAML-Escaper fuer die Keys/Werte.
+    """Minimal double-quoted YAML escaper for the keys/values.
 
-    Escaped werden neben ``"``/``\\`` auch alle C0-Steuerzeichen (inkl. ``\r``)
-    sowie U+2028/U+2029 — ein rohes ``\r`` in einem Regelnamen liess das
-    gerenderte YAML unparsebar werden (tt startete dann nicht).
+    Escapes ``"``/``\\`` plus all C0 control characters (including ``\r``) and
+    U+2028/U+2029 — a raw ``\r`` in a rule name made the rendered YAML
+    unparseable (tt then failed to start).
     """
     out = ['"']
     for ch in value:
@@ -80,10 +79,10 @@ def yaml_quote(value: str) -> str:
 
 
 def render_tt_config(config: dict, when=None) -> str:
-    """Die Throtl-Config in TrafficToll-YAML rendern (exaktes tt-Format).
+    """Render the Throtl config as TrafficToll YAML (exact tt format).
 
-    ``when`` (``datetime``) wird fuer Zeitfenster-Regeln ausgewertet: Regeln,
-    deren Fenster jetzt nicht aktiv ist, werden ausgelassen.
+    ``when`` (``datetime``) is evaluated for time-window rules: rules whose
+    window is not currently active are omitted.
     """
     g = config["global"]
     lines = []
@@ -92,10 +91,10 @@ def render_tt_config(config: dict, when=None) -> str:
     upload_limit = g.get("upload_limit")
     enabled = g.get("enabled", True)
 
-    # Abgeschaltet: leere Config ohne aktive Regeln/Interface-Limits.
-    # tt deaktiviert das Shaping dann faktisch (keine processes, keine Limits).
+    # Disabled: empty config without active rules/interface limits.
+    # tt then effectively disables shaping (no processes, no limits).
     if not enabled:
-        lines.append("# traffic shaping deaktiviert")
+        lines.append("# traffic shaping disabled")
         return "\n".join(lines) + "\n"
 
     if download_limit is not None:
@@ -121,7 +120,7 @@ def render_tt_config(config: dict, when=None) -> str:
     if processes:
         lines.append("processes:")
         for rule in processes:
-            name = rule.get("name") or rule.get("key") or "regel"
+            name = rule.get("name") or rule.get("key") or "rule"
             lines.append(f"  {yaml_quote(name)}:")
             dl = rule.get("download_limit")
             ul = rule.get("upload_limit")
@@ -135,11 +134,11 @@ def render_tt_config(config: dict, when=None) -> str:
             lines.append(f"    upload-priority: {prio}")
             if rule.get("recursive"):
                 lines.append("    recursive: true")
-            # match: einzelnes Predicate wie in example.yaml
+            # match: a single predicate like in example.yaml
             mt = rule.get("match_type", "exe")
             mv = rule.get("match_value", "")
-            # TrafficToll matched regex gegen den echten Wert. Fuer exe/name
-            # ist das Pattern bereits re.escape()-t -> Literal-Match.
+            # TrafficToll matches a regex against the real value. For exe/name
+            # the pattern is already re.escape()-d -> literal match.
             lines.append("    match:")
             lines.append(f"      - {mt}: {yaml_quote(mv)}")
 
@@ -147,11 +146,11 @@ def render_tt_config(config: dict, when=None) -> str:
 
 
 class TrafficTollEngine:
-    """Startet/überwacht den tt-Subprozess.
+    """Start/monitor the tt subprocess.
 
-    ``command``: Basis-Kommando (Standard `tt` aus dem venv, per install.sh).
-    ``monitor_callback``: optional; wird nach einem Reload aufgerufen.
-    ``tt_argv_builder``: injizierbar (Tests) fuer die argliste.
+    ``command``: base command (default ``tt`` from the venv, via install.sh).
+    ``monitor_callback``: optional; called after a reload.
+    ``tt_argv_builder``: injectable (tests) for the arg list.
     """
 
     def __init__(self, device: str, command="tt", delay=1.0, on_restart=None,
@@ -162,24 +161,24 @@ class TrafficTollEngine:
         self.on_restart = on_restart
         self.dry_run = False
         self._proc = None
-        # RLock ist zwingend: status() haelt den Lock und wertet intern den
-        # Prozesszustand aus. Mit einem nicht-reentranten threading.Lock()
-        # blockierte der Aufruf sich selbst -> Daemon antwortete nie (Deadlock).
+        # RLock is mandatory: status() holds the lock and internally evaluates
+        # the process state. With a non-reentrant threading.Lock() the call
+        # blocked itself -> daemon never answered (deadlock).
         self._lock = threading.RLock()
-        # Getrennter Lock fuer den stderr-Puffer: der Reader-Thread darf nie
-        # auf dem Lifecycle-Lock warten muessen.
+        # Separate lock for the stderr buffer: the reader thread must never
+        # have to wait on the lifecycle lock.
         self._stderr_lock = threading.Lock()
         self._active_config = None
         self._generation = 0
         self._exit_code = None
         self._stderr_tail = collections.deque(maxlen=50)
         self._stderr_path = log_path
-        self._LOG_MAX_BYTES = 1 << 20  # 1 MiB, dann wird beschnitten
+        self._LOG_MAX_BYTES = 1 << 20  # 1 MiB, then it is truncated
         self._reader_thread = None
         self._watchdog = None
         self._last_error = None
-        # Metriken (fuer status/doctor): Apply-Haeufigkeit, Neustarts,
-        # Fehlschlaege und Dauer. Zeigt, ob das Apply-Coalescing greift.
+        # Metrics (for status/doctor): apply frequency, restarts, failures and
+        # duration. Shows whether the apply coalescing is working.
         self._applies = 0
         self._restarts = 0
         self._apply_failures = 0
@@ -187,11 +186,11 @@ class TrafficTollEngine:
         self._total_apply_seconds = 0.0
 
     def apply(self, config: dict) -> None:
-        """Neue Config schreiben und tt nur bei echter Aenderung neu starten.
+        """Write the new config and restart tt only on a real change.
 
-        Ein Neustart kostet ~2 s (tt beenden + neu aufsetzen). Deshalb wird
-        bei identischer Config (z. B. das GUI schickt beim Editieren die ganze
-        Regel zurueck) nichts getan.
+        A restart costs ~2 s (stop tt + set it up again). So for an identical
+        config (e.g. the GUI sends the whole rule back while editing) nothing
+        is done.
         """
         yaml = render_tt_config(config)
         enabled = config["global"].get("enabled", True)
@@ -205,7 +204,7 @@ class TrafficTollEngine:
             started = time.monotonic()
             self._stop_locked()
             if not enabled:
-                # Shaping deaktiviert: kein tt-Prozess
+                # Shaping disabled: no tt process
                 self._record_apply(started)
                 if self.on_restart is not None:
                     self.on_restart(disabled=True, error=None)
@@ -232,13 +231,12 @@ class TrafficTollEngine:
         self._total_apply_seconds += elapsed
 
     def _tc_cleanup(self) -> None:
-        """tc-Reste entfernen, damit tt seine QDiscs frisch aufbauen kann.
+        """Remove tc leftovers so tt can build its qdiscs fresh.
 
-        TrafficToll legt beim Start ein neues root-qdisc an. Existiert noch
-        eines aus einem vorherigen Lauf (z. B. weil tt per SIGTERM beendet
-        wurde und sein atexit-Cleanup nicht lief), scheitert der Aufbau mit
-        "Exclusivity flag on, cannot modify" / "Parent Qdisc doesn't exists"
-        und die Limits greifen nicht mehr.
+        TrafficToll creates a new root qdisc at startup. If one still exists
+        from a previous run (e.g. tt was stopped via SIGTERM and its atexit
+        cleanup did not run), the setup fails with "Exclusivity flag on, cannot
+        modify" / "Parent Qdisc doesn't exists" and the limits no longer apply.
         """
         if self.dry_run:
             return
@@ -267,8 +265,8 @@ class TrafficTollEngine:
             )
         except FileNotFoundError:
             raise RuntimeError(
-                f"TrafficToll ({self.command}) wurde nicht gefunden. "
-                "Bitte install.sh ausfuehren."
+                f"TrafficToll ({self.command}) was not found. "
+                "Please run install.sh."
             ) from None
         self._exit_code = None
         self._stderr_tail.clear()
@@ -282,12 +280,11 @@ class TrafficTollEngine:
         self._watchdog.start()
 
     def _append_stderr_log(self, line: str) -> None:
-        """Diag-Zeile anhaengen und die Datei bei Bedarf beschneiden.
+        """Append a diag line and truncate the file when needed.
 
-        ``/run/throtl`` ist tmpfs: eine unbegrenzt wachsende tt.log wuerde
-        Speicher fressen, deshalb bleibt nur der letzte Rest erhalten. Das
-        Beschneiden und Anhaengen passiert unter ``_stderr_lock``, damit zwei
-        Zeilen nicht gegeneinander verlieren.
+        ``/run/throtl`` is tmpfs: an unboundedly growing tt.log would eat
+        memory, so only the last chunk is kept. Truncation and appending happen
+        under ``_stderr_lock`` so two lines do not race each other.
         """
         path = self._stderr_path
         if not path:
@@ -297,8 +294,8 @@ class TrafficTollEngine:
                 try:
                     size = os.path.getsize(path)
                 except OSError:
-                    # Datei existiert noch nicht (erster Aufruf) — nicht als
-                    # Fehler behandeln, sonst wird nie etwas geschrieben.
+                    # File does not exist yet (first call) — do not treat it as
+                    # an error, otherwise nothing is ever written.
                     size = 0
                 if size >= self._LOG_MAX_BYTES:
                     with open(path, "r", encoding="utf-8", errors="replace") as handle:
@@ -311,7 +308,7 @@ class TrafficTollEngine:
                 pass
 
     def _drain_stderr(self) -> None:
-        """tt-stderr zeilenweise sammeln (fuer Diagnose, z.B. tc-Fehler)."""
+        """Collect tt's stderr line by line (for diagnostics, e.g. tc errors)."""
         proc = self._proc
         if proc is None or proc.stderr is None:
             return
@@ -324,7 +321,7 @@ class TrafficTollEngine:
             self._append_stderr_log(line)
 
     def _watch(self) -> None:
-        """Exit-Code des tt-Prozesses festhalten (frueher Absturz sichtbar)."""
+        """Record the tt process's exit code (an early crash stays visible)."""
         proc = self._proc
         if proc is None:
             return
@@ -335,9 +332,9 @@ class TrafficTollEngine:
     def _stop_locked(self) -> None:
         proc = self._proc
         if proc is not None and proc.poll() is None:
-            # SIGINT (nicht SIGTERM): TrafficToll faengt KeyboardInterrupt und
-            # sein atexit-Cleanup entfernt danach die QDiscs. Mit SIGTERM
-            # blieben sie liegen -> naechster Start scheitert (siehe _tc_cleanup).
+            # SIGINT (not SIGTERM): TrafficToll catches KeyboardInterrupt and
+            # its atexit cleanup then removes the qdiscs. With SIGTERM they
+            # would remain -> next start fails (see _tc_cleanup).
             try:
                 proc.send_signal(signal.SIGINT)
                 proc.wait(timeout=2.0)
@@ -350,7 +347,7 @@ class TrafficTollEngine:
                         proc.kill()
                     except OSError:
                         pass
-        # stderr-Reader-/Watchdog-Threads beenden (fds schliessen damit Reader endet)
+        # Stop the stderr reader/watchdog threads (close fds so the reader ends)
         if proc is not None:
             if proc.stderr is not None:
                 try:
@@ -369,15 +366,15 @@ class TrafficTollEngine:
         return [self.command, self.device, cfg_path, "--delay", str(self.delay)]
 
     def _write_yaml(self, yaml: str) -> str:
-        """YAML atomar im Laufzeitverzeichnis ablegen (NICHT /tmp).
+        """Place the YAML atomically in the runtime directory (NOT /tmp).
 
-        In /tmp kollidieren die Rechte verschiedener Nutzer (beobachtet:
-        EACCES auf /tmp/throtl-tt-config.yaml). Reihenfolge:
-        $THROTL_RUN_DIR -> /run/throtl -> Temp-Verzeichnis.
+        In /tmp the permissions of different users collide (observed: EACCES on
+        /tmp/throtl-tt-config.yaml). Order: $THROTL_RUN_DIR -> /run/throtl ->
+        temp directory.
 
-        Geschrieben wird atomar: ``tt`` liest die Datei beim Start komplett ein
-        und wuerde eine halb geschriebene YAML als kaputte Konfiguration
-        interpretieren (Rendern + Schreiben passiert bei jeder Aenderung).
+        Written atomically: ``tt`` reads the file completely at startup and
+        would interpret a half-written YAML as a broken config (rendering +
+        writing happens on every change).
         """
         import tempfile
 
@@ -395,15 +392,15 @@ class TrafficTollEngine:
             try:
                 os.makedirs(directory, exist_ok=True)
                 path = os.path.join(directory, "throtl-tt-config.yaml")
-                # 0600: die YAML beschreibt die Regeln des Nutzers und muss
-                # nicht fuer andere lokale Konten lesbar sein.
+                # 0600: the YAML describes the user's rules and does not need to
+                # be readable by other local accounts.
                 write_text_atomic(path, yaml, mode=0o600)
                 return path
             except OSError as error:
                 last_error = error
                 continue
         raise RuntimeError(
-            "Konnte die TrafficToll-Config nicht schreiben (versucht: "
+            "Could not write the TrafficToll config (tried: "
             f"{candidates}): {last_error}"
         )
 
@@ -416,8 +413,8 @@ class TrafficTollEngine:
             self._stop_locked()
 
     def status(self) -> dict:
-        # Kein verschachteltes Locking: der Prozesszustand wird inline gelesen
-        # statt is_running() aufzurufen (das war der Deadlock mit Lock()).
+        # No nested locking: the process state is read inline instead of calling
+        # is_running() (that was the deadlock with Lock()).
         with self._lock:
             running = self._proc is not None and self._proc.poll() is None
             exit_code = self._exit_code
@@ -444,11 +441,11 @@ class TrafficTollEngine:
 
 
 class SimEngine:
-    """Simulations-Engine (kein Root/noch kein tt installiert).
+    """Simulation engine (no root / no tt installed yet).
 
-    Werden von Tests/CLI-Demo verwendet, um Limits konzeptionell anzuwenden,
-    ohne wirklich tc-Auflagen zu setzen. Interface ist eine Teilmenge von
-    TrafficTollEngine, damit der Daemon beides bedienen kann.
+    Used by tests/CLI demo to apply limits conceptually without really setting
+    tc rules. The interface is a subset of TrafficTollEngine, so the daemon can
+    drive both.
     """
 
     def __init__(self, device="auto-interface"):
@@ -470,7 +467,7 @@ class SimEngine:
         self._rules = list(config.get("processes", []))
 
     def is_running(self) -> bool:
-        # SimEngine "laeuft" nur, wenn Shaping aktiv ist
+        # SimEngine "runs" only when shaping is active
         return self._enabled
 
     def stop(self) -> None:

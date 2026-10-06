@@ -736,7 +736,7 @@ class RpcHardeningTest(unittest.TestCase):
                 instance, "import_config", {"config": {"interface": "eth9"}}
             )
             self.assertIn("error", reply)
-            self.assertIn("Interface", reply["error"]["message"])
+            self.assertIn("interface", reply["error"]["message"])
 
     def test_bad_window_is_reported_not_silently_dropped(self):
         with tempfile.TemporaryDirectory() as tmp:

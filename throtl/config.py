@@ -1,26 +1,26 @@
-"""Konfiguration: TOML unter ~/.config/throtl/config.toml.
+"""Configuration: TOML under ~/.config/throtl/config.toml.
 
-Internes Schema (normalisierte Form, siehe ``default_config``):
+Internal schema (normalised form, see ``default_config``):
 
     {
       "version": 1,
-      "interface": "enp34s0" | None,   # None -> beim Daemon-Start automatisch ermitteln
-      "unit": "kbps" | "kBs",          # Anzeige-Einheit der GUI
+      "interface": "enp34s0" | None,   # None -> auto-detect at daemon start
+      "unit": "kbps" | "kBs",          # display unit of the GUI
       "global": {
         "enabled": bool,
-        "download_limit": int|None,    # kbit/s, None = unbegrenzt
+        "download_limit": int|None,    # kbit/s, None = unlimited
         "upload_limit": int|None,
-        "download_minimum": int,       # kbps, garantiert fuer nicht gematchten Traffic
+        "download_minimum": int,       # kbps, guaranteed for unmatched traffic
         "upload_minimum": int,
         "download_priority": str,      # "kritisch"|"hoch"|"normal"|"niedrig"
         "upload_priority": str,
       },
-      "processes": [                   # Regeln pro Anwendung
+      "processes": [                   # rules per application
         {
-          "key": "exe:/usr/lib/firefox/firefox",   # stabile Identitaet
+          "key": "exe:/usr/lib/firefox/firefox",   # stable identity
           "name": "Firefox",
           "match_type": "exe"|"name"|"cmdline",
-          "match_value": "...",        # exe/name: re.escape-t; cmdline: Regex
+          "match_value": "...",        # exe/name: re.escape-d; cmdline: regex
           "download_limit": int|None,
           "upload_limit": int|None,
           "priority": str,
@@ -30,7 +30,7 @@ Internes Schema (normalisierte Form, siehe ``default_config``):
       ],
     }
 
-TOML-Datei (flach, damit sie auch von Hand lesbar bleibt):
+TOML file (flat, so it stays readable by hand):
 
     version = 1
     interface = "enp34s0"
@@ -58,16 +58,16 @@ from . import CONFIG_DIR_NAME, write_text_atomic
 
 CONFIG_FILE_NAME = "config.toml"
 
-# Letzte Warnung aus load_config() (kaputte/ungueltige Datei). Wird vom Daemon
-# ueber status() nach aussen gereicht, damit ein Config-Problem sichtbar ist,
-# ohne dass der Dienst deshalb nicht startet.
+# Last warning from load_config() (broken/invalid file). Surfaced by the daemon
+# through status() so a config problem stays visible without the service
+# failing to start because of it.
 _LAST_CONFIG_WARNING: str | None = None
 
-# Prioritaeten. TrafficToll: kleinere Zahl = hoehere Prioritaet.
+# Priorities. TrafficToll: smaller number = higher priority.
 PRIORITY_NAMES = ("kritisch", "hoch", "normal", "niedrig")
 PRIORITY_TO_INT = {"kritisch": 0, "hoch": 1, "normal": 2, "niedrig": 3}
 PRIORITY_INT_TO_NAME = {value: name for name, value in PRIORITY_TO_INT.items()}
-# Anzeigenamen fuer die Oberflaeche (englisch); die Schluessel sind stabil.
+# Display names for the UI (English); the keys are stable.
 PRIORITY_LABELS = {
     "kritisch": "Critical",
     "hoch": "High",
@@ -78,12 +78,12 @@ PRIORITY_LABELS = {
 VALID_MATCH_TYPES = ("exe", "name", "cmdline")
 MAX_PRIORITY_INT = max(PRIORITY_TO_INT.values())
 
-# Profile + Zeitplaene (additiv zu v0.1.0). "Standard" ist immer vorhanden und
-# entspricht dem Top-Level-Zustand; profile_names() liefert ihn an Position 0.
+# Profiles + schedules (additive on top of v0.1.0). "Standard" always exists and
+# corresponds to the top-level state; profile_names() returns it at position 0.
 STANDARD_PROFILE = "Standard"
 MAX_PROFILE_NAME_LENGTH = 64
 WEEKDAY_TOKENS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-# Akzeptierte Schreibweisen fuer Wochentage (deutsch + englisch + Zahl).
+# Accepted spellings for weekdays (German + English + number).
 _WEEKDAY_ALIASES = {
     "mo": 0, "montag": 0, "mon": 0, "monday": 0, "0": 0,
     "di": 1, "dienstag": 1, "die": 1, "tue": 1, "tues": 1, "tuesday": 1, "1": 1,
@@ -97,24 +97,24 @@ _WEEKDAY_ALIASES = {
 
 
 class ConfigError(ValueError):
-    """Ungueltige Konfiguration."""
+    """Invalid configuration."""
 
 
 def priority_to_int(priority) -> int:
-    """Symbolischen Namen oder Integer in TrafficToll-Prioritaetszahl umwandeln."""
+    """Convert a symbolic name or integer into a TrafficToll priority number."""
     if isinstance(priority, str):
         name = priority.strip().lower()
         if name not in PRIORITY_TO_INT:
             raise ConfigError(
-                f"unbekannte Prioritaet {priority!r} (erlaubt: {', '.join(PRIORITY_NAMES)})"
+                f"unknown priority {priority!r} (allowed: {', '.join(PRIORITY_NAMES)})"
             )
         return PRIORITY_TO_INT[name]
-    # ``bool`` ist ein ``int``: ``True``/``False`` waeren sonst 1/0 ("kritisch").
+    # ``bool`` is an ``int``: ``True``/``False`` would otherwise be 1/0 ("critical").
     if isinstance(priority, bool):
-        raise ConfigError(f"ungueltige Prioritaet {priority!r}")
+        raise ConfigError(f"invalid priority {priority!r}")
     if isinstance(priority, int) and 0 <= priority <= MAX_PRIORITY_INT:
         return priority
-    raise ConfigError(f"ungueltige Prioritaet {priority!r}")
+    raise ConfigError(f"invalid priority {priority!r}")
 
 
 def priority_to_name(priority) -> str:
@@ -127,7 +127,7 @@ def _priority_or_error(priority) -> str:
     name = priority_to_name(priority)
     if isinstance(priority, str) and priority.lower().strip() not in PRIORITY_TO_INT:
         raise ConfigError(
-            f"unbekannte Prioritaet {priority!r} (erlaubt: {', '.join(PRIORITY_NAMES)})"
+            f"unknown priority {priority!r} (allowed: {', '.join(PRIORITY_NAMES)})"
         )
     return name
 
@@ -148,18 +148,18 @@ def _build_rule(
     escape: bool = True,
     window=None,
 ) -> dict:
-    """Neue Regel erzeugen (validiert).
+    """Create a new rule (validated).
 
-    Für exe/name-Werte wird, wenn ``escape`` gesetzt ist, re.escape angewendet.
-    Beim Laden aus TOML ist das Pattern bereits escaped -> escape=False.
+    For exe/name values, ``re.escape`` is applied when ``escape`` is set. When
+    loading from TOML the pattern is already escaped -> escape=False.
     """
     if match_type not in VALID_MATCH_TYPES:
-        raise ConfigError(f"ungueltiger match_type {match_type!r}")
+        raise ConfigError(f"invalid match_type {match_type!r}")
     if not isinstance(match_value, str) or not match_value.strip():
-        raise ConfigError("match_value darf nicht leer sein")
+        raise ConfigError("match_value must not be empty")
     if escape and match_type in ("exe", "name"):
         match_value = re.escape(match_value.strip())
-    priority_to_int(priority)  # validieren
+    priority_to_int(priority)  # validate
     return {
         "key": key or rule_key(match_type, match_value),
         "name": name or _default_name(match_value),
@@ -169,17 +169,17 @@ def _build_rule(
         "upload_limit": _rate_or_none(upload_limit),
         "priority": priority_to_name(priority),
         "recursive": bool(recursive),
-        # Optionales Zeitfenster (None = immer aktiv).
+        # Optional time window (None = always active).
         "window": normalize_window(window),
     }
 
 
 def unescape_pattern(pattern) -> str:
-    """``re.escape`` rueckgaengig machen.
+    """Undo ``re.escape``.
 
-    Gespeicherte ``match_value``-Muster sind fuer TrafficToll escaped (dort
-    werden sie als Regex benutzt). Wer sie mit einem echten Pfad oder
-    Prozessnamen vergleichen will, muss sie vorher zurueckwandeln.
+    Stored ``match_value`` patterns are escaped for TrafficToll (where they are
+    used as a regex). Whoever wants to compare them with a real path or process
+    name must convert them back first.
     """
     try:
         return re.sub(r"\\(.)", r"\1", pattern or "")
@@ -198,7 +198,7 @@ def make_rule(
     key: str | None = None,
     window=None,
 ) -> dict:
-    """Neue Regel aus Rohwerten (GUI/CLI): exe/name werden regex-escaped."""
+    """Create a new rule from raw values (GUI/CLI): exe/name get regex-escaped."""
     return _build_rule(
         name, match_type, match_value, download_limit, upload_limit,
         priority, recursive, key, escape=True, window=window,
@@ -210,11 +210,10 @@ def _default_name(match_value: str) -> str:
 
 
 def _rate_or_none(value):
-    """Rate parsen und Fehler als ConfigError melden (einheitlich fuer Aufrufer).
+    """Parse a rate and report errors as ConfigError (uniform for callers).
 
-    ``parse_rate`` lehnt bool, ``inf``/``nan`` und absurde Werte ab; das wird
-    hier auf ConfigError abgebildet, damit jede Aufrufstelle nur einen Typ
-    fangen muss.
+    ``parse_rate`` rejects bool, ``inf``/``nan`` and absurd values; that is
+    mapped to ConfigError here so every call site only catches one type.
     """
     if value is None:
         return None
@@ -227,7 +226,7 @@ def _rate_or_none(value):
 
 
 def _size_or_none(value):
-    """Volumen (Bytes) parsen; '20GB'/'5 GiB'/None -> int|None."""
+    """Parse a volume (bytes); '20GB'/'5 GiB'/None -> int|None."""
     if value is None:
         return None
     from .units import parse_size
@@ -243,13 +242,13 @@ def default_config() -> dict:
         "version": 1,
         "interface": None,
         "unit": "kbps",
-        # Aktives Profil + Profilkatalog + Zeitplaene (additiv, v0.1.0-kompatibel).
+        # Active profile + profile catalog + schedules (additive, v0.1.0-compatible).
         "active_profile": STANDARD_PROFILE,
-        # Profil, das der Daemon bei jedem Start aktiviert (None = aus).
+        # Profile the daemon activates at every start (None = off).
         "start_profile": None,
         "profiles": {},
         "schedule": [],
-        # Verbrauchs-Budgets (Bytes, rollierend: day=letzte 24h, week=7 Tage).
+        # Consumption budgets (bytes, rolling: day=last 24h, week=7 days).
         "budgets": {"enabled": True, "day": None, "week": None, "rules": []},
         "global": {
             "enabled": True,
@@ -265,7 +264,7 @@ def default_config() -> dict:
 
 
 def config_dir_default() -> str:
-    """Konfigurationsverzeichnis: $THROTL_CONFIG_DIR oder ~/.config/throtl."""
+    """Configuration directory: $THROTL_CONFIG_DIR or ~/.config/throtl."""
     env = os.environ.get("THROTL_CONFIG_DIR")
     if env:
         return env
@@ -277,13 +276,13 @@ def config_path_for(config_dir: str) -> str:
 
 
 def normalize(data: dict, *, lenient: bool = False, notes: list | None = None) -> dict:
-    """Rohe (aus TOML geladene) Daten normalisieren und validieren.
+    """Normalise and validate raw (TOML-loaded) data.
 
-    ``lenient`` (nur fuer :func:`load_config`): ein einzelner ungueltiger Wert
-    in ``[global]`` setzt nur dieses Feld auf den Default zurueck, statt die
-    ganze Datei zu verwerfen — sonst wuerde ein Tippfehler alle Regeln, Profile
-    und Budgets mitreissen. Was zurueckgesetzt wurde, landet in ``notes``.
-    ``import_config`` bleibt streng (``lenient=False``) und lehnt Muell ab.
+    ``lenient`` (only for :func:`load_config`): a single invalid value in
+    ``[global]`` resets just that field to the default instead of discarding the
+    whole file — otherwise one typo would take down all rules, profiles and
+    budgets. What was reset lands in ``notes``. ``import_config`` stays strict
+    (``lenient=False``) and rejects garbage.
     """
     repaired: list = [] if notes is None else notes
 
@@ -304,7 +303,7 @@ def normalize(data: dict, *, lenient: bool = False, notes: list | None = None) -
 
     def pick_unit():
         if unit not in DISPLAY_UNITS:
-            raise ConfigError(f"ungueltige Anzeige-Einheit {unit!r}")
+            raise ConfigError(f"invalid display unit {unit!r}")
         return unit
 
     cfg["unit"] = repair(pick_unit, "kbps", "unit")
@@ -312,7 +311,7 @@ def normalize(data: dict, *, lenient: bool = False, notes: list | None = None) -
     raw_global = data.get("global")
     if not isinstance(raw_global, dict):
         if raw_global is not None:
-            repaired.append(f"global={raw_global!r} ist keine Tabelle")
+            repaired.append(f"global={raw_global!r} is not a table")
         raw_global = {}
     g = cfg["global"]
     g["enabled"] = bool(raw_global.get("enabled", True))
@@ -322,8 +321,8 @@ def normalize(data: dict, *, lenient: bool = False, notes: list | None = None) -
     g["upload_limit"] = repair(
         lambda: _rate_or_none(raw_global.get("upload_limit")), None, "upload_limit"
     )
-    # ``0`` ist ein gueltiger Wert ("kein Minimum"); nur None faellt auf den
-    # Default zurueck. Truthiness (``or 100``) hat 0 still zu 100/10 gemacht.
+    # ``0`` is a valid value ("no minimum"); only None falls back to the
+    # default. Truthiness (``or 100``) silently turned 0 into 100/10.
     download_minimum = repair(
         lambda: _rate_or_none(raw_global.get("download_minimum")), None, "download_minimum"
     )
@@ -350,9 +349,9 @@ def normalize(data: dict, *, lenient: bool = False, notes: list | None = None) -
             processes.append(rule)
     cfg["processes"] = processes
 
-    # --- Profile + Zeitplaene (additiv) -----------------------------------
-    # Kaputte Eintraege werden uebersprungen (wie bei processes), damit eine
-    # aeltere/handgeschriebene Config weiterhin ladbar ist.
+    # --- Profiles + schedules (additive) -----------------------------------
+    # Broken entries are skipped (like processes), so an older/hand-written
+    # config stays loadable.
     try:
         cfg["active_profile"] = validate_profile_name(
             data.get("active_profile", STANDARD_PROFILE)
@@ -410,7 +409,7 @@ def normalize(data: dict, *, lenient: bool = False, notes: list | None = None) -
 
 
 def _window_from_toml(raw: dict) -> dict | None:
-    """Zeitfenster einer TOML-Regel lesen: verschachtelt ODER flach."""
+    """Read a TOML rule's time window: nested OR flat."""
     if "window" in raw:
         window = normalize_window(raw.get("window"))
         if window:
@@ -423,14 +422,14 @@ def _window_from_toml(raw: dict) -> dict | None:
 
 
 def _normalize_rule(raw) -> dict | None:
-    """Eine rohe (TOML-)Regel bauen; ungueltige liefern ``None``."""
+    """Build a raw (TOML) rule; invalid ones return ``None``."""
     if not isinstance(raw, dict):
         return None
     try:
         match_type = raw.get("match_type") or raw.get("type")
         match_value = raw.get("match_value") or raw.get("value")
         if not match_type or not match_value:
-            raise ConfigError("match_type/match_value fehlen")
+            raise ConfigError("match_type/match_value missing")
         return _build_rule(
             name=str(raw.get("name") or ""),
             match_type=str(match_type),
@@ -448,15 +447,15 @@ def _normalize_rule(raw) -> dict | None:
 
 
 def _normalize_profile(name, raw) -> dict:
-    """Ein Profil in die interne Form ``{global, processes}`` bringen.
+    """Bring a profile into the internal ``{global, processes}`` form.
 
-    Das Profil-Global darf sowohl als verschachtelte Tabelle ``[profiles.X.global]``
-    als auch flach mit ``global_*``-Keys geschrieben sein (letzteres ist das
-    Format aus der Aufgabenstellung und der Doku).
+    The profile global may be written either as a nested table
+    ``[profiles.X.global]`` or flat with ``global_*`` keys (the latter is the
+    format from the spec and the docs).
     """
     name = validate_profile_name(name)
     if not isinstance(raw, dict):
-        raise ConfigError(f"Profil {name!r} muss eine Tabelle sein")
+        raise ConfigError(f"profile {name!r} must be a table")
     profile = {"global": {}, "processes": []}
     candidates = {}
     nested = raw.get("global")
@@ -479,7 +478,7 @@ def _normalize_profile(name, raw) -> dict:
         if flat_key in raw:
             candidates[key] = raw[flat_key]
     if "global_priority" in raw:
-        # Ein einzelner Priority-Wert gilt fuer Download UND Upload.
+        # A single priority value applies to download AND upload.
         candidates["download_priority"] = raw["global_priority"]
         candidates["upload_priority"] = raw["global_priority"]
 
@@ -507,26 +506,26 @@ def _normalize_profile(name, raw) -> dict:
 
 
 def validate_profile_name(name) -> str:
-    """Profilnamen pruefen; gibt den bereinigten Namen zurueck."""
+    """Check a profile name; returns the cleaned name."""
     if not isinstance(name, str):
-        raise ConfigError("Profilname muss Text sein")
+        raise ConfigError("profile name must be text")
     name = name.strip()
     if not name:
-        raise ConfigError("Profilname darf nicht leer sein")
+        raise ConfigError("profile name must not be empty")
     if len(name) > MAX_PROFILE_NAME_LENGTH:
         raise ConfigError(
-            f"Profilname zu lang (max. {MAX_PROFILE_NAME_LENGTH} Zeichen)"
+            f"profile name too long (max. {MAX_PROFILE_NAME_LENGTH} characters)"
         )
     for char in name:
         if not (char.isalnum() or char in "_- "):
-            raise ConfigError(f"ungueltiges Zeichen {char!r} im Profilnamen")
+            raise ConfigError(f"invalid character {char!r} in profile name")
     return name
 
 
 def parse_days(value) -> set:
-    """Wochentage parsen: ``["mo","di"]`` oder ``"mo-fr"`` -> ``{0,1,...}``.
+    """Parse weekdays: ``["mo","di"]`` or ``"mo-fr"`` -> ``{0,1,...}``.
 
-    Mo=0 ... So=6. Unbekannte Tokens werden ignoriert (robustes Laden).
+    Mon=0 ... Sun=6. Unknown tokens are ignored (robust loading).
     """
     if value is None:
         return set()
@@ -553,7 +552,7 @@ def parse_days(value) -> set:
                 continue
             if start <= end:
                 days.update(range(start, end + 1))
-            else:  # umlaufende Range, z.B. "fr-mo"
+            else:  # wrapping range, e.g. "fr-mo"
                 days.update(range(start, 7))
                 days.update(range(0, end + 1))
         else:
@@ -564,7 +563,7 @@ def parse_days(value) -> set:
 
 
 def _parse_time(value) -> str | None:
-    """``"8:5"``/``"08:05"`` -> ``"08:05"``; ungueltig -> ``None``."""
+    """``"8:5"``/``"08:05"`` -> ``"08:05"``; invalid -> ``None``."""
     if not isinstance(value, str):
         return None
     text = value.strip()
@@ -587,7 +586,7 @@ def _time_to_minutes(text: str) -> int:
 
 
 def normalize_schedule(rules) -> list:
-    """Rohe Zeitplan-Regeln validieren; kaputte werden uebersprungen."""
+    """Validate raw schedule rules; broken ones are skipped."""
     result = []
     for raw in rules or []:
         if not isinstance(raw, dict):
@@ -609,13 +608,13 @@ def normalize_schedule(rules) -> list:
 
 
 def normalize_window(raw) -> dict | None:
-    """Optionales Zeitfenster einer Regel normalisieren.
+    """Normalise a rule's optional time window.
 
-    Akzeptiert ``{"days": [...], "start": "HH:MM", "end": "HH:MM"}``.
-    Fehlende/kaputte Angaben -> ``None`` (= Regel gilt immer). ``start == end``
-    wird abgelehnt: als halboffenes Intervall waere das Fenster *nie* aktiv,
-    was fast immer ein Tippfehler ist — beim Laden wird die Regel uebersprungen,
-    per RPC gibt es einen Fehler statt eines stillen Nichts.
+    Accepts ``{"days": [...], "start": "HH:MM", "end": "HH:MM"}``. Missing/broken
+    values -> ``None`` (= rule always applies). ``start == end`` is rejected: as
+    a half-open interval the window would be *never* active, which is almost
+    always a typo — when loading the rule is skipped, over RPC there is an error
+    instead of a silent nothing.
     """
     if not isinstance(raw, dict):
         return None
@@ -626,13 +625,13 @@ def normalize_window(raw) -> dict | None:
         return None
     if start == end:
         raise ConfigError(
-            f"Zeitfenster mit gleichem Start und Ende ({start}) ist nie aktiv"
+            f"time window with equal start and end ({start}) is never active"
         )
     return {"days": sorted(days), "start": start, "end": end}
 
 
 def _window_matches(window: dict, when) -> bool:
-    """Pruefen, ob ``when`` in das Zeitfenster faellt (inkl. ueber Mitternacht)."""
+    """Check whether ``when`` falls into the time window (incl. across midnight)."""
     days = set(window.get("days") or [])
     start = window.get("start")
     end = window.get("end")
@@ -644,7 +643,7 @@ def _window_matches(window: dict, when) -> bool:
     end_minutes = _time_to_minutes(end)
     if start_minutes <= end_minutes:
         return weekday in days and start_minutes <= now_minutes < end_minutes
-    # Ueber Mitternacht: Abendteil am Starttag, Morgenteil am Folgetag.
+    # Across midnight: evening part on the start day, morning part on the next.
     if weekday in days and now_minutes >= start_minutes:
         return True
     if ((weekday - 1) % 7) in days and now_minutes < end_minutes:
@@ -653,7 +652,7 @@ def _window_matches(window: dict, when) -> bool:
 
 
 def rule_active(rule: dict, when=None) -> bool:
-    """True, wenn die Regel jetzt gilt (kein Zeitfenster = immer aktiv)."""
+    """True when the rule applies now (no time window = always active)."""
     window = rule.get("window")
     if not window:
         return True
@@ -665,12 +664,12 @@ def rule_active(rule: dict, when=None) -> bool:
 
 
 def active_rules(processes, when=None) -> list:
-    """Nur die Regeln, deren Zeitfenster jetzt aktiv ist."""
+    """Only the rules whose time window is currently active."""
     return [rule for rule in (processes or []) if rule_active(rule, when)]
 
 
 def _day_ranges(days) -> list:
-    """Aufeinanderfolgende Wochentage zu Bereichen buendeln: ``Mon-Fri``."""
+    """Bundle consecutive weekdays into ranges: ``Mon-Fri``."""
     valid = [day for day in days if isinstance(day, int) and 0 <= day <= 6]
     ranges = []
     start = prev = None
@@ -694,7 +693,7 @@ def _day_ranges(days) -> list:
 
 
 def format_window(window) -> str:
-    """Zeitfenster kurz darstellen, z.B. ``"Mon-Fri 20:00-00:00"``."""
+    """Short display of a time window, e.g. ``"Mon-Fri 20:00-00:00"``."""
     if not window:
         return ""
     days = sorted(set(window.get("days") or []))
@@ -706,7 +705,7 @@ def format_window(window) -> str:
 
 
 def profile_names(cfg) -> list:
-    """Alle Profilnamen; ``"Standard"`` steht immer an Position 0."""
+    """All profile names; ``"Standard"`` always at position 0."""
     names = [STANDARD_PROFILE]
     for name in (cfg.get("profiles") or {}):
         if name != STANDARD_PROFILE:
@@ -737,14 +736,14 @@ def get_profile(cfg, name) -> dict | None:
 
 
 def apply_profile(cfg, name) -> dict:
-    """Profilwerte in die Top-Level-``global``/``processes`` kopieren.
+    """Copy the profile values into the top-level ``global``/``processes``.
 
-    Unbekanntes (und nicht ``"Standard"``) -> :class:`ConfigError`.
+    Unknown (and not ``"Standard"``) -> :class:`ConfigError`.
     """
     name = validate_profile_name(name)
     profile = get_profile(cfg, name)
     if profile is None:
-        raise ConfigError(f"unbekanntes Profil {name!r}")
+        raise ConfigError(f"unknown profile {name!r}")
     global_cfg = cfg.setdefault("global", {})
     for key, value in profile["global"].items():
         global_cfg[key] = copy.deepcopy(value)
@@ -754,7 +753,7 @@ def apply_profile(cfg, name) -> dict:
 
 
 def capture_profile(cfg, name) -> dict:
-    """Aktuellen Top-Level-Zustand als Profil sichern."""
+    """Save the current top-level state as a profile."""
     name = validate_profile_name(name)
     profile = {
         "global": copy.deepcopy(cfg.get("global") or {}),
@@ -766,7 +765,7 @@ def capture_profile(cfg, name) -> dict:
 
 
 def delete_profile(cfg, name) -> bool:
-    """Profil loeschen; ``True``, wenn es existierte."""
+    """Delete a profile; ``True`` when it existed."""
     try:
         name = validate_profile_name(name)
     except ConfigError:
@@ -781,11 +780,11 @@ def delete_profile(cfg, name) -> bool:
 
 
 def active_scheduled_profile(cfg, when=None) -> str | None:
-    """Welches Profil ist laut ``schedule`` jetzt aktiv? (erste Regel gewinnt)
+    """Which profile is active now according to ``schedule``? (first rule wins)
 
-    ``when`` ist ein ``datetime`` (Default: jetzt). Ueber Mitternacht
-    (``end < start``) gilt die Regel bis in den Folgetag: der Morgenteil zaehlt
-    fuer den Wochentag des Starttags.
+    ``when`` is a ``datetime`` (default: now). Across midnight (``end < start``)
+    the rule applies into the next day: the morning part counts for the weekday
+    of the start day.
     """
     if when is None:
         from datetime import datetime
@@ -806,10 +805,10 @@ def active_scheduled_profile(cfg, when=None) -> str | None:
             if weekday in days and start_minutes <= now_minutes < end_minutes:
                 return name
         else:
-            # Abendteil am Starttag ...
+            # Evening part on the start day ...
             if weekday in days and now_minutes >= start_minutes:
                 return name
-            # ... Morgenteil am Folgetag.
+            # ... morning part on the next day.
             if ((weekday - 1) % 7) in days and now_minutes < end_minutes:
                 return name
     return None
@@ -831,14 +830,13 @@ def _backup_broken_config(path: str) -> str | None:
 
 
 def load_config(path) -> dict:
-    """Konfiguration laden (normalisiert). Fehlende Datei -> Defaults.
+    """Load the config (normalised). Missing file -> defaults.
 
-    Eine kaputte Datei darf den Daemon nicht unstartbar machen: syntaktischer
-    Muell und (als Sicherheitsnetz) ein unerwarteter Normalisierungsfehler
-    fallen auf die Defaults zurueck, wobei das Original als ``*.invalid-*``
-    beiseitegelegt wird. Ein einzelner ungueltiger ``[global]``-Wert wird
-    dagegen nur fuer dieses Feld zurueckgesetzt, damit Regeln, Profile und
-    Budgets erhalten bleiben.
+    A broken file must not make the daemon unstartable: syntactic garbage and
+    (as a safety net) an unexpected normalisation error fall back to the
+    defaults, with the original set aside as ``*.invalid-*``. A single invalid
+    ``[global]`` value, in contrast, is reset only for that field, so rules,
+    profiles and budgets survive.
     """
     global _LAST_CONFIG_WARNING
     _LAST_CONFIG_WARNING = None
@@ -850,43 +848,43 @@ def load_config(path) -> dict:
     except (tomllib.TOMLDecodeError, OSError, UnicodeDecodeError) as error:
         backup = _backup_broken_config(path)
         _LAST_CONFIG_WARNING = (
-            f"Config {path} konnte nicht gelesen werden "
-            f"({type(error).__name__}: {error}) — es gelten die Defaults."
-            + (f" Das Original liegt unter {backup}." if backup else "")
+            f"Config {path} could not be read "
+            f"({type(error).__name__}: {error}) — using the defaults."
+            + (f" The original was saved as {backup}." if backup else "")
         )
-        print(f"Warnung: {_LAST_CONFIG_WARNING}", flush=True)
+        print(f"Warning: {_LAST_CONFIG_WARNING}", flush=True)
         return default_config()
     notes: list = []
     try:
         cfg = normalize(data, lenient=True, notes=notes)
     except (ConfigError, ValueError, TypeError, KeyError, AttributeError,
             IndexError, OverflowError) as error:
-        # Sollte mit lenient=True kaum noch passieren; bleibt als Netz.
+        # Should hardly happen with lenient=True; stays as a safety net.
         backup = _backup_broken_config(path)
         _LAST_CONFIG_WARNING = (
-            f"Config {path} konnte nicht geladen werden "
-            f"({type(error).__name__}: {error}) — es gelten die Defaults."
-            + (f" Das Original liegt unter {backup}." if backup else "")
+            f"Config {path} could not be loaded "
+            f"({type(error).__name__}: {error}) — using the defaults."
+            + (f" The original was saved as {backup}." if backup else "")
         )
-        print(f"Warnung: {_LAST_CONFIG_WARNING}", flush=True)
+        print(f"Warning: {_LAST_CONFIG_WARNING}", flush=True)
         return default_config()
     if notes:
         _LAST_CONFIG_WARNING = (
-            f"Config {path}: ungueltige Werte auf Defaults zurueckgesetzt — "
+            f"Config {path}: invalid values reset to defaults — "
             + "; ".join(notes)
         )
-        print(f"Warnung: {_LAST_CONFIG_WARNING}", flush=True)
+        print(f"Warning: {_LAST_CONFIG_WARNING}", flush=True)
     return cfg
 
 
 def last_config_warning() -> str | None:
-    """Letzte Warnung aus :func:`load_config` (None = alles in Ordnung)."""
+    """Last warning from :func:`load_config` (None = all good)."""
     return _LAST_CONFIG_WARNING
 
 
 # --------------------------------------------------------------------------
-# Minimaler TOML-Schreiber (bewusst handgerollt: keine externen Dependencies,
-# Schema ist bekannt und flach; Tests decken Escaping/Sonderfaelle ab).
+# Minimal TOML writer (deliberately hand-rolled: no external dependencies, the
+# schema is known and flat; tests cover escaping/special cases).
 # --------------------------------------------------------------------------
 
 def _quote(value: str) -> str:
@@ -911,7 +909,7 @@ def _quote(value: str) -> str:
 
 
 def _scalar(value):
-    """TOML-Skalar rendern; None -> None (Schluessel wird ausgelassen)."""
+    """Render a TOML scalar; None -> None (the key is omitted)."""
     if value is None:
         return None
     if isinstance(value, bool):
@@ -922,7 +920,7 @@ def _scalar(value):
         return repr(value)
     if isinstance(value, str):
         return _quote(value)
-    raise TypeError(f"nicht als TOML-Skalar darstellbar: {value!r}")
+    raise TypeError(f"cannot render as a TOML scalar: {value!r}")
 
 
 _GLOBAL_KEYS = (
@@ -948,7 +946,7 @@ _PROCESS_KEYS = (
 
 
 def _toml_key(key: str) -> str:
-    """Tabellen-Schluessel rendern; bei Sonderzeichen/zwei Leerzeichen quoten."""
+    """Render a table key; quote on special characters/two spaces."""
     if re.match(r"^[A-Za-z0-9_-]+$", key or ""):
         return key
     return _quote(key)
@@ -967,7 +965,7 @@ def _days_to_tokens(days) -> list:
 
 
 def _dump_rule_keys(rule: dict) -> list:
-    """Die TOML-Zeilen einer Regel (inkl. optionalem Zeitfenster)."""
+    """The TOML lines of a rule (incl. optional time window)."""
     out = []
     for key in _PROCESS_KEYS:
         value = _scalar(rule.get(key))
@@ -1008,7 +1006,7 @@ def dump_config(config: dict) -> str:
         lines.extend(_dump_rule_keys(rule))
         lines.append("")
 
-    # --- Profile (verschachtelt: [[profiles.NAME.processes]]) --------------
+    # --- Profiles (nested: [[profiles.NAME.processes]]) --------------
     _PROFILE_GLOBAL = (
         ("global_enabled", "enabled"),
         ("global_download_limit", "download_limit"),
@@ -1040,7 +1038,7 @@ def dump_config(config: dict) -> str:
             lines.extend(_dump_rule_keys(rule))
             lines.append("")
 
-    # --- Zeitplaene (flache Array-of-Tables) -------------------------------
+    # --- Schedules (flat array-of-tables) -------------------------------
     for rule in config.get("schedule") or []:
         lines.append("[[schedule]]")
         lines.append(f"profile = {_quote(str(rule.get('profile', '')))}")
@@ -1049,7 +1047,7 @@ def dump_config(config: dict) -> str:
         lines.append(f"end = {_quote(str(rule.get('end', '')))}")
         lines.append("")
 
-    # --- Verbrauchs-Budgets ------------------------------------------------
+    # --- Consumption budgets ------------------------------------------------
     budgets = config.get("budgets") or {}
     budgets_active = (budgets.get("day") or budgets.get("week")
                       or budgets.get("rules") or budgets.get("enabled") is False)
@@ -1076,22 +1074,22 @@ def dump_config(config: dict) -> str:
 
 
 def save_config(path, config: dict, mode: int | None = None) -> None:
-    """Config atomar schreiben (temp + fsync + os.replace, siehe __init__)."""
+    """Write the config atomically (temp + fsync + os.replace, see __init__)."""
     write_text_atomic(path, dump_config(config), mode=mode)
 
 
 def detect_default_interface() -> str | None:
-    """Standard-Routing-Interface ermitteln (rein aus /proc, ohne root)."""
+    """Determine the default-route interface (purely from /proc, no root)."""
     try:
         with open("/proc/net/route", "r", encoding="utf-8") as handle:
-            next(handle, None)  # Kopfzeile
+            next(handle, None)  # header line
             for line in handle:
                 fields = line.split()
                 if len(fields) >= 3 and fields[1] == "00000000" and fields[2] != "00000000":
                     return fields[0]
     except OSError:
         pass
-    # Fallback: erstes Nicht-Loopback-Interface mit Traffic
+    # Fallback: first non-loopback interface with traffic
     try:
         with open("/proc/net/dev", "r", encoding="utf-8") as handle:
             for line in handle:
@@ -1109,7 +1107,7 @@ def detect_default_interface() -> str | None:
 
 def matching_rules(processes, exe: str | None = None, name: str | None = None,
                    cmdline: str | None = None):
-    """Regeln finden, die auf einen Prozess passen (regex, wie TrafficToll)."""
+    """Find rules matching a process (regex, like TrafficToll)."""
     result = []
     for rule in processes:
         match_type = rule["match_type"]

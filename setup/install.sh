@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Throtl-Installation fuer Omarchy (Arch Linux + Hyprland, Wayland).
-# - Installiert Systempakete: nethogs, webkit2gtk-4.1 (fuer das Dashboard)
-# - Installiert TrafficToll (pip) in ein venv unter /opt/throtl
-# - Legt systemd-Service an, raeumt alte GTK-Eintraege auf
-# - Installiert optional das Tauri-Dashboard (Schritt 7)
+# Throtl installation for Omarchy (Arch Linux + Hyprland, Wayland).
+# - Installs system packages: nethogs, webkit2gtk-4.1 (for the dashboard)
+# - Installs TrafficToll (pip) into a venv under /opt/throtl
+# - Creates the systemd service, cleans up old GTK entries
+# - Optionally installs the Tauri dashboard (step 7)
 #
-# AUSFUEHREN NUR ALS ROOT/sudo:  sudo ./install.sh
+# RUN ONLY AS ROOT/sudo:  sudo ./install.sh
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SELF_DIR")"
@@ -15,30 +15,30 @@ OPT="/opt/throtl"
 ETC="/etc/throtl"
 RUN="/run/throtl"
 
-echo "=== [1/7] Systempakete installieren ==="
-# pacman-Pakete (alle in [extra]): nethogs liefert die Live-Messung,
-# iproute2 stellt 'tc' bereit, webkit2gtk-4.1 ist die Laufzeit des Dashboards.
+echo "=== [1/7] Install system packages ==="
+# pacman packages (all in [extra]): nethogs provides the live measurement,
+# iproute2 provides 'tc', webkit2gtk-4.1 is the dashboard's runtime.
 if command -v pacman >/dev/null 2>&1; then
   sudo pacman -S --needed --noconfirm nethogs webkit2gtk-4.1 iproute2
 else
-  echo "   Kein pacman gefunden (kein Arch/Omarchy). Bitte vorher installieren:"
-  echo "     nethogs, iproute2 (tc), webkit2gtk-4.1 (Laufzeit des Dashboards)"
+  echo "   No pacman found (not Arch/Omarchy). Please install first:"
+  echo "     nethogs, iproute2 (tc), webkit2gtk-4.1 (dashboard runtime)"
 fi
 
-echo "=== [2/7] TrafficToll in venv installieren ==="
+echo "=== [2/7] Install TrafficToll into a venv ==="
 sudo mkdir -p "$OPT"
 if [ ! -x "$OPT"/venv/bin/python ]; then
   sudo /usr/bin/python3 -m venv "$OPT/venv"
 fi
-# pip fuer das venv bereitstellen (falls fehlt)
+# Provide pip for the venv (if missing)
 if ! "$OPT/venv/bin/python" -c "import pip" >/dev/null 2>&1; then
   sudo "$OPT/venv/bin/python" -m ensurepip --upgrade || true
 fi
 sudo "$OPT/venv/bin/pip" install --upgrade pip
 sudo "$OPT/venv/bin/pip" install traffictoll
 
-echo "=== [3/7] Projektdateien kopieren ==="
-# Alte Kopie entfernen, damit keine veralteten Module/__pycache__ liegen bleiben.
+echo "=== [3/7] Copy project files ==="
+# Remove the old copy so no stale modules/__pycache__ linger.
 sudo rm -rf "$OPT/throtl"
 sudo cp -r "$PROJECT_DIR/throtl" "$OPT/"
 sudo find "$OPT/throtl" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
@@ -47,81 +47,93 @@ sudo install -m 0644 "$PROJECT_DIR/README.md" "$PROJECT_DIR/CHANGELOG.md" \
 sudo mkdir -p "$OPT/bin"
 sudo cp "$PROJECT_DIR"/bin/throtl-cli "$PROJECT_DIR"/bin/throtl-daemon "$OPT/bin/"
 sudo chmod +x "$OPT/bin"/throtl-*
-echo "   Launcher als /usr/local/bin/throtl-* (PATH) verlinken"
+echo "   Link launchers to /usr/local/bin/throtl-* (PATH)"
 sudo ln -sf "$OPT/bin/throtl-cli"    /usr/local/bin/throtl-cli
 sudo ln -sf "$OPT/bin/throtl-daemon" /usr/local/bin/throtl-daemon
 
-echo "=== [4/7] Gruppe, Konfiguration + Runtime-Verzeichnisse ==="
-# Gruppe 'throtl': nur ihre Mitglieder duerfen den Daemon-Socket ansprechen
-# (0660, siehe Daemon._secure_socket). Idempotent: existiert die Gruppe schon,
-# bleiben bestehende Mitglieder erhalten.
+echo "=== [4/7] Group, configuration + runtime directories ==="
+# Group 'throtl': only its members may access the daemon socket
+# (0660, see Daemon._secure_socket). Idempotent: if the group already exists,
+# existing members are kept.
 if ! getent group throtl >/dev/null 2>&1; then
   sudo groupadd --system throtl
 fi
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
   if ! id -nG "$SUDO_USER" 2>/dev/null | tr ' ' '\n' | grep -qx throtl; then
     sudo usermod -aG throtl "$SUDO_USER"
-    echo "   $SUDO_USER zur Gruppe 'throtl' hinzugefuegt."
+    echo "   Added $SUDO_USER to group 'throtl'."
   fi
-  echo "   Wichtig: Gruppen gelten erst in einer NEUEN Session. Meldet"
-  echo "   'throtl-cli' 'Permission denied', einmal neu einloggen oder im"
-  echo "   Terminal 'newgrp throtl' ausfuehren."
+  echo "   Important: groups only apply in a NEW session. If 'throtl-cli'"
+  echo "   reports 'Permission denied', log out and back in once, or run"
+  echo "   'newgrp throtl' in a terminal."
 fi
 sudo mkdir -p "$ETC" "$RUN"
 if [ ! -f "$ETC/config.toml" ]; then
   sudo install -o root -g root -m 0644 "$SELF_DIR"/default-config.toml "$ETC/config.toml"
 fi
 
-echo "=== [5/7] systemd-Service installieren ==="
+echo "=== [5/7] Install systemd service ==="
 sudo install -m 0644 "$SELF_DIR"/throtl.service /etc/systemd/system/
 sudo systemctl daemon-reload
-# Restart-Zaehler leeren (falls die Unit zuvor in einer Start-Loop steckte)
+# Clear the restart counter (in case the unit was stuck in a start loop before)
 sudo systemctl reset-failed throtl 2>/dev/null || true
 sudo systemctl enable throtl
-# Nicht mit set -e abbrechen, wenn der Daemon nicht startet: sonst laufen
-# Desktop-Datei/Icon/Autostart (Schritt 6) nie durch und die Installation
-# bleibt halbfertig.
+# Do not abort via set -e if the daemon fails to start: otherwise the desktop
+# file/icon/autostart (step 6) would never run and the installation would
+# remain half-finished.
 if ! sudo systemctl restart throtl; then
-  echo "   Warnung: Daemon startet nicht. Ursache pruefen:"
+  echo "   Warning: daemon does not start. Check the cause:"
   echo "            journalctl -u throtl -n 50 --no-pager"
 fi
-echo "   Daemon-Service: throtl  (Status: systemctl status throtl)"
+echo "   Daemon service: throtl  (status: systemctl status throtl)"
 
-echo "=== [6/7] Alte GTK-Eintraege aufraeumen ==="
-# Aeltere Installationen hinterliessen die GTK-GUI: Menueeintrag, Launcher und
-# Icon entfernen, damit das Menue nur noch das Dashboard zeigt.
+echo "=== [6/7] Clean up old GTK entries ==="
+# Older installations left behind the GTK GUI: remove the menu entry, launcher
+# and icon so the menu only shows the dashboard.
 sudo rm -f /usr/share/applications/throtl.desktop \
            /usr/share/applications/throtl-classic.desktop \
            /usr/local/bin/throtl-gui \
            /usr/share/icons/hicolor/scalable/apps/throtl.svg
 sudo rm -rf "$OPT/throtl/gui" "$OPT/bin/throtl-gui"
-# Desktop-Datenbank aktualisieren, damit Launcher den Wegfall sofort sehen.
+# Update the desktop database so launchers see the removal immediately.
 if command -v update-desktop-database >/dev/null 2>&1; then
   sudo update-desktop-database /usr/share/applications 2>/dev/null || true
 fi
 
 if ! command -v paru >/dev/null 2>&1 && ! command -v yay >/dev/null 2>&1; then
-  echo "   Hinweis: Kein AUR-Helper (paru/yay) gefunden. TrafficToll wurde ueber pip "
-  echo "   installiert, kein AUR-Paket noetig."
+  echo "   Note: no AUR helper (paru/yay) found. TrafficToll was installed via pip;"
+  echo "   no AUR package needed."
 fi
 
-echo "=== [7/7] Neue GUI (Tauri) installieren ==="
+echo "=== [7/7] Install the new GUI (Tauri) ==="
 APP_USER="${SUDO_USER:-$USER}"
 if [[ "${1:-}" == "--no-app" ]]; then
-  echo "   uebersprungen (--no-app)"
+  echo "   skipped (--no-app)"
 elif [[ "$APP_USER" == "root" ]]; then
-  echo "   Als root aufgerufen - GUI uebersprungen."
-  echo "   Ohne sudo nachholen: ./setup/install-app.sh"
+  echo "   Called as root - GUI skipped."
+  echo "   Run without sudo later: ./setup/install-app.sh"
 elif sudo -u "$APP_USER" -H bash "$SELF_DIR/install-app.sh"; then
-  echo "   GUI installiert: 'throtl-app' bzw. 'Throtl' im App-Menue."
+  echo "   GUI installed: 'throtl-app' or 'Throtl' in the app menu."
 else
-  echo "   Warnung: GUI-Installation fehlgeschlagen (Node/Rust vorhanden?)."
-  echo "   Spaeter erneut: ./setup/install-app.sh"
+  echo "   Warning: GUI installation failed (are Node/Rust present?)."
+  echo "   Try again later: ./setup/install-app.sh"
 fi
 
+echo "=== [8/8] Install polkit action for GUI setup ==="
+# Lets the dashboard trigger the one-time setup (the 'throtl' group and, from
+# a checkout, the reinstall) via `pkexec` without a terminal. The policy file
+# references the helper under its installed path, so pkexec uses the
+# org.throtl.setup action (auth_admin) instead of the generic fallback action
+# org.freedesktop.policykit.exec.
+sudo install -m 0755 "$SELF_DIR"/throtl-setup /usr/local/bin/throtl-setup
+sudo mkdir -p /usr/share/polkit-1/actions
+sudo install -m 0644 "$SELF_DIR"/polkit/org.throtl.setup.policy \
+  /usr/share/polkit-1/actions/org.throtl.setup.policy
+echo "   The GUI can trigger the setup via 'pkexec /usr/local/bin/throtl-setup'."
+
 echo
-echo " FERTIG. Throtl ist installiert."
+echo " DONE. Throtl is installed."
 echo "   CLI:     /opt/throtl/bin/throtl-cli status"
-echo "   GUI:     'throtl-app' bzw. 'Throtl' im App-Menue (Dashboard)"
+echo "   GUI:     'throtl-app' or 'Throtl' in the app menu (dashboard)"
 echo "   Uninstall: sudo ./setup/uninstall.sh"
-echo "   Nur GUI neu installieren: ./setup/install-app.sh"
+echo "   Reinstall only the GUI: ./setup/install-app.sh"

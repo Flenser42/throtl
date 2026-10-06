@@ -1,6 +1,6 @@
-"""Throtl-CLI: Daemon ohne GUI steuern und testen.
+"""Throtl CLI: control and test the daemon without the GUI.
 
-Beispiele:
+Examples:
     throtl-cli status
     throtl-cli list-processes
     throtl-cli set-global --download-limit 2mbps --upload-limit 1mbps
@@ -9,10 +9,10 @@ Beispiele:
         --download-limit 200kbps --priority normal
     throtl-cli remove-process --key 'exe:/usr/lib/firefox/firefox'
     throtl-cli toggle --enabled false
-    throtl-cli monitor           # Live-Ausgabe pro Sekunde
-    throtl-cli top               # Vollbild-Ranking (htop-Stil)
-    throtl-cli selftest          # prueft end-to-end, ob Limits greifen
-    throtl-cli profiles          # Profile verwalten
+    throtl-cli monitor           # live output every second
+    throtl-cli top               # full-screen ranking (htop-style)
+    throtl-cli selftest          # checks end-to-end whether limits apply
+    throtl-cli profiles          # manage profiles
     throtl-cli stats --window day
     throtl-cli export --output throtl.toml
     throtl-cli doctor
@@ -31,12 +31,12 @@ def _client(args) -> Client:
     try:
         client.connect()
     except ConnectionError as error:
-        sys.stderr.write(f"Fehler: {error}\n")
+        sys.stderr.write(f"Error: {error}\n")
         hint = socket_access_hint(args.socket or SOCKET_PATH)
         if hint:
             sys.stderr.write(f"  {hint}\n")
         else:
-            sys.stderr.write("Laeuft der Daemon? (systemctl status throtl)\n")
+            sys.stderr.write("Is the daemon running? (systemctl status throtl)\n")
         sys.exit(2)
     return client
 
@@ -48,7 +48,7 @@ def _fmt_rate(value, unit="auto"):
 
 
 def _fmt_bytes(value) -> str:
-    """Byte-Volumen menschenlesbar formatieren (SI, 1000er-Schritte)."""
+    """Format a byte volume human-readably (SI, 1000-steps)."""
     try:
         amount = float(value or 0.0)
     except (TypeError, ValueError):
@@ -97,24 +97,24 @@ def cmd_status(client, args):
         print(f"  Monitor last crash: {status['monitor_last_crash']}")
     if engine.get("exit_code") is not None:
         print(f"  Engine exit: {engine.get('exit_code')} "
-              f"(latest tt crash; siehe stderr/unten)")
+              f"(latest tt crash; see stderr/below)")
     stderr = engine.get("stderr_tail") or []
     if stderr:
-        print("  Engine stderr (letzte Zeilen):")
+        print("  Engine stderr (last lines):")
         for line in stderr[-3:]:
             print(f"    | {line}")
     issues = status.get("preflight") or []
     if issues:
-        print("  Preflight-Warnungen:")
+        print("  Preflight warnings:")
         for issue in issues:
             print(f"    ! {issue}")
     if status.get("simulated"):
-        print("  (Simulationsmodus: keine echten tc-Auflagen)")
+        print("  (simulation mode: no real tc rules)")
     return 0
 
 
 def _proc_display(name: str, limit: int = 32) -> str:
-    """nethogs nennt die ganze Kommandozeile -> fuer die Anzeige kuerzen."""
+    """nethogs names the whole command line -> truncate for display."""
     first = (name or "?").split()
     base = (first[0] if first else name).strip().strip('"').strip("'")
     base = base.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
@@ -165,7 +165,7 @@ def cmd_set_global(client, args):
     if args.clear_upload_limit:
         params["upload_limit"] = None
     if not params:
-        sys.stderr.write("Keine Aenderung angegeben.\n")
+        sys.stderr.write("No change given.\n")
         return 1
     result = client.call("set_global", params)
     print("Set:")
@@ -184,7 +184,7 @@ def cmd_set_process(client, args):
     from .config import format_window
 
     if not args.exe and not args.name and not args.match:
-        sys.stderr.write("Bitte --exe, --name oder --match angeben.\n")
+        sys.stderr.write("Please give --exe, --name or --match.\n")
         return 1
     if args.exe:
         match_type, match_value = "exe", args.exe
@@ -198,7 +198,7 @@ def cmd_set_process(client, args):
     if has_window_args:
         if not (args.window_days and args.window_start and args.window_end):
             sys.stderr.write(
-                "Zeitfenster braucht --window-days, --window-start und "
+                "A time window needs --window-days, --window-start and "
                 "--window-end.\n")
             return 1
         window = {"days": args.window_days, "start": args.window_start,
@@ -236,7 +236,7 @@ def cmd_remove(client, args):
 def cmd_toggle(client, args):
     enabled = str(args.enabled).lower() == "true"
     result = client.call("toggle_enabled", {"enabled": enabled})
-    print(f"Shaping {'AN' if result.get('enabled') else 'AUS'}")
+    print(f"Shaping {'ON' if result.get('enabled') else 'OFF'}")
     return 0
 
 
@@ -245,7 +245,7 @@ def cmd_profiles(client, args):
     active = result.get("active")
     names = result.get("profiles") or []
     if not names:
-        print("(keine Profile)")
+        print("(no profiles)")
         return 0
     for name in names:
         marker = "*" if name == active else " "
@@ -255,7 +255,7 @@ def cmd_profiles(client, args):
 
 def cmd_profile_use(client, args):
     client.call("activate_profile", {"name": args.name})
-    print(f"Profil aktiv: {args.name}")
+    print(f"Profile active: {args.name}")
     return 0
 
 
@@ -264,44 +264,44 @@ def cmd_profile_save(client, args):
         "name": args.name,
         "activate": not args.no_activate,
     })
-    print(f"Profil gespeichert: {result.get('name')} "
-          f"(aktiv: {result.get('active')})")
+    print(f"Profile saved: {result.get('name')} "
+          f"(active: {result.get('active')})")
     return 0
 
 
 def cmd_profile_delete(client, args):
     result = client.call("delete_profile", {"name": args.name})
     if result.get("deleted"):
-        print("Profil geloescht.")
+        print("Profile deleted.")
         return 0
-    print("Profil nicht gefunden.")
+    print("Profile not found.")
     return 3
 
 
 def cmd_start_profile(client, args):
-    """Start-Profil anzeigen, setzen oder entfernen."""
+    """Show, set or remove the startup profile."""
     if args.clear:
         result = client.call("set_start_profile", {})
-        print(f"Start-Profil entfernt (jetzt: {result.get('start_profile') or '—'}).")
+        print(f"Startup profile removed (now: {result.get('start_profile') or '—'}).")
         return 0
     if args.name:
         result = client.call("set_start_profile", {"name": args.name})
-        print(f"Start-Profil: {result.get('start_profile')}")
+        print(f"Startup profile: {result.get('start_profile')}")
         return 0
     cfg = client.call("get_config")
-    print(f"Start-Profil: {cfg.get('start_profile') or '—'}")
+    print(f"Startup profile: {cfg.get('start_profile') or '—'}")
     return 0
 
 
 def cmd_budgets(client, args):
-    """Aktuelle Verbrauchs-Budgets und Auslastung anzeigen."""
+    """Show current consumption budgets and usage."""
     result = client.call("get_budgets")
     if not result.get("enabled", True):
-        print("Budgets sind deaktiviert.")
+        print("Budgets are disabled.")
         return 0
     entries = result.get("entries") or []
     if not entries:
-        print("(keine Budgets konfiguriert)")
+        print("(no budgets configured)")
         print("  throtl-cli budget-set --day 20gb --week 100gb")
         print("  throtl-cli budget-set --app firefox --day 5gb")
         return 0
@@ -328,17 +328,17 @@ def cmd_budget_set(client, args):
     if args.disable:
         params["enabled"] = False
     if not params:
-        sys.stderr.write("Nichts zu setzen (--day/--week/--enable/--disable).\n")
+        sys.stderr.write("Nothing to set (--day/--week/--enable/--disable).\n")
         return 1
     client.call("set_budget", params)
     target = args.app or "global"
-    print(f"Budget gespeichert ({target}).")
+    print(f"Budget saved ({target}).")
     return 0
 
 
 def cmd_budget_remove(client, args):
     result = client.call("remove_budget", {"app": args.app})
-    print("Budget geloescht." if result.get("removed") else "Budget nicht gefunden.")
+    print("Budget deleted." if result.get("removed") else "Budget not found.")
     return 0 if result.get("removed") else 3
 
 
@@ -346,11 +346,11 @@ def cmd_stats(client, args):
     result = client.call("get_stats", {"window": args.window})
     apps = result.get("apps") or []
     totals = result.get("totals") or {}
-    print(f"Statistik ({result.get('window')}):  "
-          f"runter={_fmt_bytes(totals.get('download'))}  "
-          f"rauf={_fmt_bytes(totals.get('upload'))}")
+    print(f"Statistics ({result.get('window')}):  "
+          f"down={_fmt_bytes(totals.get('download'))}  "
+          f"up={_fmt_bytes(totals.get('upload'))}")
     if not apps:
-        print("  (noch keine Daten aufgezeichnet)")
+        print("  (no data recorded yet)")
         return 0
     print(f"  {'App':<32}{'Download':>14}{'Upload':>14}")
     for item in apps:
@@ -367,7 +367,7 @@ def cmd_export(client, args):
     text = dump_config(client.call("get_config"))
     if args.output:
         write_text_atomic(args.output, text)
-        print(f"Config exportiert: {args.output}")
+        print(f"Config exported: {args.output}")
     else:
         sys.stdout.write(text)
     return 0
@@ -380,27 +380,27 @@ def cmd_import(client, args):
         with open(args.file, "rb") as handle:
             data = tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError) as error:
-        sys.stderr.write(f"Fehler beim Lesen von {args.file}: {error}\n")
+        sys.stderr.write(f"Error reading {args.file}: {error}\n")
         return 1
     client.call("import_config", {"config": data})
-    print(f"Config importiert: {args.file}")
+    print(f"Config imported: {args.file}")
     return 0
 
 
 def cmd_monitor(client, args):
-    """Live-Ausgabe der Bandbreiten pro Sekunde (aus dem Daemon)."""
+    """Live per-second bandwidth output (from the daemon)."""
     try:
         while True:
             state = client.call("list_processes")
             print(f"--- Interface {state.get('interface')} "
-                  f"({'AN' if state.get('enabled') else 'AUS'}) "
+                  f"({'ON' if state.get('enabled') else 'OFF'}) "
                   f"[{(time.strftime('%H:%M:%S'))}] ---", end="\r")
             rows = []
             for proc in state.get("processes", []):
                 rows.append(
                     f"{proc.get('name','?'):<30} "
-                    f"runter={_fmt_rate(proc.get('download')):<14} "
-                    f"rauf={_fmt_rate(proc.get('upload'))}"
+                    f"down={_fmt_rate(proc.get('download')):<14} "
+                    f"up={_fmt_rate(proc.get('upload'))}"
                 )
             if rows:
                 print("\n".join(rows))
@@ -422,11 +422,11 @@ def _term_size(fallback_cols=100, fallback_lines=30):
 
 
 def cmd_top(client, args):
-    """Vollbild-Live-Ranking der Apps (htop-Stil). Ctrl-C beendet."""
+    """Full-screen live ranking of the apps (htop-style). Ctrl-C quits."""
     import os
 
     if not sys.stdout.isatty():
-        sys.stderr.write("top braucht ein Terminal (TTY).\n")
+        sys.stderr.write("top needs a terminal (TTY).\n")
         return 2
     colors = not os.environ.get("NO_COLOR")
     green = "\033[32m" if colors else ""
@@ -438,7 +438,7 @@ def cmd_top(client, args):
     try:
         interval = max(0.3, float(args.interval))
     except (TypeError, ValueError):
-        sys.stderr.write("--interval muss eine Zahl sein.\n")
+        sys.stderr.write("--interval must be a number.\n")
         return 2
 
     def sort_value(app):
@@ -486,22 +486,22 @@ def cmd_top(client, args):
 
 
 def cmd_watch(client, args):
-    """Prozesse N Sekunden beobachten und am Ende einen Bericht ausgeben.
+    """Watch the processes for N seconds and print a report at the end.
 
-    Skript-tauglich: mit ``--alert`` liefert der Befehl Exit-Code 4, wenn die
-    beobachtete Spitzenrate einer App den Schwellwert ueberschreitet.
+    Script-friendly: with ``--alert`` the command exits with code 4 when the
+    observed peak rate of an app exceeds the threshold.
     """
     from .units import parse_rate
 
     try:
         duration = max(1.0, float(args.duration))
     except (TypeError, ValueError):
-        sys.stderr.write("--duration muss eine Zahl sein.\n")
+        sys.stderr.write("--duration must be a number.\n")
         return 2
     try:
         interval = max(0.2, float(args.interval))
     except (TypeError, ValueError):
-        sys.stderr.write("--interval muss eine Zahl sein.\n")
+        sys.stderr.write("--interval must be a number.\n")
         return 2
     alert = None
     if args.alert:
@@ -510,7 +510,7 @@ def cmd_watch(client, args):
         except ValueError:
             alert = None
         if not alert:
-            sys.stderr.write(f"Ungueltiger --alert-Wert: {args.alert!r}\n")
+            sys.stderr.write(f"Invalid --alert value: {args.alert!r}\n")
             return 2
     needle = (args.app or "").lower()
 
@@ -596,7 +596,7 @@ def cmd_watch(client, args):
 
 
 def _wait_engine(client, timeout: float = 15.0) -> None:
-    """Warten, bis ein laufender Engine-Apply fertig ist."""
+    """Wait until a running engine apply finishes."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
@@ -615,12 +615,12 @@ def _find_app(state, needle):
 
 
 def cmd_selftest(client, args):
-    """End-to-End-Beweis: ein echter curl-Download muss durch das Limit gehen.
+    """End-to-end proof: a real curl download must go through the limit.
 
-    Misst bewusst die von nethogs gemeldete Rate *nach* einem Warmup, statt den
-    curl-Durchschnitt: TrafficToll setzt die tc-Filter erst ein paar Sekunden
-    nach Verbindungsaufbau, der ungedrosselte Start wuerde den Schnitt sonst
-    verfaelschen.
+    Deliberately measures the nethogs-reported rate *after* a warmup instead of
+    the curl average: TrafficToll installs the tc filters only a few seconds
+    after the connection is established, so the unthrottled start would skew the
+    average.
     """
     import shutil
     import statistics
@@ -634,22 +634,22 @@ def cmd_selftest(client, args):
 
     status = client.call("status")
     if status.get("simulated"):
-        return fail("Simulationsmodus — der Selftest braucht den echten Daemon "
+        return fail("Simulation mode — the selftest needs the real daemon "
                     "(root + TrafficToll).", 2)
     curl = shutil.which("curl")
     if not curl:
-        return fail("curl ist nicht installiert.", 2)
+        return fail("curl is not installed.", 2)
     if not status.get("enabled"):
-        return fail("Shaping ist AUS. Erst 'throtl-cli toggle --enabled true'.", 2)
+        return fail("Shaping is OFF. First run 'throtl-cli toggle --enabled true'.", 2)
     if not status.get("monitoring"):
-        return fail("Monitoring ist aus — der Selftest braucht nethogs-Raten.", 2)
+        return fail("Monitoring is off — the selftest needs nethogs rates.", 2)
 
     try:
         limit_kbit = parse_rate(args.limit)
     except ValueError:
         limit_kbit = None
     if not limit_kbit:
-        return fail(f"Ungueltiges Limit: {args.limit!r}", 2)
+        return fail(f"Invalid limit: {args.limit!r}", 2)
     limit_bps = limit_kbit * 1000.0 / 8.0
 
     def measure_curl(seconds):
@@ -662,12 +662,12 @@ def cmd_selftest(client, args):
         except ValueError:
             return None
 
-    print(f"Throtl-Selftest — Limit {_fmt_rate(limit_kbit)} auf {curl}")
+    print(f"Throtl selftest — limit {_fmt_rate(limit_kbit)} on {curl}")
     print(f"  URL: {args.url}")
-    print("  1) Basiswert ohne Limit …")
+    print("  1) Baseline without limit …")
     base_bps = measure_curl(args.time)
     if base_bps is None:
-        return fail("Basismessung fehlgeschlagen (Netzwerk/URL?).", 2)
+        return fail("Baseline measurement failed (network/URL?).", 2)
 
     existing = None
     for rule in client.call("get_config").get("processes", []):
@@ -684,7 +684,7 @@ def cmd_selftest(client, args):
             "priority": "normal",
         })
         _wait_engine(client)
-        print(f"  2) Download mit Limit ({args.warmup}s Warmup, dann {args.measure}s messen) …")
+        print(f"  2) Download with limit ({args.warmup}s warmup, then {args.measure}s measurement) …")
         proc = subprocess.Popen(
             [curl, "-sL", "-o", "/dev/null", "--max-time",
              str(int(args.warmup) + int(args.measure)), args.url],
@@ -703,10 +703,10 @@ def cmd_selftest(client, args):
             except subprocess.TimeoutExpired:
                 proc.kill()
     finally:
-        # Die Selftest-Regel immer entfernen: ihr Key ist der volle curl-Pfad
-        # und kann sich von einer bereits vorhandenen curl-Regel unterscheiden.
-        # Frueher wurde nur set_process(existing) gerufen, wodurch die
-        # Selftest-Regel als zweite, dauerhaft aktive Drossel stehenblieb.
+        # Always remove the selftest rule: its key is the full curl path and can
+        # differ from an already-existing curl rule. Earlier only
+        # set_process(existing) was called, which left the selftest rule behind
+        # as a second, permanently active throttle.
         if rule is not None:
             client.call("remove_process", {"key": rule.get("key")})
         if existing is not None:
@@ -715,35 +715,35 @@ def cmd_selftest(client, args):
 
     limit_kbit_measured = statistics.median(samples) if samples else None
     if limit_kbit_measured is None:
-        return fail("Keine curl-Rate vom Daemon erhalten (nethogs/Attribution?). "
-                    "Bitte 'throtl-cli status' pruefen.", 2)
+        return fail("No curl rate received from the daemon (nethogs/attribution?). "
+                    "Please check 'throtl-cli status'.", 2)
 
     ratio = (limit_kbit_measured / limit_kbit) if limit_kbit else 0.0
-    print(f"  Basis:     {_fmt_rate(base_bps * 8 / 1000)}  ({base_bps / 1000:.0f} KB/s)")
-    print(f"  Limitiert: {_fmt_rate(limit_kbit_measured)}  "
-          f"(median)  = {ratio:.2f}× Limit")
+    print(f"  Baseline:  {_fmt_rate(base_bps * 8 / 1000)}  ({base_bps / 1000:.0f} KB/s)")
+    print(f"  Limited:   {_fmt_rate(limit_kbit_measured)}  "
+          f"(median)  = {ratio:.2f}× limit")
 
     if base_bps < limit_bps * 1.5:
-        print("⚠️  Die ungedrosselte Rate liegt nah am Limit — die Leitung ist zu "
-              "langsam fuer einen aussagekraeftigen Test.")
+        print("⚠️  The unthrottled rate is close to the limit — the line is too "
+              "slow for a meaningful test.")
         return 2
     if limit_kbit_measured <= limit_kbit * 1.8:
-        print("✅ Bestanden: der Download wurde tatsaechlich gedrosselt.")
+        print("✅ Passed: the download was actually throttled.")
         return 0
-    print("❌ Fehlgeschlagen: gemessene Rate liegt ueber dem Limit "
-          "(greift die Regel? richtiges Interface?).")
+    print("❌ Failed: the measured rate is above the limit "
+          "(does the rule apply? the right interface?).")
     return 1
 
 
 def _is_fatal_issue(issue: str) -> bool:
-    """Grobe Einordnung: fehlende Rechte/Tools sind echtes Problem, Rest Warnung."""
+    """Rough classification: missing rights/tools are a real problem, the rest a warning."""
     text = (issue or "").lower()
-    return ("nicht als root" in text or "nicht gefunden" in text
-            or "kommando fehlt" in text)
+    return ("not root" in text or "not found" in text
+            or "command missing" in text)
 
 
 def _socket_permissions_local(path: str) -> dict:
-    """Socket-Rechte ohne laufenden Daemon aus dem Dateisystem lesen."""
+    """Read the socket permissions from the filesystem without a running daemon."""
     import grp
     import os
 
@@ -769,11 +769,11 @@ def _socket_permissions_local(path: str) -> dict:
 
 
 def cmd_doctor(args) -> int:
-    """Umgebung/Preflight + effektive Socket-Rechte pruefen.
+    """Check the environment/preflight + effective socket permissions.
 
-    Laeuft bewusst AUCH ohne erreichbaren Daemon (lokaler Preflight-Fallback),
-    damit eine kaputte Installation diagnostizierbar bleibt. Exit-Code 1,
-    sobald mindestens ein echtes Problem gefunden wurde.
+    Deliberately runs even WITHOUT a reachable daemon (local preflight fallback),
+    so a broken installation stays diagnosable. Exit code 1 as soon as at least
+    one real problem was found.
     """
     from . import SOCKET_PATH
     from .daemon import _resolve_interface, _resolve_tt_command, preflight
@@ -800,14 +800,14 @@ def cmd_doctor(args) -> int:
     print("Throtl doctor")
 
     if status is None:
-        print("❌ Daemon nicht erreichbar — 'systemctl status throtl' pruefen.")
+        print("❌ Daemon not reachable — check 'systemctl status throtl'.")
         errors += 1
         interface = _resolve_interface(None)
         issues = preflight(_resolve_tt_command(None), interface)
         socket_info = _socket_permissions_local(socket_path)
     else:
-        print(f"✅ Daemon erreichbar (PID {status.get('pid')}, "
-              f"Interface {status.get('interface')})")
+        print(f"✅ Daemon reachable (PID {status.get('pid')}, "
+              f"interface {status.get('interface')})")
         issues = status.get("preflight") or []
         socket_info = status.get("socket") or {"path": socket_path, "exists": False}
         if status.get("config_warning"):
@@ -835,22 +835,22 @@ def cmd_doctor(args) -> int:
         if socket_info.get("restricted"):
             print(f"✅ {line}")
         else:
-            print(f"⚠️  {line} (fuer alle lokalen Nutzer zugaenglich)")
+            print(f"⚠️  {line} (accessible to all local users)")
             warnings += 1
     else:
-        print(f"❌ Socket {socket_info.get('path')} existiert nicht")
+        print(f"❌ Socket {socket_info.get('path')} does not exist")
         errors += 1
 
-    # Der klassische Fall: Socket da, aber die Session kennt die Gruppe nicht.
+    # The classic case: socket present, but the session does not know the group.
     hint = socket_access_hint(socket_path)
     if hint:
         print(f"❌ {hint}")
         errors += 1
 
     if errors == 0 and warnings == 0:
-        print("✅ Keine Probleme gefunden.")
+        print("✅ No problems found.")
 
-    print(f"\n{errors} Fehler, {warnings} Warnungen")
+    print(f"\n{errors} error(s), {warnings} warning(s)")
     return 1 if errors else 0
 
 
@@ -858,16 +858,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="throtl-cli", description="Throtl-Daemon CLI"
     )
-    parser.add_argument("--socket", default=None, help="Unix-Socket-Pfad")
+    parser.add_argument("--socket", default=None, help="Unix socket path")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("status", help="Daemon-Status anzeigen")
+    sub.add_parser("status", help="show the daemon status")
 
-    sub.add_parser("list-processes", help="Live-Prozess-Liste anzeigen")
+    sub.add_parser("list-processes", help="show the live process list")
 
-    g = sub.add_parser("set-global", help="Globale Limits/Prioritaeten setzen")
+    g = sub.add_parser("set-global", help="set global limits/priorities")
     g.add_argument("--download-limit", "-dl", default=None,
-                   help="z.B. 2mbps, 512kbps, 1000000")
+                   help="e.g. 2mbps, 512kbps, 1000000")
     g.add_argument("--upload-limit", "-ul", default=None)
     g.add_argument("--download-minimum", default=None)
     g.add_argument("--upload-minimum", default=None)
@@ -879,119 +879,119 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--clear-upload-limit", action="store_true")
 
     g2 = sub.add_parser("set-process",
-                        help="Prozess-Regel setzen/aktualisieren")
-    g2.add_argument("--name", default=None, help="Prozessname/Regelname")
+                        help="set/update a process rule")
+    g2.add_argument("--name", default=None, help="process/rule name")
     g2.add_argument("--appname", default=None,
-                    help="Anzeigename, falls von --exe abweichend")
-    g2.add_argument("--exe", default=None, help="exe-Pfad (regex-escaped)")
-    g2.add_argument("--match", default=None, help="cmdline-Regex")
+                    help="display name, if different from --exe")
+    g2.add_argument("--exe", default=None, help="exe path (regex-escaped)")
+    g2.add_argument("--match", default=None, help="cmdline regex")
     g2.add_argument("--download-limit", default=None)
     g2.add_argument("--upload-limit", default=None)
     g2.add_argument("--priority", default="normal",
                     choices=["kritisch", "hoch", "normal", "niedrig"])
     g2.add_argument("--recursive", action="store_true")
     g2.add_argument("--window-days", default=None,
-                    help="Zeitfenster-Wochentage, z.B. 'mo-fr' oder 'sa,so'")
+                    help="time-window weekdays, e.g. 'mo-fr' or 'sa,so'")
     g2.add_argument("--window-start", default=None,
-                    help="Zeitfenster-Start als HH:MM")
+                    help="time-window start as HH:MM")
     g2.add_argument("--window-end", default=None,
-                    help="Zeitfenster-Ende als HH:MM (vor Start = ueber Mitternacht)")
+                    help="time-window end as HH:MM (before start = across midnight)")
     g2.add_argument("--clear-window", action="store_true",
-                    help="Zeitfenster der Regel entfernen")
+                    help="remove the rule's time window")
 
-    r = sub.add_parser("remove-process", help="Regel loeschen")
+    r = sub.add_parser("remove-process", help="delete a rule")
     r.add_argument("--key", required=True)
 
-    t = sub.add_parser("toggle", help="Shaping global an/aus")
+    t = sub.add_parser("toggle", help="toggle shaping globally on/off")
     t.add_argument("--enabled", choices=["true", "false"], default="true")
 
-    sub.add_parser("monitor", help="Live-Bandbreiten pro Sekunde")
+    sub.add_parser("monitor", help="live bandwidth per second")
 
-    tp = sub.add_parser("top", help="Vollbild-Live-Ranking (htop-Stil)")
+    tp = sub.add_parser("top", help="full-screen live ranking (htop-style)")
     tp.add_argument("--interval", default="1.0",
-                    help="Aktualisierungsintervall in Sekunden (Default: 1.0)")
+                    help="refresh interval in seconds (default: 1.0)")
     tp.add_argument("--sort", choices=["download", "upload", "name"],
-                    default="download", help="Sortierspalte (Default: download)")
+                    default="download", help="sort column (default: download)")
 
     w = sub.add_parser("watch",
-                       help="Prozesse N Sekunden beobachten und Bericht ausgeben")
+                       help="watch processes for N seconds and print a report")
     w.add_argument("--duration", "-d", default=10.0,
-                   help="Beobachtungsdauer in Sekunden (Default: 10)")
+                   help="watch duration in seconds (default: 10)")
     w.add_argument("--interval", "-i", default=1.0,
-                   help="Abtastintervall in Sekunden (Default: 1)")
+                   help="sampling interval in seconds (default: 1)")
     w.add_argument("--app", default=None,
-                   help="Nur Apps mit diesem Namen (Teilstring, optional)")
+                   help="only apps with this name (substring, optional)")
     w.add_argument("--alert", default=None,
-                   help="Schwellwert (z.B. 5mbps); Exit-Code 4 bei Ueberschreitung")
+                   help="threshold (e.g. 5mbps); exit code 4 on breach")
     w.add_argument("--json", action="store_true",
-                   help="Bericht als JSON ausgeben")
+                   help="print the report as JSON")
 
     sft = sub.add_parser("selftest",
-                         help="End-to-End pruefen, ob Limits wirklich greifen")
+                         help="end-to-end check whether limits really apply")
     sft.add_argument("--limit", default="2mbps",
-                     help="Testlimit fuer den curl-Download (Default: 2mbps)")
+                     help="test limit for the curl download (default: 2mbps)")
     sft.add_argument("--url", default="https://speed.cloudflare.com/__down?bytes=100000000",
-                     help="Download-URL fuer den Test")
+                     help="download URL for the test")
     sft.add_argument("--time", type=float, default=6.0,
-                     help="Sekunden fuer die Basismessung (Default: 6)")
+                     help="seconds for the baseline measurement (default: 6)")
     sft.add_argument("--warmup", type=float, default=4.0,
-                     help="Sekunden Warmup vor der Messung (Default: 4)")
+                     help="seconds warmup before measuring (default: 4)")
     sft.add_argument("--measure", type=float, default=5.0,
-                     help="Sekunden Messfenster (Default: 5)")
+                     help="seconds measurement window (default: 5)")
 
-    sub.add_parser("profiles", help="Profile auflisten")
+    sub.add_parser("profiles", help="list profiles")
 
-    pu = sub.add_parser("profile-use", help="Profil aktivieren")
+    pu = sub.add_parser("profile-use", help="activate a profile")
     pu.add_argument("name")
 
     ps = sub.add_parser("profile-save",
-                        help="Aktuelle Einstellungen als Profil speichern")
+                        help="save the current settings as a profile")
     ps.add_argument("name")
     ps.add_argument("--no-activate", action="store_true",
-                    help="Profil speichern, aber nicht aktivieren")
+                    help="save the profile but do not activate it")
 
-    pd = sub.add_parser("profile-delete", help="Profil loeschen")
+    pd = sub.add_parser("profile-delete", help="delete a profile")
     pd.add_argument("name")
 
     sp = sub.add_parser("start-profile",
-                        help="Profil beim Daemon-Start aktivieren (anzeigen/setzen/entfernen)")
-    sp.add_argument("name", nargs="?", default=None, help="Profilname")
-    sp.add_argument("--clear", action="store_true", help="Start-Profil entfernen")
+                        help="activate a profile at daemon start (show/set/remove)")
+    sp.add_argument("name", nargs="?", default=None, help="profile name")
+    sp.add_argument("--clear", action="store_true", help="remove the startup profile")
 
-    st = sub.add_parser("stats", help="Bandbreiten-Statistik anzeigen")
+    st = sub.add_parser("stats", help="show bandwidth statistics")
     st.add_argument("--window", choices=["minute", "hour", "day"],
-                    default="minute", help="Zeitfenster (Default: minute)")
+                    default="minute", help="time window (default: minute)")
 
-    sub.add_parser("budgets", help="Verbrauchs-Budgets und Auslastung anzeigen")
+    sub.add_parser("budgets", help="show consumption budgets and usage")
 
     bs = sub.add_parser("budget-set",
-                        help="Budget setzen (global oder pro App)")
-    bs.add_argument("--app", default=None, help="App-Name (Default: global)")
+                        help="set a budget (global or per app)")
+    bs.add_argument("--app", default=None, help="app name (default: global)")
     bs.add_argument("--day", default=None,
-                    help="Budget der letzten 24 h, z.B. 20gb")
+                    help="last-24h budget, e.g. 20gb")
     bs.add_argument("--week", default=None,
-                    help="Budget der letzten 7 Tage, z.B. 100gb")
-    bs.add_argument("--enable", action="store_true", help="Budgets aktivieren")
-    bs.add_argument("--disable", action="store_true", help="Budgets deaktivieren")
+                    help="last-7-days budget, e.g. 100gb")
+    bs.add_argument("--enable", action="store_true", help="enable budgets")
+    bs.add_argument("--disable", action="store_true", help="disable budgets")
 
-    br = sub.add_parser("budget-remove", help="App-Budget loeschen")
+    br = sub.add_parser("budget-remove", help="delete an app budget")
     br.add_argument("--app", required=True)
 
-    ex = sub.add_parser("export", help="Config als TOML ausgeben")
+    ex = sub.add_parser("export", help="print the config as TOML")
     ex.add_argument("--output", "-o", default=None,
-                    help="Zieldatei (Default: stdout)")
+                    help="target file (default: stdout)")
 
-    im = sub.add_parser("import", help="Config aus TOML-Datei anwenden")
+    im = sub.add_parser("import", help="apply a config from a TOML file")
     im.add_argument("file")
 
-    sub.add_parser("doctor", help="Umgebung, Preflight und Socket-Rechte pruefen")
+    sub.add_parser("doctor", help="check environment, preflight and socket permissions")
     return parser
 
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    # doctor muss auch ohne laufenden Daemon funktionieren (sonst koennte man
-    # eine fehlende Installation nie diagnostizieren).
+    # doctor must work even without a running daemon (otherwise a missing
+    # installation could never be diagnosed).
     if args.command == "doctor":
         return cmd_doctor(args)
     client = _client(args)
@@ -1021,15 +1021,15 @@ def main(argv=None) -> int:
         }
         return handlers[args.command](client, args)
     except RpcError as error:
-        sys.stderr.write(f"RPC-Fehler ({error.code}): {error.message}\n")
+        sys.stderr.write(f"RPC error ({error.code}): {error.message}\n")
         return 1
     except TimeoutError_:
-        sys.stderr.write("Timeout: Daemon reagiert nicht.\n")
+        sys.stderr.write("Timeout: the daemon is not responding.\n")
         return 1
     except ConnectionError as error:
-        # Der Daemon ist waehrend eines langen Befehls (monitor/top/watch)
-        # weggebrochen: sauber melden statt Traceback.
-        sys.stderr.write(f"Verbindung zum Daemon verloren: {error}\n")
+        # The daemon dropped away during a long command (monitor/top/watch):
+        # report cleanly instead of a traceback.
+        sys.stderr.write(f"connection to the daemon lost: {error}\n")
         return 1
     finally:
         try:

@@ -1,14 +1,14 @@
-"""Versionscheck gegen die oeffentliche GitHub-Release-API.
+"""Version check against the public GitHub release API.
 
-Das ist die **einzige ausgehende Netzwerkanfrage** der App: ein GET auf die
-oeffentliche Release-API, ohne Konto, ohne Kennung, ohne Nutzerdaten. Der Check
-laeuft in der Nutzer-Session (nicht im root-Daemon), ist abschaltbar und
-installiert nichts — auf Wunsch oeffnet die App nur die Release-Seite im
-Standardbrowser.
+This is the **only outbound network request** the app makes: a GET to the
+public release API, with no account, no identifier, no user data. The check runs
+in the user session (not in the root daemon), can be disabled and installs
+nothing — on request the app only opens the release page in the default
+browser.
 
-Nur Standardbibliothek, kein GTK: damit ist die Logik ohne Display und ohne Netz
-testbar (der HTTP-Opener ist injizierbar). Das Dashboard spiegelt dieselbe
-Vergleichslogik in TypeScript (`throtl-app/src/lib/update.ts`).
+Standard library only, no GTK: the logic is testable without a display and
+without network (the HTTP opener is injectable). The dashboard mirrors the same
+comparison logic in TypeScript (`throtl-app/src/lib/update.ts`).
 """
 
 import json
@@ -26,7 +26,7 @@ TIMEOUT = 3.0
 
 
 def parse_tag(payload) -> str | None:
-    """``tag_name`` aus einer API-Antwort lesen, ohne ``v``-Praefix."""
+    """Read ``tag_name`` from an API response, without the ``v`` prefix."""
     if not isinstance(payload, dict):
         return None
     tag = str(payload.get("tag_name") or "").strip()
@@ -36,12 +36,11 @@ def parse_tag(payload) -> str | None:
 
 
 def _version_key(version):
-    """Version in eine vergleichbare Form zerlegen (Semver-artig).
+    """Split a version into a comparable form (semver-like).
 
-    Ergebnis ``(numerische_teile, ist_release, prerelease_teile)`` oder None.
-    ``ist_release`` ist 1 fuer eine finale Version und 0 fuer eine
-    Vorabversion, damit ``1.0.0`` neuer ist als ``1.0.0-rc1``. Build-Metadaten
-    nach ``+`` werden ignoriert.
+    Result ``(numeric_parts, is_release, prerelease_parts)`` or None. ``is_release``
+    is 1 for a final version and 0 for a prerelease, so ``1.0.0`` is newer than
+    ``1.0.0-rc1``. Build metadata after ``+`` is ignored.
     """
     if not version:
         return None
@@ -69,11 +68,10 @@ def _version_key(version):
 
 
 def is_newer(current, latest) -> bool:
-    """Ist ``latest`` neuer als ``current``?
+    """Is ``latest`` newer than ``current``?
 
-    Numerisch verglichen, nicht als Text (``0.10.0`` ist neuer als ``0.9.0``).
-    Eine unlesbare Version zaehlt als "nicht neuer" — lieber kein Hinweis als
-    ein falscher.
+    Compared numerically, not as text (``0.10.0`` is newer than ``0.9.0``). An
+    unparseable version counts as "not newer" — better no hint than a wrong one.
     """
     cur, new = _version_key(current), _version_key(latest)
     if cur is None or new is None:
@@ -85,10 +83,10 @@ def is_newer(current, latest) -> bool:
 
 
 def fetch_latest(timeout: float = TIMEOUT, opener=None) -> str | None:
-    """Neueste Release-Version holen.
+    """Fetch the newest release version.
 
-    Jeder Fehler (offline, Rate-Limit, kaputtes JSON) ergibt ``None``: der
-    Versionscheck darf die App nie stoeren.
+    Any error (offline, rate limit, broken JSON) yields ``None``: the version
+    check must never disturb the app.
     """
     request = urllib.request.Request(
         LATEST_API,

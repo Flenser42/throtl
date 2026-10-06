@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Throtl-Daemon (root erforderlich: tc/cgroups/nethogs).
+"""Throtl daemon (root required: tc/cgroups/nethogs).
 
-Installation: setup/install.sh | Manuell: sudo ./bin/throtl-daemon --foreground
+Installation: setup/install.sh | Manual: sudo ./bin/throtl-daemon --foreground
 """
 import os
 import sys
 
-# realpath loest Symlinks auf, damit das Projektverzeichnis (z.B. /opt/throtl)
-# korrekt in sys.path landet, egal wie der Daemon aufgerufen wird.
+# realpath resolves symlinks so the project directory (e.g. /opt/throtl)
+# lands in sys.path correctly, regardless of how the daemon is invoked.
 _PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 if _PROJECT_DIR not in sys.path:
     sys.path.insert(0, _PROJECT_DIR)

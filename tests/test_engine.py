@@ -47,7 +47,7 @@ class RenderTest(unittest.TestCase):
     def test_disabled_renders_empty(self):
         cfg = _cfg(global_={"enabled": False})
         text = engine.render_tt_config(cfg)
-        self.assertIn("deaktiviert", text)
+        self.assertIn("disabled", text)
         self.assertNotIn("processes", text)
         self.assertNotIn("download:", text)
 

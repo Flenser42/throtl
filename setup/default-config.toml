@@ -1,25 +1,25 @@
-# Standard-Konfiguration fuer den Throtl-Daemon (root, /etc/throtl).
-# Normalerweise wird sie ueber die GUI/CLI verwaltet und hier persistiert.
+# Default configuration for the Throtl daemon (root, /etc/throtl).
+# Normally it is managed via the GUI/CLI and persisted here.
 version = 1
-# "interface" kann auf "auto" stehen; der Daemon ermittelt dann das
-# Standard-Routing-Interface automatisch.
+# "interface" may be "auto"; the daemon then detects the default-routing
+# interface automatically.
 interface = "auto"
 unit = "kbps"
 
 [global]
 enabled = true
 
-# Globale Interface-Limits (kbit/s). Ein NICHT gesetzter Schluessel = unbegrenzt.
-# Wichtig: Wert 0 wird als echtes Limit von 0 kbit/s interpretiert (alles blockt);
-# fuer "kein Limit" den Schluessel weglassen bzw. auf "None" loeschen.
+# Global interface limits (kbit/s). An UNSET key = unlimited.
+# Important: a value of 0 is interpreted as a real limit of 0 kbit/s (blocks
+# everything); for "no limit" omit the key or set it to "None".
 # download_limit = 0
 # upload_limit = 0
 
-# Garantierte Mindestraten fuer nicht-gematchten Traffic (kbit/s)
+# Guaranteed minimum rates for unmatched traffic (kbit/s)
 download_minimum = 100
 upload_minimum = 10
 
-# Globale Prioritaet fuer alles, das keine eigene Regel hat
+# Global priority for everything that has no rule of its own
 download_priority = "normal"
 upload_priority = "normal"
 
@@ -28,7 +28,7 @@ upload_priority = "normal"
 # name = "Firefox"
 # match_type = "exe"        # "exe" | "name" | "cmdline"
 # match_value = "/usr/lib/firefox/firefox"
-# download_limit = 0        # Schluessel weglassen = keine Begrenzung
+# download_limit = 0        # omit the key = no limit
 # upload_limit = 0
 # priority = "normal"
 # recursive = false

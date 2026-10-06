@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
-# Baut ein Debian-Paket (Architecture: all) nach dist/throtl_<version>_all.deb.
+# Builds a Debian package (Architecture: all) to dist/throtl_<version>_all.deb.
 #
-# Kein Root noetig. Benoetigt `dpkg-deb` (Paket dpkg-dev/dpkg). Das Paket
-# installiert den Quellbaum unter /opt/throtl (wie setup/install.sh), damit die
-# systemd-Unit unveraendert /opt/throtl/venv/bin/python nutzen kann.
+# No root needed. Requires `dpkg-deb` (package dpkg-dev/dpkg). The package
+# installs the source tree under /opt/throtl (like setup/install.sh), so the
+# systemd unit can use /opt/throtl/venv/bin/python unchanged.
 #
-# Optional: Ist `pip` verfuegbar und das Netz erreichbar, wird das
-# TrafficToll-Wheel mit ins Paket gelegt -> die Installation laeuft offline.
+# Optional: if `pip` is available and the network is reachable, the TrafficToll
+# wheel is bundled into the package -> the installation runs offline.
 set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$(dirname "$SELF_DIR")")"
 
 if ! command -v dpkg-deb >/dev/null 2>&1; then
-    echo "Fehler: dpkg-deb fehlt (apt install dpkg)." >&2
+    echo "Error: dpkg-deb missing (apt install dpkg)." >&2
     exit 1
 fi
 
 VERSION="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' "$PROJECT_DIR/throtl/__init__.py" | head -1)"
 if [ -z "$VERSION" ]; then
-    echo "Fehler: Version konnte nicht aus throtl/__init__.py gelesen werden." >&2
+    echo "Error: could not read version from throtl/__init__.py." >&2
     exit 1
 fi
-echo "Baue throtl ${VERSION} (.deb) …"
+echo "Building throtl ${VERSION} (.deb) …"
 
 STAGE="$SELF_DIR/_build/throtl_${VERSION}_all"
 DEBIAN="$STAGE/DEBIAN"
@@ -33,51 +33,51 @@ mkdir -p "$DEBIAN" \
     "$STAGE/usr/lib/systemd/system" \
     "$STAGE/etc/throtl"
 
-# --- Python-Paket + Launcher ----------------------------------------------
+# --- Python package + launchers ---------------------------------------------
 cp -r "$PROJECT_DIR/throtl" "$STAGE/opt/throtl/"
 find "$STAGE/opt/throtl/throtl" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
 find "$STAGE/opt/throtl/throtl" -name '*.pyc' -delete 2>/dev/null || true
 install -m 0755 "$PROJECT_DIR"/bin/throtl-cli \
     "$PROJECT_DIR"/bin/throtl-daemon "$STAGE/opt/throtl/bin/"
 
-# --- Dokumentation ---------------------------------------------------------
+# --- Documentation ---------------------------------------------------------
 for doc in README.md CHANGELOG.md LICENSE; do
     [ -f "$PROJECT_DIR/$doc" ] && install -m 0644 "$PROJECT_DIR/$doc" "$STAGE/opt/throtl/"
 done
 
-# --- systemd, Default-Config -------------------------------------------------
+# --- systemd, default config -------------------------------------------------
 install -m 0644 "$PROJECT_DIR/setup/throtl.service" \
     "$STAGE/usr/lib/systemd/system/throtl.service"
 install -m 0644 "$PROJECT_DIR/setup/default-config.toml" \
     "$STAGE/etc/throtl/config.toml"
 echo "/etc/throtl/config.toml" > "$DEBIAN/conffiles"
 
-# --- PATH-Symlinks ---------------------------------------------------------
+# --- PATH symlinks ---------------------------------------------------------
 for name in throtl-cli throtl-daemon; do
     ln -s "/opt/throtl/bin/$name" "$STAGE/usr/bin/$name"
 done
 
-# --- Optional: TrafficToll-Wheel fuer Offline-Installation ----------------
-# Ohne --no-deps, damit die Abhaengigkeiten (psutil, loguru, ruamel.yaml)
-# mitkommen — sonst scheitert der --no-index-Install in postinst offline.
+# --- Optional: TrafficToll wheel for offline installation ----------------
+# Without --no-deps, so the dependencies (psutil, loguru, ruamel.yaml) come
+# along — otherwise the --no-index install in postinst fails offline.
 if command -v python3 >/dev/null 2>&1 && python3 -m pip --version >/dev/null 2>&1; then
     if python3 -m pip download --dest "$STAGE/opt/throtl/wheels" \
             traffictoll >/dev/null 2>&1; then
-        echo "TrafficToll-Wheel mitgebundelt (Offline-Installation moeglich)."
+        echo "TrafficToll wheel bundled (offline installation possible)."
     else
         rmdir "$STAGE/opt/throtl/wheels" 2>/dev/null || rm -rf "$STAGE/opt/throtl/wheels"
-        echo "Hinweis: TrafficToll-Wheel nicht geladen (postinst nutzt PyPI)."
+        echo "Note: TrafficToll wheel not downloaded (postinst uses PyPI)."
     fi
 fi
 
-# --- Control + Maintainer-Skripte ------------------------------------------
+# --- Control + maintainer scripts ------------------------------------------
 sed "s/@VERSION@/$VERSION/" "$SELF_DIR/control.in" > "$DEBIAN/control"
 install -m 0755 "$SELF_DIR/postinst" "$SELF_DIR/prerm" "$SELF_DIR/postrm" "$DEBIAN/"
 
-# --- Paket bauen -----------------------------------------------------------
+# --- Build the package -----------------------------------------------------------
 mkdir -p "$PROJECT_DIR/dist"
 OUT="$PROJECT_DIR/dist/throtl_${VERSION}_all.deb"
 dpkg-deb --build --root-owner-group "$STAGE" "$OUT" >/dev/null
 rm -rf "$SELF_DIR/_build"
-echo "Fertig: $OUT"
+echo "Done: $OUT"
 dpkg-deb --info "$OUT" | sed -n '1,20p'

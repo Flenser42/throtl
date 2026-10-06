@@ -1,5 +1,5 @@
 #!/bin/sh
-# Throtl postrm: systemd neu laden; bei 'purge' das venv entfernen.
+# Throtl postrm: reload systemd; on 'purge' remove the venv.
 set -e
 
 if command -v systemctl >/dev/null 2>&1; then

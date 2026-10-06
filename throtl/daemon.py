@@ -1,25 +1,25 @@
-"""Throtl-Daemon: Unix-Socket-Server, TrafficToll-Engine-Steuerung, Monitoring.
+"""Throtl daemon: Unix-socket server, TrafficToll engine control, monitoring.
 
-Architektur:
-    [Dashboard / CLI] --Unix-Socket (JSON)-- [Daemon]
-        ├── TrafficTollEngine  -> tt-Subprozess (tc + cgroups, root)
-        ├── NethogsMonitor     -> Live-Bandbreiten pro Prozess
+Architecture:
+    [Dashboard / CLI] --Unix socket (JSON)-- [Daemon]
+        ├── TrafficTollEngine  -> tt subprocess (tc + cgroups, root)
+        ├── NethogsMonitor     -> live per-process bandwidth
         └── ConfigStore        -> ~/.config/throtl/config.toml
 
-IPC-Nachrichten: siehe throtl.protocol (Request/Response/Event).
+IPC messages: see throtl.protocol (request/response/event).
 
-Methoden des Daemons:
-    status                      -> Daemon-/Engine-/Monitor-Status
-    get_config / get_state      -> volle bzw. zusammengefasste Config
-    set_global {key:value}      -> globale Limits/Prioritaeten anpassen
-    set_process {...}           -> Regel erstellen/aktualisieren (per key)
-    remove_process {key}        -> Regel loeschen
-    toggle_enabled {enabled}    -> globales Shaping an/aus
-    set_unit {unit}             -> Anzeige-Einheit der GUI (kbps|kBs)
-    list_processes []           -> Live-Stats-Schnappschuss
+Daemon methods:
+    status                      -> daemon/engine/monitor status
+    get_config / get_state      -> full resp. summarised config
+    set_global {key:value}      -> adjust global limits/priorities
+    set_process {...}           -> create/update a rule (by key)
+    remove_process {key}        -> delete a rule
+    toggle_enabled {enabled}    -> global shaping on/off
+    set_unit {unit}             -> GUI display unit (kbps|kBs)
+    list_processes []           -> live stats snapshot
 
 Events:
-    stats  (nach jedem Monitoring-Tick; enthaelt Prozess-Stats + Regeln)
+    stats  (after every monitoring tick; carries process stats + rules)
 """
 
 import argparse
@@ -71,23 +71,23 @@ from .protocol import (
     send_message,
 )
 from .stats import VALID_WINDOWS, StatsStore
-from .units import parse_rate  # noqa: F401  (re-export, CLI/Protokoll-Kompatibilitaet)
+from .units import parse_rate  # noqa: F401  (re-export, CLI/protocol compatibility)
 
-# Sentinel: "Argument nicht uebergeben" -> Default-Monitor verwenden.
-# Explizit ``monitor_factory=None`` bedeutet dagegen "Monitoring aus"
-# (Tests/Simulation), damit kein nethogs-Subprozess gestartet wird.
+# Sentinel: "argument not passed" -> use the default monitor. An explicit
+# ``monitor_factory=None`` means "monitoring off" (tests/simulation), so no
+# nethogs subprocess is started.
 _MONITOR_DEFAULT = object()
 
 
 class ConfigStore:
-    """Lädt/hält/persistiert die Config in TOML."""
+    """Loads/holds/persists the config in TOML."""
 
     def __init__(self, config_dir: str):
         self.config_dir = config_dir
         self.path = config_path_for(config_dir)
         self._config = load_config(self.path)
-        # Warnung aus dem Laden festhalten (kaputte TOML -> Defaults). Der
-        # Daemon startet dann trotzdem, aber status() macht das Problem sichtbar.
+        # Keep the load warning (broken TOML -> defaults). The daemon still
+        # starts, but status() makes the problem visible.
         self.load_warning = last_config_warning()
 
     def get(self):
@@ -106,7 +106,7 @@ class ConfigStore:
         }
         for key in changes:
             if key not in allowed:
-                raise ValueError(f"unbekannter globaler Schluessel {key!r}")
+                raise ValueError(f"unknown global key {key!r}")
         if "enabled" in changes:
             g["enabled"] = _as_bool(changes["enabled"])
         for key in ("download_limit", "upload_limit", "download_minimum", "upload_minimum"):
@@ -151,15 +151,15 @@ class ConfigStore:
         from .units import DISPLAY_UNITS
 
         if unit not in DISPLAY_UNITS:
-            raise ValueError(f"unit muss eines von {DISPLAY_UNITS} sein")
+            raise ValueError(f"unit must be one of {DISPLAY_UNITS}")
         self._config["unit"] = unit
         self._persist()
         return unit
 
     def set_budget(self, app: str | None = None, **fields) -> dict:
-        """Budget setzen/aktualisieren. ``app=None`` = globales Budget.
+        """Set/update a budget. ``app=None`` = the global budget.
 
-        Nur uebergebene Felder (``day``/``week``/``enabled``) werden geaendert.
+        Only passed fields (``day``/``week``/``enabled``) are changed.
         """
         budgets = self._config.setdefault(
             "budgets", {"enabled": True, "day": None, "week": None, "rules": []}
@@ -167,7 +167,7 @@ class ConfigStore:
         allowed = {"day", "week", "enabled"}
         for key, value in fields.items():
             if key not in allowed:
-                raise ValueError(f"unbekanntes Budget-Feld {key!r}")
+                raise ValueError(f"unknown budget field {key!r}")
         if app:
             rules = budgets.setdefault("rules", [])
             target = None
@@ -198,17 +198,17 @@ class ConfigStore:
         return removed
 
     def replace(self, config: dict) -> dict:
-        """Komplette Config ersetzen (Import/Profile) und persistieren."""
+        """Replace the complete config (import/profiles) and persist it."""
         self._config = config
         self._persist()
         return self._config
 
 
 def _as_bool(value) -> bool:
-    """Socket-Booleans robust lesen: ``"false"``/``"0"``/``"off"`` sind False.
+    """Read socket booleans robustly: ``"false"``/``"0"``/``"off"`` are False.
 
-    ``bool("false")`` ist True — ein Fehler, der Budgets oder Shaping genau
-    andersherum schaltet als gewuenscht.
+    ``bool("false")`` is True — a bug that flips budgets or shaping exactly
+    opposite to what was wanted.
     """
     if isinstance(value, str):
         return value.strip().lower() in ("1", "true", "on", "ja", "an", "yes")
@@ -216,7 +216,7 @@ def _as_bool(value) -> bool:
 
 
 def parse_limit_param(value):
-    """Param fuer ein Limit akzeptieren: None->unbegrenzt, Zahl, oder Rate-String."""
+    """Accept a limit param: None->unlimited, number, or rate string."""
     if value is None or value in ("", "null", "none", "unbegrenzt", "unlimited"):
         return None
     from .units import parse_rate as pr
@@ -225,18 +225,18 @@ def parse_limit_param(value):
 
 
 def _resolve_interface(value) -> str:
-    """Konfig-Wert 'auto'/None/'' in das echte Routing-Interface aufloesen."""
+    """Resolve the config value 'auto'/None/'' into the real routing interface."""
     if value in (None, "", "auto", "automatic"):
         return detect_default_interface() or "lo"
     return value
 
 
 def _resolve_tt_command(value) -> str:
-    """tt-Binary ermitteln, wenn keines explizit angegeben wurde.
+    """Determine the tt binary when none was given explicitly.
 
-    Reihenfolge: Argument -> $THROTL_TT -> venv-Pfad aus install.sh -> PATH.
-    Vorher war der Default der nackte Name 'tt', der ausserhalb des venv-PATH
-    nicht existiert ("TrafficToll (tt) wurde nicht gefunden").
+    Order: argument -> $THROTL_TT -> venv path from install.sh -> PATH. Before,
+    the default was the bare name 'tt', which does not exist outside the venv
+    PATH ("TrafficToll (tt) was not found").
     """
     import shutil
 
@@ -252,28 +252,28 @@ def _resolve_tt_command(value) -> str:
 
 
 def preflight(tt_command: str, interface: str) -> list:
-    """Root-/Tool-Vorauspruefung: gibt Liste von Warnungen/Fehlern zurueck."""
+    """Root/tool preflight: returns a list of warnings/errors."""
     import shutil
 
     issues = []
     if os.geteuid() != 0:
-        issues.append("Daemon laeuft nicht als root (tc/cgroups/nethogs brauchen root)")
+        issues.append("daemon is not running as root (tc/cgroups/nethogs need root)")
     if not os.path.exists(tt_command):
-        issues.append(f"tt nicht gefunden: {tt_command}")
+        issues.append(f"tt not found: {tt_command}")
     for tool in ("tc", "ip", "iptables"):
         if shutil.which(tool) is None:
-            issues.append(f"Kommando fehlt: {tool}")
-    # ifb-Modul pruefen (fuer TrafficTolls Download-Shaping noetig)
+            issues.append(f"command missing: {tool}")
+    # Check the ifb module (needed for TrafficToll's download shaping)
     try:
         if not os.path.exists("/sys/module/ifb"):
             with open("/proc/modules", "r", encoding="utf-8") as handle:
                 if "ifb" not in handle.read():
-                    issues.append("Kernelmodul 'ifb' nicht geladen (sh -c 'modprobe ifb')")
+                    issues.append("kernel module 'ifb' not loaded (sh -c 'modprobe ifb')")
     except OSError:
         pass
     if interface in (None, "", "auto", "lo"):
-        issues.append(f"Nicht-lokales Interface fehlt (aktuell: {interface!r}). "
-                      "Shaping braucht ein echtes Routing-Interface (z.B. enp34s0).")
+        issues.append(f"non-local interface missing (current: {interface!r}). "
+                      "Shaping needs a real routing interface (e.g. enp34s0).")
     return issues
 
 
@@ -285,22 +285,22 @@ class Daemon:
         self.config_dir = config_dir or config_dir_default()
         self.store = ConfigStore(self.config_dir)
         self._state_lock = threading.RLock()
-        # Serialisiert Monitor-Ticks: der Ticker-Thread und RPC-Threads (nach
-        # Regel-Aenderungen) duerfen nicht parallel Stats schreiben.
+        # Serialises monitor ticks: the ticker thread and RPC threads (after
+        # rule changes) must not write stats in parallel.
         self._tick_lock = threading.Lock()
         # Leaf lock for the /proc/net/dev sample: several callers (monitor tick
         # and GUI polls) share it, and it must not be the re-entrancy-prone
         # _tick_lock because _collect_snapshot runs under it.
         self._iface_lock = threading.Lock()
         self.interval = interval
-        # Persistente Bandbreiten-Statistik (Punkt 5): Ringpuffer neben der
-        # config.toml, wird im Monitor-Tick gefuettert.
+        # Persistent bandwidth statistics (item 5): ring buffer next to
+        # config.toml, fed in the monitor tick.
         self.stats = StatsStore(self.config_dir, interval=interval)
 
         cfg = self.store.get()
         self.interface = _resolve_interface(cfg.get("interface"))
 
-        # Engine waehlen: explizit (Tests) oder TrafficTollEngine (tt via venv)
+        # Choose the engine: explicit (tests) or TrafficTollEngine (tt via venv)
         self.engine = engine
         self._tt_command = tt_command
         if self.engine is None:
@@ -327,10 +327,10 @@ class Daemon:
         self._monitor_thread = None
         self._iface_sample = None
         self._iface_rate = (None, None)
-        # Signatur der aktuell aktiven Zeitfenster-Regeln (Engine-Reapply).
+        # Signature of the currently active time-window rules (engine re-apply).
         self._window_signature = None
-        # Engine-Neustarts laufen in einem eigenen Thread (ein tt-Apply dauert
-        # ~2 s und darf weder die RPC-Antworten noch die GUI blockieren).
+        # Engine restarts run in their own thread (a tt apply takes ~2 s and
+        # must block neither RPC responses nor the GUI).
         self._apply_event = threading.Event()
         self._apply_thread = None
         self._engine_applying = False
@@ -340,7 +340,7 @@ class Daemon:
     # --- Lifecycle ---
 
     def _socket_is_live(self) -> bool:
-        """Lauscht auf dem Socket-Pfad ein erreichbarer Daemon?"""
+        """Is a reachable daemon listening on the socket path?"""
         probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         probe.settimeout(0.3)
         try:
@@ -352,31 +352,31 @@ class Daemon:
         return True
 
     def _prepare_socket_path(self) -> None:
-        """Stale Socket-Datei entfernen; bei laufendem Daemon abbrechen.
+        """Remove a stale socket file; abort when a daemon is running.
 
-        Ein blosses unlink() wuerde den Socket eines laufenden Daemons stehlen:
-        der bliebe root und mit tt/tc aktiv, waere aber nicht mehr erreichbar,
-        und ein zweiter Daemon wuerde auf denselben Zustand losgehen.
+        A plain unlink() would steal the socket of a running daemon: it would
+        stay root and active with tt/tc, but no longer be reachable, and a
+        second daemon would go after the same state.
         """
         if not os.path.exists(self.socket_path):
             return
         if self._socket_is_live():
             raise RuntimeError(
-                f"Auf {self.socket_path} laeuft bereits ein Throtl-Daemon. "
-                "Start abgebrochen, um ihn nicht unerreichbar zu machen."
+                f"A Throtl daemon is already running on {self.socket_path}. "
+                "Start aborted so it does not become unreachable."
             )
         try:
             os.unlink(self.socket_path)
         except OSError as error:
-            print(f"Warnung: Socket-Vorbereitung: {error}")
+            print(f"Warning: socket preparation: {error}")
 
     def start(self) -> None:
-        # ZUERST pruefen (vor Engine/Monitor-Seiteneffekten), ob schon ein
-        # Daemon auf dem Pfad lauscht.
+        # Check FIRST (before engine/monitor side effects) whether a daemon is
+        # already listening on the path.
         self._prepare_socket_path()
-        # Ein konfiguriertes Start-Profil vor dem ersten Apply aktivieren.
+        # Activate a configured startup profile before the first apply.
         self._apply_start_profile()
-        # Initiale Config synchron anwenden, danach uebernimmt der Worker.
+        # Apply the initial config synchronously; then the worker takes over.
         self._apply_engine()
         self._start_apply_worker()
         self._start_monitor()
@@ -384,34 +384,34 @@ class Daemon:
         try:
             os.makedirs(os.path.dirname(self.socket_path), exist_ok=True)
         except OSError as error:
-            print(f"Warnung: Socket-Vorbereitung: {error}")
+            print(f"Warning: socket preparation: {error}")
         self._server.bind(self.socket_path)
         self._server.listen(8)
         self._server.settimeout(0.25)
         self._secure_socket()
-        # Monitoring-Ticker starten
+        # Start the monitoring ticker
         self._monitor_thread = threading.Thread(
             target=self._monitor_loop, daemon=True, name="throtl-monitor-ticker"
         )
         self._monitor_thread.start()
-        print(f"Throtl-Daemon {__version__} läuft auf {self.socket_path}")
+        print(f"Throtl daemon {__version__} running on {self.socket_path}")
 
     def _secure_socket(self) -> None:
-        """Zugriff auf den Daemon-Socket auf die Gruppe ``throtl`` begrenzen.
+        """Restrict access to the daemon socket to the group ``throtl``.
 
-        Als root erzeugt der Socket-Pfad rw-------; ohne Schreibrecht schlaegt
-        der Connect des User-Prozesses (GUI/CLI) mit "Permission denied" fehl.
-        Der frueher gesetzte Modus 0666 loeste das, gab aber JEDEM lokalen
-        Konto vollen Zugriff: ein unprivilegierter Nutzer konnte damit globale
-        Limits setzen, die Netzgeschwindigkeit drosseln oder Regeln loeschen.
+        As root the socket path is created rw-------; without write permission
+        the user process's (GUI/CLI) connect fails with "Permission denied". The
+        previously used mode 0666 fixed that, but gave EVERY local account full
+        access: an unprivileged user could set global limits, throttle the
+        network or delete rules.
 
-        Jetzt: ``chown root:throtl`` + Modus 0660. Nur Mitglieder der Gruppe
-        (per ``usermod -aG throtl $USER``) erreichen den Daemon.
+        Now: ``chown root:throtl`` + mode 0660. Only group members (via
+        ``usermod -aG throtl $USER``) reach the daemon.
 
-        Fehlt die Gruppe (z. B. manueller Start ohne install.sh), wird der
-        Socket NICHT mehr fuer alle geoeffnet: er bleibt eigentuemer-only
-        (0600). Frueher wurde hier 0666 gesetzt, was jedem lokalen Konto
-        vollen Zugriff auf den root-Daemon gab (fail open).
+        If the group is missing (e.g. a manual start without install.sh), the
+        socket is NOT opened for everyone: it stays owner-only (0600). Before,
+        0666 was set here, giving every local account full access to the root
+        daemon (fail open).
         """
         import grp
 
@@ -421,11 +421,11 @@ class Daemon:
                 gid = grp.getgrnam(SOCKET_GROUP).gr_gid
             except KeyError:
                 print(
-                    f"Warnung: Gruppe '{SOCKET_GROUP}' existiert nicht — der "
-                    "Daemon-Socket bleibt gesperrt (nur root). Abhilfe: "
+                    f"Warning: group '{SOCKET_GROUP}' does not exist — the "
+                    "daemon socket stays locked (root only). Fix: "
                     f"'groupadd {SOCKET_GROUP}', "
-                    f"'usermod -aG {SOCKET_GROUP} $USER', dann Daemon neu "
-                    "starten (install.sh macht das).",
+                    f"'usermod -aG {SOCKET_GROUP} $USER', then restart the "
+                    "daemon (install.sh does this).",
                     flush=True,
                 )
         try:
@@ -433,26 +433,26 @@ class Daemon:
                 os.chown(self.socket_path, 0, gid)
                 os.chmod(self.socket_path, SOCKET_MODE)
             else:
-                # Fail closed: Gruppe fehlt oder kein root. Nur der Eigentuemer
-                # darf zugreifen. Kein 0666-Fallback fuer den root-Daemon.
+                # Fail closed: group missing or not root. Only the owner may
+                # access. No 0666 fallback for the root daemon.
                 os.chmod(self.socket_path, 0o600)
         except OSError as error:
-            print(f"Warnung: Socket-Rechte nicht setzbar: {error}", flush=True)
+            print(f"Warning: cannot set socket permissions: {error}", flush=True)
 
     def _monitor_loop(self) -> None:
         while self._running:
-            # Ein fehlerhafter Tick darf den Ticker nicht dauerhaft toeten:
-            # sonst hoeren Monitoring, Schedules, Zeitfenster und Statistik auf.
+            # A faulty tick must not kill the ticker permanently: otherwise
+            # monitoring, schedules, time windows and statistics stop.
             self._safe_tick_monitor()
             time.sleep(self.interval)
 
     def _safe_tick_monitor(self, record_stats: bool = True) -> None:
-        """Tick ausfuehren, der den Aufrufer nie mit einer Exception verlaesst."""
+        """Run a tick that never leaves the caller with an exception."""
         try:
             self._tick_monitor(record_stats)
         except Exception as error:
             print(
-                f"Warnung: Monitor-Tick fehlgeschlagen: "
+                f"Warning: monitor tick failed: "
                 f"{type(error).__name__}: {error}",
                 flush=True,
             )
@@ -462,9 +462,9 @@ class Daemon:
             self._tick_monitor_locked(record_stats)
 
     def _tick_monitor_locked(self, record_stats: bool = True) -> None:
-        # Toten Monitor erkennen (nethogs beendet/abgestuerzt): Fehler merken,
-        # aufraeumen; die Retry-Logik unten startet ihn dann neu. Monitor-Stubs
-        # ohne is_alive() werden konservativ als lebendig behandelt.
+        # Detect a dead monitor (nethogs exited/crashed): remember the error,
+        # clean up; the retry logic below restarts it. Monitor stubs without
+        # is_alive() are conservatively treated as alive.
         if self.monitor is not None:
             checker = getattr(self.monitor, "is_alive", None)
             alive = True
@@ -477,33 +477,32 @@ class Daemon:
                 error = getattr(self.monitor, "last_error", None) or "nethogs process exited"
                 self.monitor_error = error
                 self.monitor_last_crash = error
-                print(f"Monitor-Fehler: {error}", flush=True)
+                print(f"Monitor error: {error}", flush=True)
                 self._stop_monitor()
-        # Monitor nachziehen, falls (noch) keiner laeuft. Alle ~3 Ticks erneut.
+        # Pull the monitor up if (still) none is running. Every ~3 ticks again.
         if self.monitor is None:
             self._monitor_retry_tick += 1
             if self._monitor_retry_tick >= 3:
                 self._monitor_retry_tick = 0
                 self._start_monitor()
-        # Automatische Profilumschaltung (nur wenn ein Zeitplan existiert).
+        # Automatic profile switch (only when a schedule exists).
         self._apply_schedule()
-        # Zeitfenster-Regeln: Engine neu anwenden, wenn ein Fenster kippt.
+        # Time-window rules: re-apply the engine when a window flips.
         self._apply_time_windows()
-        # tt abgestuerzt? Dann automatisch neu anwenden (sonst bliebe Shaping
-        # still aus, bis der Nutzer zufaellig eine Regel aendert).
+        # tt crashed? Then re-apply automatically (otherwise shaping would stay
+        # silently off until the user happens to change a rule).
         self._recover_engine()
-        # Echter Monitoring-Tick: Statistik fortschreiben. RPC-Snapshots
-        # (list_processes) duerfen NICHT zusaetzlich zaehlen, sonst wuerde der
-        # GUI-Poll die Raten doppelt verbuchen.
+        # Real monitoring tick: advance the statistics. RPC snapshots
+        # (list_processes) must NOT count additionally, otherwise the GUI poll
+        # would book the rates twice.
         self._collect_snapshot(record_stats=record_stats)
 
     def _apply_schedule(self) -> None:
-        """Passendes Zeitplan-Profil aktivieren (im Monitor-Tick).
+        """Activate the matching schedule profile (in the monitor tick).
 
-        Nur wenn ueberhaupt Regeln vorhanden sind UND eine Regel JETZT passt.
-        Ausserhalb aller Fenster wird bewusst NICHT zurueckgeschaltet, sondern
-        die letzte Wahl beibehalten (konservativ: ein manuell gewaehltes Profil
-        soll nicht mitten am Tag ueberschrieben werden).
+        Only when rules exist AND one matches NOW. Outside all windows we
+        deliberately do NOT switch back, but keep the last choice (conservative:
+        a manually chosen profile must not be overwritten mid-day).
         """
         with self._state_lock:
             cfg = self.store.get()
@@ -515,16 +514,16 @@ class Daemon:
             try:
                 apply_profile(cfg, target)
             except Exception as error:
-                print(f"Warnung: Zeitplan-Profil {target!r}: {error}", flush=True)
+                print(f"Warning: schedule profile {target!r}: {error}", flush=True)
                 return
             self.store._persist()
         self._schedule_engine_apply()
 
     def _apply_start_profile(self) -> None:
-        """Ein konfiguriertes ``start_profile`` beim Daemon-Start aktivieren.
+        """Activate a configured ``start_profile`` at daemon start.
 
-        Ein Zeitplan hat Vorrang: er wird beim naechsten Monitor-Tick angewandt
-        und ueberschreibt das Start-Profil, falls gerade ein Fenster passt.
+        A schedule has priority: it is applied at the next monitor tick and
+        overwrites the startup profile if a window matches right now.
         """
         with self._state_lock:
             cfg = self.store.get()
@@ -534,16 +533,16 @@ class Daemon:
             try:
                 apply_profile(cfg, name)
             except Exception as error:
-                print(f"Warnung: Start-Profil {name!r}: {error}", flush=True)
+                print(f"Warning: startup profile {name!r}: {error}", flush=True)
                 return
             self.store._persist()
 
     def _apply_time_windows(self) -> None:
-        """Engine neu anwenden, wenn sich die aktiven Zeitfenster-Regeln aendern.
+        """Re-apply the engine when the active time-window rules change.
 
-        TrafficToll hat keinen dynamischen Reload; damit „Firefox 20-24 Uhr"
-        wirkt, wird beim Uebergang in/aus einem Fenster ein Apply angestossen.
-        Die Signatur ist die Menge der gerade aktiven Regel-Keys.
+        TrafficToll has no dynamic reload; so that "Firefox 20-24h" works, an
+        apply is triggered on the transition into/out of a window. The signature
+        is the set of currently active rule keys.
         """
         cfg = self.store.get()
         rules = cfg.get("processes") or []
@@ -558,11 +557,11 @@ class Daemon:
             self._schedule_engine_apply()
 
     def _iface_throughput(self):
-        """Echte Interface-Rate (kbit/s) aus /proc/net/dev-Deltas.
+        """Real interface rate (kbit/s) from /proc/net/dev deltas.
 
-        Das ist die verlaessliche "globale" Zahl: sie enthaelt ALLES, was ueber
-        das Interface geht (auch Traffic, den nethogs keinem Prozess zuordnen
-        kann, z. B. VPN/UDP/anderer Nutzer). Ohne Vergleichswert -> (None, None).
+        This is the reliable "global" number: it contains EVERYTHING that goes
+        over the interface (also traffic nethogs cannot attribute to a process,
+        e.g. VPN/UDP/other users). Without a comparison value -> (None, None).
         """
         import time as _time
 
@@ -589,10 +588,10 @@ class Daemon:
                 self._iface_sample = (now, rx, tx)
                 return self._iface_rate
             elapsed = now - previous[0]
-            # Sample nur aktualisieren, wenn genug Zeit vergangen ist. Mehrere
-            # Aufrufer (Monitor-Tick + GUI-Poll) teilen sich dieses Sample; frueher
-            # setzte jeder Aufruf das Sample zurueck und kurze Abstaende lieferten
-            # None -> die Global-Zeile flackerte auf "measuring...".
+            # Only update the sample when enough time has passed. Several
+            # callers (monitor tick + GUI poll) share this sample; earlier every
+            # call reset the sample and short gaps yielded None -> the global
+            # line flickered to "measuring...".
             if elapsed >= 0.5:
                 down = max(0, rx - previous[1]) * 8.0 / 1000.0 / elapsed
                 up = max(0, tx - previous[2]) * 8.0 / 1000.0 / elapsed
@@ -601,10 +600,10 @@ class Daemon:
             return self._iface_rate
 
     def _collect_snapshot(self, record_stats: bool = False) -> dict:
-        """Prozess-Stats + echte Interface-Rate + angewendete Regeln.
+        """Process stats + real interface rate + applied rules.
 
-        ``record_stats=True`` (nur aus :meth:`_tick_monitor`) schreibt die
-        pro-App-Summen zusaetzlich in den persistenten :class:`StatsStore`.
+        ``record_stats=True`` (only from :meth:`_tick_monitor`) additionally
+        writes the per-app sums into the persistent :class:`StatsStore`.
         """
         raw = {}
         if self.monitor is not None:
@@ -613,8 +612,8 @@ class Daemon:
             except Exception:
                 raw = {}
         with self._state_lock:
-            # Regel-Liste kopieren: ein gleichzeitiges set_process/import darf
-            # die Iteration unten nicht sprengen ("list changed size").
+            # Copy the rule list: a concurrent set_process/import must not blow
+            # up the iteration below ("list changed size").
             cfg = self.store.get()
             rules = list(cfg.get("processes", []))
             enabled = cfg["global"].get("enabled", True)
@@ -633,13 +632,13 @@ class Daemon:
                 "download": download,
                 "upload": upload,
                 "unattributed": pid == UNATTRIBUTED_PID,
-                # via Regeln: limits/prioritaet fuer die Anzeige
+                # via rules: limits/priority for the display
                 "rule_name": matches.get("name"),
             })
-        # Nach ANWENDUNG gruppieren: eine App laeuft oft in vielen Prozessen
-        # (z. B. ein Downloader mit 8 Workern). Die App soll als EINE Zeile mit
-        # der Summe erscheinen — sonst sieht man 8x
-        # "python3" mit je ~0,2 MB/s statt einmal "legendary" mit ~2 MB/s.
+        # Group by application: an app often runs in many processes (e.g. a
+        # downloader with 8 workers). The app should appear as ONE row with the
+        # sum — otherwise you see 8x "python3" at ~0.2 MB/s each instead of one
+        # "legendary" at ~2 MB/s.
         apps = {}
         for pid, info in raw.items():
             if pid == UNATTRIBUTED_PID:
@@ -682,17 +681,17 @@ class Daemon:
             "interface": self.interface,
             "enabled": enabled,
             "processes": processes,
-            "apps": app_list,  # pro Anwendung gruppiert (Summe aller PIDs)
-            "rules": rules,  # fuer GUI: union von Regel + Live-Stats
+            "apps": app_list,  # grouped per application (sum of all PIDs)
+            "rules": rules,  # for GUI: union of rule + live stats
             "monitored": self.monitor is not None,
-            # Echte Interface-Rate (alles) vs. nur zugeordneter Traffic
+            # Real interface rate (everything) vs. only attributed traffic
             "global": {"download": global_down, "upload": global_up},
             "attributed": {"download": round(attributed_down, 1),
                            "upload": round(attributed_up, 1)},
         }
 
     def _record_stats(self, app_list: list) -> None:
-        """Pro-App-Raten (kbit/s) in den Statistik-Speicher verbuchen."""
+        """Book the per-app rates (kbit/s) into the statistics store."""
         for entry in app_list:
             self.stats.record(
                 entry.get("name", "?"),
@@ -703,11 +702,11 @@ class Daemon:
     # --- Engine ---
 
     def _apply_engine(self, config: dict | None = None) -> None:
-        """Engine (tt) mit der aktuellen/uebergebenen Config synchronisieren.
+        """Sync the engine (tt) with the current/passed config.
 
-        Wird beim Start einmal synchron aufgerufen; danach uebernimmt der
-        Background-Worker (:meth:`_schedule_engine_apply`), damit ein ~2 s
-        dauernder tt-Neustart weder RPC-Antworten noch die GUI blockiert.
+        Called once synchronously at start; afterwards the background worker
+        (:meth:`_schedule_engine_apply`) takes over, so a ~2 s tt restart blocks
+        neither RPC responses nor the GUI.
         """
         if config is None:
             config = self._snapshot_config()
@@ -715,12 +714,12 @@ class Daemon:
             self.engine.apply(config)
         except Exception as error:
             self.engine_error = f"{type(error).__name__}: {error}"
-            print(f"Engine-Fehler: {self.engine_error}", flush=True)
+            print(f"Engine error: {self.engine_error}", flush=True)
         else:
             self.engine_error = None
 
     def _snapshot_config(self) -> dict:
-        """Tiefe Kopie der Config unter State-Lock (nicht auf lebenden Daten rendern)."""
+        """Deep copy of the config under the state lock (never render live data)."""
         with self._state_lock:
             return copy.deepcopy(self.store.get())
 
@@ -731,7 +730,7 @@ class Daemon:
         self._apply_thread.start()
 
     def _apply_loop(self) -> None:
-        """Serialisiert Engine-Neustarts und fasst schnelle Aenderungen zusammen."""
+        """Serialise engine restarts and coalesce quick changes."""
         while self._running:
             self._apply_event.wait(timeout=0.5)
             if not self._running:
@@ -746,14 +745,14 @@ class Daemon:
                 self._engine_applying = False
 
     def _schedule_engine_apply(self) -> None:
-        """Engine-Apply anfordern: nicht blockierend und coalesced."""
+        """Request an engine apply: non-blocking and coalesced."""
         self._apply_event.set()
 
     def _recover_engine(self) -> None:
-        """Einen gestorbenen tt-Prozess automatisch neu anwenden.
+        """Automatically re-apply a dead tt process.
 
-        Nur wenn Shaping ueberhaupt aktiv sein soll (``enabled``); ein bewusst
-        deaktivierter Zustand wird nicht endlos neu gestartet.
+        Only when shaping should be active at all (``enabled``); a deliberately
+        disabled state is not restarted endlessly.
         """
         try:
             running = bool(self.engine.status().get("running"))
@@ -767,14 +766,14 @@ class Daemon:
 
     def _start_monitor(self) -> None:
         if self._monitor_factory is None:
-            return  # Monitoring bewusst deaktiviert (Tests/Simulation)
+            return  # monitoring deliberately disabled (tests/simulation)
         if self.monitor is None:
             self.monitor = self._monitor_factory(self.interface, 1.0)
             try:
                 self.monitor.start()
             except Exception as error:
                 self.monitor_error = f"{type(error).__name__}: {error}"
-                print(f"Monitor-Fehler: {self.monitor_error}", flush=True)
+                print(f"Monitor error: {self.monitor_error}", flush=True)
                 self.monitor = None
             else:
                 self.monitor_error = None
@@ -816,25 +815,25 @@ class Daemon:
                         except OSError:
                             break
             except ProtocolError:
-                # Ein kaputter/zu grosser/unvollstaendiger Frame beendet nur
-                # diese Verbindung — frueher entkam die Exception als Traceback
-                # aus dem Thread (Log-Spam, billiger lokaler DoS).
+                # A broken/too-large/incomplete frame ends only this connection —
+                # earlier the exception escaped as a traceback from the thread
+                # (log spam, cheap local DoS).
                 pass
 
     def _dispatch(self, message) -> dict:
         if not isinstance(message, dict):
-            # Gueltiges JSON, aber kein Objekt (123, "x", [], true) wuerde
-            # sonst mit AttributeError den Verbindungs-Thread toeten.
+            # Valid JSON, but not an object (123, "x", [], true) would otherwise
+            # kill the connection thread with an AttributeError.
             return {"id": None,
-                    "error": make_error(INVALID_PARAMS, "Nachricht muss ein Objekt sein")}
+                    "error": make_error(INVALID_PARAMS, "message must be an object")}
         method = message.get("method")
         message_id = message.get("id")
         params = message.get("params") or {}
         if message_id is None or not method:
-            return {"id": message_id, "error": make_error(INVALID_PARAMS, "id/method fehlt")}
+            return {"id": message_id, "error": make_error(INVALID_PARAMS, "id/method missing")}
         handler = self._handlers().get(method)
         if handler is None:
-            return {"id": message_id, "error": make_error(METHOD_NOT_FOUND, f"unbekannte Methode: {method}")}
+            return {"id": message_id, "error": make_error(METHOD_NOT_FOUND, f"unknown method: {method}")}
         try:
             result = handler(params)
             return {"id": message_id, "result": result}
@@ -897,14 +896,14 @@ class Daemon:
             "engine": engine_status,
             "simulated": getattr(self.engine, "simulated", False),
             "preflight": preflight(tt_cmd, self.interface),
-            # Kaputte/ungueltige config.toml: Daemon laeuft mit Defaults weiter,
-            # der Grund ist aber abfragbar statt nur im Journal zu stehen.
+            # Broken/invalid config.toml: the daemon keeps running with the
+            # defaults, but the reason is queryable instead of only in the journal.
             "config_warning": self.store.load_warning,
             "socket": self._socket_permissions(),
         }
 
     def _socket_permissions(self) -> dict:
-        """Effektive Rechte des Daemon-Sockets (fuer status()/doctor)."""
+        """Effective permissions of the daemon socket (for status()/doctor)."""
         try:
             info = os.stat(self.socket_path)
         except OSError:
@@ -926,14 +925,14 @@ class Daemon:
             "uid": uid,
             "gid": gid,
             "group": group,
-            # 0666 = jeder lokale Nutzer darf Limits setzen -> unsicher.
+            # 0666 = every local user may set limits -> insecure.
             "restricted": mode != 0o666,
         }
 
     def _h_get_config(self, params):
         with self._state_lock:
-            # Tiefe Kopie: json.dumps darf nicht mit einem gleichzeitigen
-            # set_budget kollidieren ("dict changed size during iteration").
+            # Deep copy: json.dumps must not collide with a concurrent set_budget
+            # ("dict changed size during iteration").
             return copy.deepcopy(self.store.get())
 
     def _h_get_state(self, params):
@@ -944,8 +943,8 @@ class Daemon:
         changes = dict(params)
         with self._state_lock:
             store.update_global(**changes)
-            # Kopie statt der lebenden Tabelle: json.dumps laeuft erst nach
-            # dem Handler, also nach dem Lock.
+            # Copy instead of the live table: json.dumps runs only after the
+            # handler, i.e. after the lock.
             result = copy.deepcopy(store.get()["global"])
         self._schedule_engine_apply()
         self._emit_rules_changed()
@@ -954,8 +953,8 @@ class Daemon:
     def _h_set_process(self, params):
         key = params.get("key")
         with self._state_lock:
-            # Lookup unter dem Lock: zwei gleichzeitige Updates derselben Regel
-            # duerfen nicht beide den alten Stand lesen (lost update).
+            # Lookup under the lock: two concurrent updates of the same rule must
+            # not both read the old state (lost update).
             existing = None
             if key:
                 existing = next(
@@ -963,10 +962,10 @@ class Daemon:
                     None,
                 )
         if existing is not None:
-            # Update einer bestehenden Regel: match_type/match_value NICHT neu
-            # ableiten. Die GUI schickt die gespeicherte Regel zurueck; ein
-            # erneutes make_rule() wuerde das bereits re.escape()-te Pattern
-            # nochmals escapen und die Regel matchte nicht mehr.
+            # Update an existing rule: do NOT re-derive match_type/match_value.
+            # The GUI sends the stored rule back; a fresh make_rule() would
+            # escape the already re.escape()-d pattern again and the rule would
+            # no longer match.
             rule = dict(existing)
             if params.get("name"):
                 rule["name"] = str(params["name"])
@@ -975,8 +974,8 @@ class Daemon:
             if "upload_limit" in params:
                 rule["upload_limit"] = parse_limit_param(params.get("upload_limit"))
             if params.get("priority") is not None:
-                # ``0`` (kritisch) ist falsch-aber-wahr und wurde frueher
-                # uebersprungen; str(1) machte aus Integer-Prioritaeten Fehler.
+                # ``0`` (critical) is false-but-true and was skipped before;
+                # str(1) turned integer priorities into errors.
                 rule["priority"] = priority_to_name(
                     priority_to_int(params["priority"])
                 )
@@ -994,7 +993,7 @@ class Daemon:
         match_type = str(params.get("match_type", "exe"))
         match_value = str(params.get("match_value", ""))
         if not match_value:
-            raise ValueError("match_value fehlt")
+            raise ValueError("match_value missing")
         raw_priority = params.get("priority")
         priority = (
             priority_to_name(priority_to_int(raw_priority))
@@ -1021,7 +1020,7 @@ class Daemon:
     def _h_remove_process(self, params):
         key = str(params.get("key", ""))
         if not key:
-            raise ValueError("key fehlt")
+            raise ValueError("key missing")
         with self._state_lock:
             removed = self.store.remove_process(key)
         self._schedule_engine_apply()
@@ -1049,7 +1048,7 @@ class Daemon:
         window = str(params.get("window") or "minute")
         if window not in VALID_WINDOWS:
             raise ValueError(
-                f"window muss eines von {', '.join(VALID_WINDOWS)} sein"
+                f"window must be one of {', '.join(VALID_WINDOWS)}"
             )
         return {
             "window": window,
@@ -1065,7 +1064,7 @@ class Daemon:
         window = str(params.get("window") or "minute")
         if window not in VALID_WINDOWS:
             raise ValueError(
-                f"window muss eines von {', '.join(VALID_WINDOWS)} sein"
+                f"window must be one of {', '.join(VALID_WINDOWS)}"
             )
         return {"window": window, "series": self.stats.series(window)}
 
@@ -1096,12 +1095,12 @@ class Daemon:
     def _h_remove_budget(self, params):
         app = str(params.get("app") or "").strip()
         if not app:
-            raise ValueError("app fehlt")
+            raise ValueError("app missing")
         with self._state_lock:
             removed = self.store.remove_budget(app)
         return {"removed": removed}
 
-    # --- Profile / Zeitplaene ---------------------------------------------
+    # --- Profiles / schedules ---------------------------------------------
 
     def _h_list_profiles(self, params):
         with self._state_lock:
@@ -1112,7 +1111,7 @@ class Daemon:
         }
 
     def _h_set_profile(self, params):
-        """Aktuellen Zustand als benanntes Profil sichern (optional aktivieren)."""
+        """Save the current state as a named profile (optionally activate it)."""
         name = validate_profile_name(params.get("name"))
         activate = bool(params.get("activate", True))
         with self._state_lock:
@@ -1154,7 +1153,7 @@ class Daemon:
         return {"schedule": rules}
 
     def _h_set_start_profile(self, params):
-        """Start-Profil setzen/loeschen (``name`` fehlt/leer = deaktivieren)."""
+        """Set/delete the startup profile (``name`` missing/empty = disable)."""
         raw = params.get("name")
         name = validate_profile_name(raw) if raw and str(raw).strip() else None
         with self._state_lock:
@@ -1163,21 +1162,21 @@ class Daemon:
         return {"start_profile": name}
 
     def _h_import_config(self, params):
-        """Rohe (TOML-)Config validieren und komplett uebernehmen."""
+        """Validate a raw (TOML) config and adopt it completely."""
         data = params.get("config")
         if not isinstance(data, dict):
-            raise ValueError("config fehlt oder ist keine Tabelle")
+            raise ValueError("config missing or not a table")
         config = normalize(data)
-        # Das Interface ist beim Start in Engine und Monitor eingebrannt. Ein
-        # Wechsel im laufenden Daemon wuerde Config und Realitaet trennen
-        # (get_config meldet etwas anderes als tt/nethogs tun), darum klar
-        # ablehnen statt still das Alte zu behalten.
+        # The interface is baked into engine and monitor at start. A change in
+        # the running daemon would split config from reality (get_config reports
+        # something other than what tt/nethogs do), so reject it clearly instead
+        # of silently keeping the old one.
         requested = _resolve_interface(config.get("interface"))
         if requested != self.interface:
             raise ValueError(
-                f"Interface-Wechsel {self.interface} -> {requested} ist im laufenden "
-                "Daemon nicht moeglich. Danach 'sudo systemctl restart throtl' und den "
-                "Import wiederholen."
+                f"interface change {self.interface} -> {requested} is not possible in the "
+                "running daemon. Then 'sudo systemctl restart throtl' and repeat the "
+                "import."
             )
         with self._state_lock:
             self.store.replace(config)
@@ -1187,32 +1186,31 @@ class Daemon:
         return result
 
     def _emit_rules_changed(self) -> None:
-        # Nach einer Aenderung sofort einen frischen Snapshot ziehen, damit die
-        # naechste Abfrage aktuelle Raten liefert und der /proc-Sample-Delta
-        # nicht veraltet. _safe_: eine kaputte Regel darf den Aufruf nicht
-        # mit einer Exception aus dem RPC-Handler werfen.
+        # After a change, pull a fresh snapshot immediately so the next query
+        # returns current rates and the /proc sample delta is not stale. Safe: a
+        # broken rule must not throw an exception out of the RPC handler.
         #
-        # ``record_stats=False``: dieser Zusatz-Tick misst denselben Moment wie
-        # der 1-Hz-Ticker; ihn als volle Sekunde zu verbuchen hat die
-        # Byte-Summen bei Regel-Aenderungen aufgeblaeht.
+        # ``record_stats=False``: this extra tick measures the same moment as
+        # the 1 Hz ticker; booking it as a full second bloated the byte sums on
+        # rule changes.
         self._safe_tick_monitor(record_stats=False)
 
     # --- Shutdown ---
 
     def shutdown(self) -> None:
         self._running = False
-        self._apply_event.set()          # Apply-Worker aufwecken
+        self._apply_event.set()          # wake the apply worker
         if self._apply_thread is not None:
             self._apply_thread.join(timeout=5.0)
             self._apply_thread = None
         self._stop_monitor()
-        # Ticker-Thread beenden, damit nach dem Shutdown kein Tick mehr einen
-        # nethogs-Prozess starten kann (sonst blieb ein Waisenkind zurueck).
+        # Stop the ticker thread, so that after shutdown no tick can start a
+        # nethogs process anymore (otherwise an orphan remained).
         if self._monitor_thread is not None:
             self._monitor_thread.join(timeout=2.0 * max(0.1, self.interval) + 2.0)
             self._monitor_thread = None
-        # Statistik beim Herunterfahren sichern (sonst gingen die letzten
-        # <save_every Ticks verloren).
+        # Save the statistics at shutdown (otherwise the last <save_every ticks
+        # are lost).
         try:
             self.stats.flush()
         except Exception:
@@ -1234,18 +1232,16 @@ class Daemon:
 
 
 def _match_rules(rules, name=None, pid=None) -> dict:
-    """Erste passende Regel fuer einen nethogs-Prozessnamen/PID finden.
+    """Find the first matching rule for a nethogs process name/PID.
 
-    nethogs liefert als "name" entweder den vollen exe-Pfad oder den
-    Prozessnamen. Gespeicherte ``match_value``-Muster sind fuer TrafficToll
-    regex-escaped — fuer den Vergleich hier muessen sie zurueckgewandelt
-    werden, sonst passt keine einzige Regel.
+    nethogs gives as "name" either the full exe path or the process name.
+    Stored ``match_value`` patterns are regex-escaped for TrafficToll — for the
+    comparison here they must be converted back, otherwise no rule matches.
 
-    ``cmdline``-Regeln werden bewusst **literal** geprueft (Substring): das
-    Muster ist eine Regex, aber eine vom Nutzer gelieferte Regex darf im
-    Root-Daemon nicht ausgefuehrt werden (ReDoS). Die massgebliche
-    Regex-Auswertung passiert in ``tt`` selbst; hier geht es nur um die
-    Anzeige-Zuordnung (``rule_name``).
+    ``cmdline`` rules are deliberately checked **literally** (substring): the
+    pattern is a regex, but a user-supplied regex must not be executed in the
+    root daemon (ReDoS). The authoritative regex evaluation happens in ``tt``
+    itself; here it is only about the display mapping (``rule_name``).
     """
     if not name:
         return {}
@@ -1268,16 +1264,16 @@ def _match_rules(rules, name=None, pid=None) -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Throtl-Daemon")
+    parser = argparse.ArgumentParser(description="Throtl daemon")
     parser.add_argument("--foreground", action="store_true",
-                        help="im Vordergrund laufen (fuer systemd/Testing)")
-    parser.add_argument("--socket", default=SOCKET_PATH, help="Unix-Socket-Pfad")
+                        help="run in the foreground (for systemd/testing)")
+    parser.add_argument("--socket", default=SOCKET_PATH, help="Unix socket path")
     parser.add_argument("--config-dir", default=None,
-                        help="Config-Verzeichnis (Default: ~/.config/throtl)")
+                        help="config directory (default: ~/.config/throtl)")
     parser.add_argument("--interface", default=None,
-                        help="Netzwerk-Interface (Default: auto)")
+                        help="network interface (default: auto)")
     parser.add_argument("--simulate", action="store_true",
-                        help="Tooling-Demo: verwende SimEngine (kein Root/noch kein tt)")
+                        help="tooling demo: use SimEngine (no root / no tt yet)")
     parser.add_argument("--tt-command", default=None,
                         help="Pfad zum tt-Binary (Default: automatisch ermitteln)")
     return parser
@@ -1290,7 +1286,7 @@ def main(argv=None) -> int:
     else:
         cfg_dir = args.config_dir
     if args.interface:
-        # Interface ueberschreiben: in Config persistieren
+        # Override the interface: persist it in the config
         store = ConfigStore(cfg_dir)
         if store.get().get("interface") != args.interface:
             store.get()["interface"] = args.interface
@@ -1308,9 +1304,9 @@ def main(argv=None) -> int:
         interface = args.interface or daemon.engine.device
         daemon.engine = SimEngine(device=interface)
 
-    # SIGTERM/SIGINT sauber behandeln: sonst laeuft das Cleanup (Monitor/Engine
-    # stoppen, Socket entfernen) bei 'systemctl stop' bzw. 'kill' nicht, und
-    # nethogs/tt bleiben als Waisen zurueck.
+    # Handle SIGTERM/SIGINT cleanly: otherwise the cleanup (stop monitor/engine,
+    # remove socket) does not run on 'systemctl stop' or 'kill', and nethogs/tt
+    # stay behind as orphans.
     def _request_stop(_signum, _frame):
         daemon._running = False
 
@@ -1320,8 +1316,8 @@ def main(argv=None) -> int:
     try:
         daemon.start()
     except RuntimeError as error:
-        # z. B. ein zweiter Daemon auf demselben Socket: sauber melden.
-        print(f"Fehler: {error}", file=sys.stderr)
+        # e.g. a second daemon on the same socket: report cleanly.
+        print(f"Error: {error}", file=sys.stderr)
         daemon.shutdown()
         return 1
     try:

@@ -1,8 +1,8 @@
-"""Throtl — Bandbreiten-Limits und QoS pro Anwendung fuer Linux.
+"""Throtl — per-application bandwidth limits and QoS for Linux.
 
-Architektur: privilegierter Daemon (root, systemd) mit TrafficToll-Backend,
-Tauri-Dashboard (throtl-app/) und CLI als Frontends ueber Unix-Socket-IPC.
-Konfiguration unter ~/.config/throtl/ (TOML).
+Architecture: a privileged daemon (root, systemd) with a TrafficToll backend,
+the Tauri dashboard (throtl-app/) and the CLI as frontends over Unix-socket IPC.
+Configuration lives in ~/.config/throtl/ (TOML).
 """
 
 import grp
@@ -11,27 +11,27 @@ import tempfile
 
 __version__ = "0.12.0"
 
-# Konfigurationsverzeichnis (~/.config/throtl)
+# Configuration directory (~/.config/throtl)
 CONFIG_DIR_NAME = "throtl"
 
-# Laufzeit-Verzeichnis (Socket, generierte YAML, tt-Log)
+# Runtime directory (socket, generated YAML, tt log)
 RUN_DIR = "/run/throtl"
 SOCKET_PATH = f"{RUN_DIR}/daemon.sock"
 
-# Gruppe, der der Daemon-Socket gehoert. Nur Mitglieder dieser Gruppe duerfen
-# den root-Daemon ansprechen (Socket-Modus 0660). Ohne diese Einschraenkung
-# konnte JEDER lokale Nutzer Limits setzen und das Netz drosseln.
+# The group that owns the daemon socket. Only members of this group may talk to
+# the root daemon (socket mode 0660). Without this restriction ANY local user
+# could set limits and throttle the network.
 SOCKET_GROUP = "throtl"
 SOCKET_MODE = 0o660
 
 
 def socket_access_hint(path: str | None = None) -> str | None:
-    """Erklaeren, warum der Socket nicht erreichbar ist — wenn wir es wissen.
+    """Explain why the socket is unreachable — when we know the reason.
 
-    Haeufigster Fall: ``install.sh`` hat den Nutzer zur Gruppe ``throtl``
-    hinzugefuegt, die *laufende* Session kennt die Gruppe aber noch nicht
-    (Gruppen werden beim Login zugewiesen). Gibt ``None`` zurueck, wenn es
-    nichts zu erklaeren gibt (Socket fehlt, wir sind root, oder Zugriff ok).
+    Most common case: ``install.sh`` added the user to the ``throtl`` group, but
+    the *running* session does not know the group yet (groups are assigned at
+    login). Returns ``None`` when there is nothing to explain (socket missing,
+    we are root, or access is fine).
     """
     path = path or SOCKET_PATH
     if os.geteuid() == 0:
@@ -40,7 +40,7 @@ def socket_access_hint(path: str | None = None) -> str | None:
         info = os.stat(path)
     except OSError:
         return None
-    # connect() braucht Schreibrecht auf der Socket-Datei.
+    # connect() needs write permission on the socket file.
     if os.access(path, os.W_OK):
         return None
     try:
@@ -57,24 +57,23 @@ def socket_access_hint(path: str | None = None) -> str | None:
 
 
 def write_text_atomic(path: str, text: str, mode: int | None = None) -> None:
-    """Text atomar schreiben: temp-Datei -> fsync -> os.replace().
+    """Write text atomically: temp file -> fsync -> os.replace().
 
-    Ein direktes ``open(path, "w")`` ist nicht atomar: bei Stromausfall oder
-    Absturz mitten im Schreiben bleibt eine abgeschnittene Datei zurueck. Bei
-    der TrafficToll-YAML rendert ``tt`` daraus eine kaputte Konfiguration, bei
-    ``config.toml`` scheiterte frueher sogar der Daemon-Start.
+    A direct ``open(path, "w")`` is not atomic: a power loss or crash midway
+    through the write leaves a truncated file behind. For the TrafficToll YAML
+    that makes ``tt`` render a broken config; for ``config.toml`` it used to
+    even prevent the daemon from starting.
 
-    ``os.replace`` ist auf POSIX atomar (gleiches Dateisystem vorausgesetzt),
-    ein Leser sieht also entweder die alte oder die neue Datei — nie ein
-    Zwischenstadium. ``mode`` setzt explizit die Rechte (der Umask des
-    Aufrufers soll die Config nicht unbemerkt auf 0600 druecken, wenn der
-    Daemon sie als root neu schreibt und die GUI sie als User lesen koennen
-    soll — bzw. umgekehrt).
+    ``os.replace`` is atomic on POSIX (same filesystem assumed), so a reader sees
+    either the old or the new file — never an intermediate state. ``mode`` sets
+    the permissions explicitly (the caller's umask must not silently push the
+    config down to 0600 when the daemon rewrites it as root and the GUI must
+    still read it as the user — or vice versa).
     """
     directory = os.path.dirname(path) or "."
     os.makedirs(directory, exist_ok=True)
-    # temp-Datei im ZIEL-Verzeichnis anlegen, sonst ist os.replace nicht
-    # atomar (EXDEV ueber Dateisystemgrenzen).
+    # Create the temp file in the TARGET directory, otherwise os.replace is not
+    # atomic (EXDEV across filesystem boundaries).
     handle = tempfile.NamedTemporaryFile(
         mode="w", encoding="utf-8", dir=directory,
         prefix=f".{os.path.basename(path)}.", suffix=".tmp", delete=False,
@@ -89,14 +88,14 @@ def write_text_atomic(path: str, text: str, mode: int | None = None) -> None:
             os.chmod(tmp, mode)
         os.replace(tmp, path)
     except BaseException:
-        # Nie eine halbe temp-Datei liegen lassen.
+        # Never leave a half-written temp file behind.
         try:
             os.unlink(tmp)
         except OSError:
             pass
         raise
-    # Verzeichniseintrag dauerhaft machen (best effort; manche FS koennen das
-    # nicht, z. B. einige Overlay-/FUSE-Setups — dann ist das kein Fehler).
+    # Make the directory entry durable (best effort; some filesystems cannot,
+    # e.g. certain overlay/FUSE setups — then it is not an error).
     try:
         dir_fd = os.open(directory, os.O_RDONLY)
     except OSError:

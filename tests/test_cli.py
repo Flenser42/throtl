@@ -138,7 +138,7 @@ class MainConnectionErrorTest(unittest.TestCase):
              contextlib.redirect_stderr(err):
             rc = cli.main(["status"])
         self.assertEqual(rc, 1)
-        self.assertIn("Verbindung", err.getvalue())
+        self.assertIn("connection", err.getvalue())
 
 
 class TopCommandTest(unittest.TestCase):

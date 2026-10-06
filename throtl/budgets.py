@@ -1,32 +1,32 @@
-"""Verbrauchs-Budgets: Schwellwerte pro App und global.
+"""Consumption budgets: thresholds per app and globally.
 
-Baut direkt auf der Statistik-History auf (``stats.StatsStore``). Ein Budget
-ist rollierend gemeint:
+Builds directly on the statistics history (``stats.StatsStore``). A budget is
+rolling:
 
-* ``day``  -> die letzten 24 Stunden (24 Stundenbuckets)
-* ``week`` -> die letzten 7 Tage (7 Tagesbuckets)
+* ``day``  -> the last 24 hours (24 hourly buckets)
+* ``week`` -> the last 7 days (7 daily buckets)
 
-Bewertet werden Download **und** Upload zusammen. Das Modul ist reine Logik
-(kein I/O), damit es sich leicht testen laesst.
+Download **and** upload are evaluated together. This module is pure logic (no
+I/O) so it is easy to test.
 """
 
 from .stats import StatsStore
 
-# window -> (stats-Aufloesung, Anzahl Buckets)
+# window -> (stats resolution, bucket count)
 WINDOWS = {
     "day": ("hour", 24),
     "week": ("day", 7),
 }
 
-# SI-Schritte (1000er), passend zu units.parse_size
+# SI steps (1000s), matching units.parse_size
 _VOLUME_UNITS = ("B", "KB", "MB", "GB", "TB", "PB")
 
 
 def format_volume(value) -> str:
-    """Volumen fuer Eingabefelder formatieren: ``"20 GB"``, ``"1.5 MB"``.
+    """Format a volume for input fields: ``"20 GB"``, ``"1.5 MB"``.
 
-    ``None`` bedeutet "kein Budget" und ergibt einen leeren Text. Das Ergebnis
-    laesst sich mit ``units.parse_size`` wieder exakt einlesen.
+    ``None`` means "no budget" and yields an empty string. The result can be
+    parsed back exactly with ``units.parse_size``.
     """
     if value is None:
         return ""
@@ -43,10 +43,10 @@ def format_volume(value) -> str:
 
 
 def budget_rows(payload: dict) -> dict:
-    """Antwort von ``get_budgets`` in Anzeigeform bringen.
+    """Bring the ``get_budgets`` response into display form.
 
-    Rein und ohne Widgets, damit die Zuordnung der Fenster (Tag/Woche) und die
-    Trennung global/App unabhaengig von der Oberflaeche testbar bleibt.
+    Pure and free of widgets, so the mapping of the windows (day/week) and the
+    global/app split stays testable independently of the UI.
     """
     payload = payload or {}
     rows = {
@@ -77,20 +77,20 @@ def budget_rows(payload: dict) -> dict:
     return rows
 
 
-# Fenster unterhalb dieser Auslastung melden nichts.
+# Windows below this usage report nothing.
 WARN_RATIO = 0.8
 
 
 def warning_key(entry: dict) -> str:
-    """Eindeutiger Schluessel eines Budgets fuer die Vorwarnung."""
+    """Unique key of a budget for the early warning."""
     return f"{entry.get('scope')}:{entry.get('app')}:{entry.get('window')}"
 
 
 def pending_warnings(entries, warned, threshold: float = WARN_RATIO) -> list:
-    """Budgets, die knapp werden und noch nicht gemeldet wurden.
+    """Budgets that are getting tight and have not been reported yet.
 
-    Ein bereits ueberschrittenes Budget meldet der bestehende Pfad; hier geht es
-    nur um den Moment davor, in dem man noch reagieren kann.
+    An already-exceeded budget is reported by the existing path; here we only
+    care about the moment before, when there is still time to react.
     """
     out = []
     for entry in entries or []:
@@ -118,7 +118,7 @@ def _entry(scope: str, app: str | None, window: str, used: float, limit: float) 
 
 
 def budget_status(cfg: dict, stats: StatsStore, now: float | None = None) -> list:
-    """Alle konfigurierten Budgets mit aktuellem Verbrauch auflisten."""
+    """List all configured budgets with their current usage."""
     budgets = cfg.get("budgets") or {}
     if budgets.get("enabled") is False:
         return []

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Throtl prerm: Dienst stoppen und deaktivieren.
+# Throtl prerm: stop and disable the service.
 set -e
 
 if command -v systemctl >/dev/null 2>&1; then

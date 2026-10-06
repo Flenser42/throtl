@@ -1,11 +1,11 @@
-"""IPC-Protokoll: JSON-Nachrichten ueber Unix-Socket (newline-delimited).
+"""IPC protocol: JSON messages over a Unix socket (newline-delimited).
 
-Format pro Nachricht: eine Zeile mit einem JSON-Objekt.
+Format per message: one line with one JSON object.
 
-Request (Client -> Daemon):      {"id": 1, "method": "set_limit", "params": {...}}
-Response (Daemon -> Client):     {"id": 1, "result": {...}}
+Request (client -> daemon):     {"id": 1, "method": "set_limit", "params": {...}}
+Response (daemon -> client):    {"id": 1, "result": {...}}
                                  {"id": 1, "error": {"code": -32000, "message": "..."}}
-Event (Daemon -> Client, push):  {"event": "stats", "data": {...}}
+Event (daemon -> client, push): {"event": "stats", "data": {...}}
 """
 
 import json
@@ -14,9 +14,9 @@ import threading
 import time
 import weakref
 
-MAX_MESSAGE_SIZE = 1 << 20  # 1 MiB pro Nachricht
+MAX_MESSAGE_SIZE = 1 << 20  # 1 MiB per message
 
-# Fehlercodes (JSON-RPC-aehnlich)
+# Error codes (JSON-RPC-like)
 PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
@@ -26,11 +26,11 @@ APPLICATION_ERROR = -32000
 
 
 class ProtocolError(Exception):
-    """Fehler beim Framing/JSON-Parsing."""
+    """Error in framing/JSON parsing."""
 
 
 class RpcError(Exception):
-    """Fehlerantwort des Daemons (transportiert code + message)."""
+    """Error response from the daemon (carries code + message)."""
 
     def __init__(self, code, message):
         super().__init__(message)
@@ -39,11 +39,11 @@ class RpcError(Exception):
 
 
 class TimeoutError_(TimeoutError):
-    """Keine Antwort innerhalb des Timeouts."""
+    """No response within the timeout."""
 
 
-# Pro Socket gepufferte Restbytes zwischen zwei read_message()-Aufrufen.
-# WeakKeyDictionary, damit geschlossene Sockets keinen Speicher halten.
+# Leftover bytes buffered per socket between two read_message() calls.
+# WeakKeyDictionary, so closed sockets do not hold memory.
 _READ_BUFFERS: "weakref.WeakKeyDictionary[socket.socket, bytes]" = (
     weakref.WeakKeyDictionary()
 )
@@ -66,17 +66,17 @@ def _store_buffer(sock: socket.socket, buf: bytes) -> None:
 def send_message(sock: socket.socket, obj) -> None:
     data = json.dumps(obj, ensure_ascii=False).encode("utf-8") + b"\n"
     if len(data) > MAX_MESSAGE_SIZE:
-        raise ProtocolError(f"Nachricht zu gross ({len(data)} Bytes)")
+        raise ProtocolError(f"message too large ({len(data)} bytes)")
     sock.sendall(data)
 
 
 def read_message(sock: socket.socket):
-    """Eine Nachricht blockierend lesen. Gibt None bei EOF zurueck.
+    """Read one message, blocking. Returns None on EOF.
 
-    Ein evtl. in einem frueheren ``recv()`` mitgelesenes Reststueck wird pro
-    Socket gepuffert. Ohne diesen Puffer gingen Nachrichten verloren, die im
-    selben Paket eintreffen (z. B. Response + Event oder zwei gepipelined
-    Requests) — genau das verursachte sporadisch fehlende Events.
+    A leftover chunk read by an earlier ``recv()`` is buffered per socket.
+    Without this buffer, messages arriving in the same packet (e.g. response +
+    event, or two pipelined requests) would be lost — exactly what caused
+    sporadically missing events.
     """
     buf = _take_buffer(sock)
     while b"\n" not in buf:
@@ -85,25 +85,25 @@ def read_message(sock: socket.socket):
             if not buf:
                 return None
             _store_buffer(sock, b"")
-            raise ProtocolError("Verbindung mitten in Nachricht geschlossen")
+            raise ProtocolError("connection closed mid-message")
         buf += chunk
         if len(buf) > MAX_MESSAGE_SIZE:
             _store_buffer(sock, b"")
-            raise ProtocolError("Nachricht zu gross")
+            raise ProtocolError("message too large")
     line, rest = buf.split(b"\n", 1)
     _store_buffer(sock, rest)
     try:
         return json.loads(line.decode("utf-8"))
     except (ValueError, UnicodeDecodeError) as error:
-        raise ProtocolError(f"ungueltiges JSON: {error}") from error
+        raise ProtocolError(f"invalid JSON: {error}") from error
     except RecursionError as error:
-        # Tief verschachteltes JSON (< MAX_MESSAGE_SIZE) sprengt den
-        # Parser-Rekursionslimit; das ist ein Protokollfehler, kein Crash.
-        raise ProtocolError("JSON zu tief verschachtelt") from error
+        # Deeply nested JSON (< MAX_MESSAGE_SIZE) blows the parser's recursion
+        # limit; that is a protocol error, not a crash.
+        raise ProtocolError("JSON too deeply nested") from error
 
 
 def iter_messages(sock: socket.socket):
-    """Generator ueber eingehende Nachrichten bis EOF."""
+    """Generator over incoming messages until EOF."""
     while True:
         message = read_message(sock)
         if message is None:
@@ -116,11 +116,11 @@ def make_error(code: int, message: str) -> dict:
 
 
 class Client:
-    """Blockierender IPC-Client mit Reader-Thread.
+    """Blocking IPC client with a reader thread.
 
-    - ``call(method, params)`` fuehrt einen synchronen Request aus.
-    - Events (``{"event": ...}``) werden an ``on_event`` (Callable, eigener Thread)
-      zugestellt — die GUI marshalt sie per GLib.idle_add in den Mainloop.
+    - ``call(method, params)`` runs a synchronous request.
+    - Events (``{"event": ...}``) are delivered to ``on_event`` (callable, its own
+      thread) — the GUI marshals them into the main loop via GLib.idle_add.
     """
 
     def __init__(self, path: str, on_event=None, connect_timeout: float = 5.0):
@@ -133,8 +133,8 @@ class Client:
         self._next_id = 0
         self._responses = {}
         self._cond = threading.Condition()
-        # Serialisiert sendall(): mehrere Threads (GUI-Poller + Nutzeraktionen)
-        # duerfen sich nicht auf dem Socket verschraenken.
+        # Serialises sendall(): several threads (GUI poller + user actions)
+        # must not interleave on the socket.
         self._send_lock = threading.Lock()
 
     def connect(self) -> None:
@@ -144,7 +144,7 @@ class Client:
             sock.connect(self._path)
         except OSError as error:
             sock.close()
-            raise ConnectionError(f"Daemon nicht erreichbar unter {self._path}: {error}") from error
+            raise ConnectionError(f"daemon not reachable at {self._path}: {error}") from error
         sock.settimeout(None)
         self._sock = sock
         self._thread = threading.Thread(target=self._reader, name="throtl-ipc", daemon=True)
@@ -161,15 +161,15 @@ class Client:
             if "id" in message:
                 with self._cond:
                     self._responses[message["id"]] = message
-                    # Spaete Antworten auf bereits getimeoutete Calls duerfen
-                    # die Map nicht unbegrenzt wachsen lassen.
+                    # Late responses to already-timed-out calls must not grow
+                    # the map without bounds.
                     while len(self._responses) > 256:
                         self._responses.pop(next(iter(self._responses)))
                     self._cond.notify_all()
             elif "event" in message and self._on_event is not None:
                 try:
                     self._on_event(message)
-                except Exception:  # Callback-Fehler duerfen den Reader nicht killen
+                except Exception:  # callback errors must not kill the reader
                     pass
         with self._cond:
             self._closed = True
@@ -177,7 +177,7 @@ class Client:
 
     def call(self, method: str, params=None, timeout: float = 10.0):
         if self._sock is None:
-            raise ConnectionError("Client nicht verbunden")
+            raise ConnectionError("client not connected")
         with self._cond:
             self._next_id += 1
             message_id = self._next_id
@@ -188,28 +188,28 @@ class Client:
             deadline = time.monotonic() + timeout
             while message_id not in self._responses:
                 if self._closed:
-                    raise ConnectionError("Verbindung zum Daemon geschlossen")
+                    raise ConnectionError("connection to the daemon closed")
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    # Ohne das bliebe der Eintrag fuer immer in _responses
-                    # (ein Client mit gelegentlichen Timeouts leckt Speicher).
+                    # Without this the entry would stay in _responses forever
+                    # (a client with occasional timeouts leaks memory).
                     self._responses.pop(message_id, None)
-                    raise TimeoutError_(f"Timeout bei '{method}' nach {timeout}s")
+                    raise TimeoutError_(f"timeout on '{method}' after {timeout}s")
                 self._cond.wait(remaining)
             response = self._responses.pop(message_id)
         if "error" in response:
             error = response["error"]
-            raise RpcError(error.get("code", APPLICATION_ERROR), error.get("message", "unbekannter Fehler"))
+            raise RpcError(error.get("code", APPLICATION_ERROR), error.get("message", "unknown error"))
         return response.get("result")
 
     def close(self) -> None:
         self._closed = True
         if self._sock is not None:
             try:
-                # shutdown() weckt einen in recv() blockierten Reader sofort.
-                # Ein blosses close() laesst ihn auf Linux bis zum naechsten
-                # Paket/EOF haengen — der join() lief dann voll in den Timeout
-                # (im Test 2 s pro Verbindung).
+                # shutdown() wakes a reader blocked in recv() immediately. A
+                # plain close() leaves it hanging on Linux until the next
+                # packet/EOF — the join() then ran into its full timeout
+                # (in the test 2 s per connection).
                 self._sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass

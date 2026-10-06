@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Throtl-Deinstallation (Services stoppen/entfernen, Desktop-Datei, Icon, /etc).
-# Die gesetzten Limits-Config in /etc/throtl UND den venv-Code
-# in /opt/throtl entfernt nur auf Wunsch (flag --purge).
+# Throtl uninstall (stop/remove services, desktop file, icon, /etc).
+# The configured limits in /etc/throtl AND the venv code in /opt/throtl
+# are only removed on request (flag --purge).
 #
-#   sudo ./setup/uninstall.sh            # entfernt Service, Desktop, Icon, aber NICHT Code/Config
-#   sudo ./setup/uninstall.sh --purge    # entfernt auch /opt/throtl und /etc/throtl
+#   sudo ./setup/uninstall.sh            # removes service, desktop, icon, but NOT code/config
+#   sudo ./setup/uninstall.sh --purge    # also removes /opt/throtl and /etc/throtl
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "=== Stoppe + entferne systemd-Service ==="
+echo "=== Stop + remove systemd service ==="
 sudo systemctl disable --now throtl 2>/dev/null || true
 sudo rm -f /etc/systemd/system/throtl.service
 sudo systemctl daemon-reload
 
-echo "=== Entferne Desktop-Datei + Icon ==="
+echo "=== Remove desktop file + icon ==="
 sudo rm -f /usr/share/applications/throtl.desktop
 sudo rm -f /usr/share/applications/throtl-classic.desktop
 sudo rm -f /usr/share/icons/hicolor/scalable/apps/throtl.svg
 sudo gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
 
-# Die Dashboard-Installation liegt pro Nutzer unter ~/.local (install-app.sh).
+# The dashboard install lives per user under ~/.local (install-app.sh).
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
   USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
   if [ -n "$USER_HOME" ] && [ -d "$USER_HOME/.local" ]; then
-    echo "=== Entferne Dashboard-Installation (Nutzer $SUDO_USER) ==="
+    echo "=== Remove dashboard installation (user $SUDO_USER) ==="
     sudo rm -rf "$USER_HOME/.local/opt/throtl"
     sudo rm -f "$USER_HOME/.local/bin/throtl-app"
     sudo rm -f "$USER_HOME/.local/share/applications/throtl-app.desktop"
@@ -34,12 +34,16 @@ if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
   fi
 fi
 
-echo "=== Entferne PATH-Launcher ==="
+echo "=== Remove PATH launchers ==="
 sudo rm -f /usr/local/bin/throtl-cli /usr/local/bin/throtl-gui /usr/local/bin/throtl-daemon
 
+echo "=== Remove polkit setup (helper + policy) ==="
+sudo rm -f /usr/local/bin/throtl-setup
+sudo rm -f /usr/share/polkit-1/actions/org.throtl.setup.policy
+
 if [ "${1:-}" == "--purge" ]; then
-  echo "=== Purge: entferne Code + Config ==="
+  echo "=== Purge: remove code + config ==="
   sudo rm -rf /opt/throtl /etc/throtl /run/throtl
 fi
 
-echo "Throtl deinstalliert."
+echo "Throtl uninstalled."

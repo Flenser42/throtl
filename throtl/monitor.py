@@ -57,7 +57,7 @@ def resolve_nethogs_binary(cmd: str | None = None) -> str:
     return shutil.which("nethogs") or "nethogs"
 
 
-# Interpreter, bei denen argv[0] nicht der App-Name ist
+# Interpreters where argv[0] is not the app name
 _INTERPRETERS = {
     "python", "python2", "python3", "pypy", "pypy3", "node", "nodejs", "deno",
     "sh", "bash", "zsh", "dash", "fish", "perl", "ruby", "php", "env",
@@ -71,9 +71,9 @@ def _basename(path: str) -> str:
 
 
 def pretty_app_name(cmdline: str) -> str:
-    """Lesbaren App-Namen aus der nethogs-Kommandozeile ableiten.
+    """Derive a readable app name from the nethogs command line.
 
-    nethogs liefert argv[0] (oft "python3") plus, mit -l, die Argumente:
+    nethogs gives argv[0] (often "python3") plus, with -l, the arguments:
       "python3 ./legendary install CrabEA …"  -> "legendary"
       "python3 /opt/app/main.py --serve"      -> "main"
       "python3 -m http.server"                -> "http.server"
@@ -143,10 +143,10 @@ def parse_trace(line: str):
 
 
 def _kb_delta_to_kbit(delta_kB: float, seconds: float) -> float:
-    """Ein kumulatives KiB-Delta ueber ``seconds`` in kbit/s umrechnen.
+    """Convert a cumulative KiB delta over ``seconds`` into kbit/s.
 
-    nethogs zaehlt in 1024er-Schritten (``#define KB (1UL << 10)``), intern
-    rechnen wir in kbit/s (1000er): 1 KiB/s = 1024*8/1000 kbit/s.
+    nethogs counts in 1024-steps (``#define KB (1UL << 10)``); internally we
+    compute in kbit/s (1000-steps): 1 KiB/s = 1024*8/1000 kbit/s.
     """
     if seconds <= 0:
         return 0.0
@@ -234,8 +234,8 @@ class NethogsMonitor:
         argv = [self.cmd, "-t", "-d", str(self.interval), "-v", "1"]
         if self.capture_udp:
             argv.append("-C")
-        # -l: vollstaendige Kommandozeile mit ausgeben. Ohne -l meldet nethogs
-        # nur argv[0] ("python3"), damit sind Skript-Apps nicht unterscheidbar.
+        # -l: print the full command line. Without -l nethogs only reports
+        # argv[0] ("python3"), so script apps become indistinguishable.
         argv.append("-l")
         if self.device not in (None, "", "auto", "automatic"):
             argv.append(self.device)
@@ -256,8 +256,8 @@ class NethogsMonitor:
                 )
             except FileNotFoundError as error:
                 raise RuntimeError(
-                    "nethogs ist nicht installiert (pacman -S nethogs). "
-                    "Live-Monitoring deaktiviert."
+                    "nethogs is not installed (pacman -S nethogs). "
+                    "Live monitoring disabled."
                 ) from error
             source = self._proc.stdout
         self._running = True
@@ -273,7 +273,7 @@ class NethogsMonitor:
             self._stderr_thread.start()
 
     def _drain_stderr(self, proc) -> None:
-        """nethogs-stderr sammeln (Diagnose; geht sonst verloren)."""
+        """Collect nethogs' stderr (diagnostics; would otherwise be lost)."""
         stream = proc.stderr
         if stream is None:
             return
@@ -283,7 +283,7 @@ class NethogsMonitor:
                 self._stderr_tail.append(line)
 
     def is_alive(self) -> bool:
-        """Laeuft der nethogs-Prozess noch? (Injektionen: solange running.)"""
+        """Is the nethogs process still running? (injections: as long as running.)"""
         if self._inject is not None:
             return self._running
         return self._proc is not None and self._proc.poll() is None
@@ -292,12 +292,12 @@ class NethogsMonitor:
         return list(self._stderr_tail)
 
     def _rates_from_tick(self, tick: dict, now: float) -> dict:
-        """Kumulative nethogs-Werte eines Ticks in kbit/s-Raten umrechnen."""
+        """Convert a tick's cumulative nethogs values into kbit/s rates."""
         rates = {}
         for pid, info in tick.items():
             previous = self._prev.get(pid)
             if previous is None:
-                continue  # erste Sichtung: erst beim naechsten Tick messbar
+                continue  # first sighting: only measurable on the next tick
             elapsed = now - previous[0]
             if elapsed <= 0:
                 continue
@@ -305,8 +305,8 @@ class NethogsMonitor:
             sent_kB = info.get("sent_kB", 0.0)
             d_recv = recv_kB - previous[1]
             d_sent = sent_kB - previous[2]
-            # nethogs-Neustart / Zaehler-Reset: Delta waere negativ -> ganze
-            # aktuelle Summe als Delta nehmen.
+            # nethogs restart / counter reset: the delta would be negative ->
+            # take the whole current sum as the delta.
             if d_recv < 0:
                 d_recv = recv_kB
             if d_sent < 0:
@@ -336,12 +336,12 @@ class NethogsMonitor:
                         self._latest = rates
             except Exception:
                 continue
-        # Stream zu Ende. _latest NICHT mit parser.finish() ueberschreiben:
-        # der liefert rohe kumulative kBytes (sent_kB/recv_kB) statt der
-        # dokumentierten download/upload-Raten. Die letzten Raten bleiben so
-        # erhalten, statt auf ein falsches Schema zu kippen.
-        # Stream zu Ende: wenn wir nicht selbst gestoppt haben, ist nethogs
-        # gestorben. Prozess reapen (kein Zombie) und Grund merken.
+        # Stream ended. Do NOT overwrite _latest with parser.finish(): that
+        # yields raw cumulative kBytes (sent_kB/recv_kB) instead of the
+        # documented download/upload rates. The last rates stay intact instead
+        # of flipping to a wrong schema.
+        # Stream ended: if we did not stop ourselves, nethogs died. Reap the
+        # process (no zombie) and remember the reason.
         proc = self._proc
         if self._running and proc is not None:
             try:
@@ -368,9 +368,9 @@ class NethogsMonitor:
                     proc.terminate()
                 except OSError:
                     pass
-            # Auf das Ende warten — sonst bleibt der nethogs-Subprozess als
-            # Zombie zurueck (ResourceWarning). Der Prozess-Tod schliesst das
-            # Schreibende der Pipe, der Reader-Thread laeuft dadurch aus.
+            # Wait for the end — otherwise the nethogs subprocess stays behind
+            # as a zombie (ResourceWarning). The process death closes the write
+            # end of the pipe, which lets the reader thread exit.
             try:
                 proc.wait(timeout=2.0)
             except subprocess.TimeoutExpired:
@@ -385,7 +385,7 @@ class NethogsMonitor:
         if self._stderr_thread is not None:
             self._stderr_thread.join(timeout=2.0)
             self._stderr_thread = None
-        # Pipes erst nach den Readern schliessen (sonst ValueError im Reader).
+        # Close the pipes only after the readers (else ValueError in the reader).
         if proc is not None:
             for stream in (proc.stdout, proc.stderr):
                 if stream is not None:

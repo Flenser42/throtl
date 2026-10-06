@@ -17,20 +17,20 @@ BUNDLE_DIR="$APP_DIR/src-tauri/target/release/bundle"
 export PATH="$HOME/.cargo/bin:$HOME/.local/share/pnpm:$PATH"
 
 if [[ ! -d "$APP_DIR" ]]; then
-  echo "Fehler: throtl-app/ nicht gefunden ($APP_DIR)"
+  echo "Error: throtl-app/ not found ($APP_DIR)"
   exit 1
 fi
 
-# Version, die installiert werden soll (Single Source: die Tauri-Config).
+# The version to install (single source: the Tauri config).
 VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
   "$APP_DIR/src-tauri/tauri.conf.json" | head -1)"
 if [[ -z "$VERSION" ]]; then
-  echo "Fehler: Version nicht aus tauri.conf.json gelesen."
+  echo "Error: could not read version from tauri.conf.json."
   exit 1
 fi
 
-# Nur ein Bundle DIESER Version akzeptieren: sonst wuerde ein liegengebliebenes
-# AppImage einer alten Version installiert (genau das passierte mit 0.1.0).
+# Only accept a bundle of THIS version: otherwise a leftover AppImage of an old
+# version would be installed (exactly what happened with 0.1.0).
 find_appimage() {
   local candidate
   for candidate in "$BUNDLE_DIR/appimage/"*_"$VERSION"_*.AppImage; do
@@ -39,20 +39,53 @@ find_appimage() {
   return 0
 }
 
+# Build the AppImage with a live spinner and elapsed time. The Rust
+# compilation can take several minutes and must never look frozen — a user
+# staring at a silent terminal otherwise assumes it hung and kills it.
+# `--bundles appimage` skips the deb/rpm bundlers (which need dpkg-deb and
+# rpmbuild, not present on Arch/Omarchy) and only produces what is installed.
+build_appimage() {
+  local log spin='-\|/' i=0 start elapsed pid
+  log="$(mktemp)"
+  start=$SECONDS
+  (
+    cd "$APP_DIR" || exit 1
+    npm ci --no-audit --no-fund
+    npm run tauri build -- --bundles appimage
+  ) > "$log" 2>&1 &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    elapsed=$((SECONDS - start))
+    printf "\r   %s  Building GUI (%dm %02ds) — please don't interrupt …  " \
+      "${spin:i++%4:1}" "$((elapsed / 60))" "$((elapsed % 60))"
+    sleep 0.2
+  done
+  if wait "$pid"; then
+    printf "\r   GUI build done (%dm %02ds).\n" \
+      "$(((SECONDS - start) / 60))" "$(((SECONDS - start) % 60))"
+    rm -f "$log"
+    return 0
+  fi
+  printf "\r   GUI build FAILED — last output:\n"
+  tail -n 30 "$log" >&2
+  rm -f "$log"
+  return 1
+}
+
 APPIMAGE="$(find_appimage)"
 if [[ -z "$APPIMAGE" ]]; then
   if [[ "${1:-}" == "--no-build" ]]; then
-    echo "Kein AppImage fuer Version $VERSION vorhanden und --no-build gesetzt."
-    echo "Vorhanden: $(ls -1 "$BUNDLE_DIR"/appimage/*.AppImage 2>/dev/null | tr '\n' ' ')"
+    echo "No AppImage for version $VERSION present and --no-build set."
+    echo "Present: $(ls -1 "$BUNDLE_DIR"/appimage/*.AppImage 2>/dev/null | tr '\n' ' ')"
     exit 1
   fi
-  echo "Baue die GUI fuer Version $VERSION (~2–3 Min) …"
-  command -v npm   >/dev/null || { echo "npm fehlt (Node installieren)."; exit 1; }
-  command -v cargo >/dev/null || { echo "cargo fehlt (rustup installieren, siehe README)."; exit 1; }
-  ( cd "$APP_DIR" && npm ci --no-audit --no-fund && npm run tauri build )
+  echo "Building the GUI for version $VERSION (first time: 5–15 min) …"
+  command -v npm   >/dev/null || { echo "npm missing (install Node)."; exit 1; }
+  command -v cargo >/dev/null || { echo "cargo missing (install rustup, see README)."; exit 1; }
+  build_appimage
   APPIMAGE="$(find_appimage)"
 fi
-[[ -n "$APPIMAGE" ]] || { echo "Build fehlgeschlagen (kein AppImage fuer $VERSION)."; exit 1; }
+[[ -n "$APPIMAGE" ]] || { echo "Build failed (no AppImage for $VERSION)."; exit 1; }
 
 PREFIX="$HOME/.local"
 OPT="$PREFIX/opt/throtl"
@@ -98,9 +131,9 @@ command -v gtk-update-icon-cache >/dev/null 2>&1 && \
 
 case ":$PATH:" in
   *":$BIN:"*) ;;
-  *) echo "Hinweis: '$BIN' liegt nicht im PATH — z. B. in der Shell-Config ergänzen." ;;
+  *) echo "Note: '$BIN' is not on the PATH — e.g. add it in your shell config." ;;
 esac
 
-echo "GUI installiert:"
-echo "   Start:  throtl-app   (oder 'Throtl' im App-Menü)"
-echo "   Datei:  $OPT/Throtl.AppImage"
+echo "GUI installed:"
+echo "   Start:  throtl-app   (or 'Throtl' in the app menu)"
+echo "   File:   $OPT/Throtl.AppImage"
