@@ -19,12 +19,12 @@ def _cfg(processes=None, global_=None, interface=None):
 
 
 class RateUnitTest(unittest.TestCase):
-    """tc-Raten muessen in BITS ausgedrueckt werden.
+    """tc rates must be expressed in BITS.
 
-    iproute2 kennt ``kbit`` (Bits) und ``KBps`` (Bytes) und matcht Suffixe
-    ohne Ruecksicht auf Gross-/Kleinschreibung. Ein ``8000kbps`` landet damit
-    als 8000 Kilobyte/s in der Klasse — 64 Mbit/s statt 8 Mbit/s, also 8x zu
-    hoch. Deshalb wird ausschliesslich die Bit-Form geschrieben.
+    iproute2 knows ``kbit`` (bits) and ``KBps`` (bytes) and matches suffixes
+    regardless of case. An ``8000kbps`` thus lands as 8000 kilobytes/s in the
+    class — 64 Mbit/s instead of 8 Mbit/s, i.e. 8x too high. Therefore only the
+    bit form is written.
     """
 
     def test_uses_bits_not_bytes(self):
@@ -106,15 +106,15 @@ class RenderTest(unittest.TestCase):
 
 
 class EngineProcessTest(unittest.TestCase):
-    """Prozessbasierte Tests mit einem Fake-tt-Skript."""
+    """Process-based tests with a fake tt script."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         fake = Path(self._tmp.name) / "tt"
         fake.write_text(
-            # ``exec``: der Prozess IST danach der sleep, statt eine Shell, die
-            # auf ihr Kind wartet. Ohne das braucht SIGINT ~30 s statt sofort
-            # (jeder Engine-Test kostete damit mehrere Sekunden).
+            # ``exec``: the process IS the sleep afterwards, instead of a shell
+            # waiting on its child. Without that SIGINT needs ~30 s instead of
+            # immediately (every engine test cost several seconds that way).
             "#!/bin/sh\nprintf '%s\\n' \"$@\">> \"$TT_FAKE_LOG\"\nexec sleep 30\n"
         )
         fake.chmod(0o755)
@@ -135,7 +135,7 @@ class EngineProcessTest(unittest.TestCase):
         engine_ = engine.TrafficTollEngine("enp34s0", command=self.fake)
         engine_.apply(_cfg())
         self.assertTrue(engine_.is_running())
-        time.sleep(0.2)  # dem Subprozess Zeit zum Log-Scheiben geben
+        time.sleep(0.2)  # give the subprocess time to write the log
         engine_.stop()
         log = Path(os.environ["TT_FAKE_LOG"]).read_text()
         lines = log.splitlines()
@@ -158,16 +158,16 @@ class EngineProcessTest(unittest.TestCase):
         engine_.stop()
 
     def test_identical_reapply_is_noop(self):
-        """Unveraenderte Config darf keinen teuren tt-Neustart ausloesen."""
+        """An unchanged config must not trigger an expensive tt restart."""
         engine_ = engine.TrafficTollEngine("enp34s0", command=self.fake)
         engine_.apply(_cfg())
         gen1 = engine_._generation
-        engine_.apply(_cfg())          # identisch -> kein Neustart
+        engine_.apply(_cfg())          # identical -> no restart
         self.assertEqual(engine_._generation, gen1)
         engine_.stop()
 
     def test_apply_metrics(self):
-        """applies/restarts/failures + Dauer werden gezaehlt (fuer status)."""
+        """applies/restarts/failures + duration are counted (for status)."""
         engine_ = engine.TrafficTollEngine("enp34s0", command=self.fake)
         engine_.apply(_cfg())
         engine_.apply(_cfg())          # no-op
@@ -206,7 +206,7 @@ if __name__ == "__main__":
 
 
 class EngineStatusDeadlockTest(unittest.TestCase):
-    """Regression: status() darf sich nicht selbst blockieren (Lock-Deadlock)."""
+    """Regression: status() must not block itself (lock deadlock)."""
 
     def test_status_returns_without_deadlock(self):
         import threading
@@ -222,7 +222,7 @@ class EngineStatusDeadlockTest(unittest.TestCase):
         t = threading.Thread(target=_call, daemon=True)
         t.start()
         t.join(timeout=5.0)
-        self.assertFalse(t.is_alive(), "status() hat sich selbst blockiert (Deadlock)")
+        self.assertFalse(t.is_alive(), "status() blocked itself (deadlock)")
         self.assertIn("running", result["status"])
 
     def test_is_running_and_status_no_deadlock(self):
@@ -234,8 +234,8 @@ class EngineStatusDeadlockTest(unittest.TestCase):
 
 
 class TcCleanupTest(unittest.TestCase):
-    """Vor jedem tt-Start muessen tc-Reste entfernt werden (sonst scheitert der
-    QDisc-Aufbau: 'Exclusivity flag on' / 'Parent Qdisc doesn't exists')."""
+    """Before every tt start, tc leftovers must be removed (otherwise the qdisc
+    setup fails: 'Exclusivity flag on' / 'Parent Qdisc doesn't exists')."""
 
     def test_cleanup_deletes_root_and_ingress(self):
         from unittest import mock
@@ -262,7 +262,7 @@ class TcCleanupTest(unittest.TestCase):
 
 
 class YamlQuoteAndLogTest(unittest.TestCase):
-    """Escaping und Log-Deckel (Review: rohe Steuerzeichen / wachsende tt.log)."""
+    """Escaping and log cap (review: raw control chars / growing tt.log)."""
 
     def test_escapes_controls_that_would_break_the_yaml(self):
         out = engine.yaml_quote("a\rb\u2028c\x07d")
@@ -285,12 +285,12 @@ class YamlQuoteAndLogTest(unittest.TestCase):
             eng._LOG_MAX_BYTES = 4096
             for i in range(400):
                 eng._append_stderr_log("x" * 64 + str(i))
-            # Nach dem Beschneiden bleibt nur der Rest — nie unbegrenzt.
+            # After truncation only the rest remains — never unlimited.
             self.assertLessEqual(path.stat().st_size, eng._LOG_MAX_BYTES + 128)
 
 
 class GracefulStopTest(unittest.TestCase):
-    """tt wird per SIGINT beendet, damit sein atexit-Cleanup die QDiscs raeumt."""
+    """tt is stopped via SIGINT so its atexit cleanup removes the qdiscs."""
 
     def test_stop_sends_sigint(self):
         import subprocess
@@ -303,8 +303,8 @@ class GracefulStopTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             log = Path(tmp) / "sig.txt"
             fake = Path(tmp) / "tt"
-            # Python (wie das echte tt): der Handler laeuft sofort, bei einer
-            # Shell wuerde ein trap erst nach dem Vordergrund-`sleep` greifen.
+            # Python (like the real tt): the handler runs immediately; with a
+            # shell a trap would only fire after the foreground sleep.
             fake.write_text(
                 "#!/usr/bin/env python3\n"
                 "import signal, sys, time\n"
@@ -318,9 +318,9 @@ class GracefulStopTest(unittest.TestCase):
             )
             fake.chmod(0o755)
             eng = TrafficTollEngine("enp0s3", command=str(fake))
-            eng.dry_run = True          # keine tc-Aufrufe im Test
+            eng.dry_run = True          # no tc calls in the test
             eng._proc = subprocess.Popen([str(fake)])
             time.sleep(0.4)
             eng.stop()
-            self.assertTrue(log.exists(), "fake tt hat kein Signal erhalten")
+            self.assertTrue(log.exists(), "fake tt received no signal")
             self.assertIn("INT", log.read_text())

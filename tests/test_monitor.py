@@ -49,7 +49,7 @@ class TraceParserTickTest(unittest.TestCase):
         tick = ticks[0]
         self.assertIn("1457", tick)
         self.assertEqual(tick["1457"]["name"], "/usr/lib/firefox/firefox")
-        # -v 1: kumulativ (KiB), nicht Rate
+        # -v 1: cumulative (KiB), not rate
         self.assertEqual(tick["1457"]["recv_kB"], 300.0)
         self.assertEqual(tick["1457"]["sent_kB"], 2.0)
 
@@ -57,7 +57,7 @@ class TraceParserTickTest(unittest.TestCase):
         parser = TraceParser()
         ticks = parser.feed(TRACE.decode())
         ticks.append(parser.finish())
-        # JDownloader: sent 80 (upload), recv 40 (download), kumulativ
+        # JDownloader: sent 80 (upload), recv 40 (download), cumulative
         jd = ticks[0]["4001"]
         self.assertEqual(jd["sent_kB"], 80.0)
         self.assertEqual(jd["recv_kB"], 40.0)
@@ -66,7 +66,7 @@ class TraceParserTickTest(unittest.TestCase):
         parser = TraceParser()
         ticks = parser.feed(TRACE.decode())
         ticks.append(parser.finish())
-        # im letzten Fenster gibt es nur firefox
+        # in the last window there is only firefox
         self.assertNotIn("2886", ticks[2])
         self.assertNotIn("4001", ticks[2])
         self.assertIn("1457", ticks[2])
@@ -90,7 +90,7 @@ class NethogsMonitorTest(unittest.TestCase):
         self.assertEqual(latest["1457"]["name"], "/usr/lib/firefox/firefox")
 
     def test_default_cmd_is_absolute(self):
-        """Damit ein systemd-Dienst nethogs auch bei minimalem PATH findet."""
+        """So a systemd service finds nethogs even with a minimal PATH."""
         mon = NethogsMonitor("wlo1", interval=1.0)
         self.assertTrue(mon.cmd.startswith("/") or mon.cmd == "nethogs")
 
@@ -115,7 +115,7 @@ class NethogsMonitorTest(unittest.TestCase):
                          ["nethogs", "-t", "-d", "1.0", "-v", "1", "-l", "wlo1"])
 
     def test_kib_delta_conversion(self):
-        # nethogs zaehlt KiB: 1000 KiB in 1 s = 8192 kbit/s.
+        # nethogs counts KiB: 1000 KiB in 1 s = 8192 kbit/s.
         self.assertAlmostEqual(monitor._kb_delta_to_kbit(1000.0, 1.0), 8192.0,
                                places=3)
         self.assertEqual(monitor._kb_delta_to_kbit(1000.0, 0.0), 0.0)
@@ -139,26 +139,26 @@ class NethogsMonitorTest(unittest.TestCase):
         self.assertGreater(rates["1"]["download"], 0)
 
     def test_unattributable_traffic_is_kept(self):
-        """Nicht zuordenbarer Traffic darf NICHT verschwinden."""
+        """Unattributable traffic must NOT disappear."""
         got = monitor.parse_trace("unknown TCP/0/0\t1.5\t2.5\n")
         self.assertEqual(got[0], monitor.UNATTRIBUTED_NAME)
         self.assertEqual(got[1], monitor.UNATTRIBUTED_PID)
         self.assertEqual(got[3], 1.5)
         self.assertEqual(got[4], 2.5)
-        # pid 0 ohne "unknown" ebenfalls als nicht zuordenbar markieren
+        # mark pid 0 without "unknown" as unattributable too
         self.assertEqual(monitor.parse_trace("/usr/bin/foo/0/1000\t1\t2\n")[1],
                          monitor.UNATTRIBUTED_PID)
 
     def test_auto_device(self):
-        # detect_default_interface aus config; hier nur smoke test, dass der
-        # Monitor mit einem Device konstruierbar ist.
+        # detect_default_interface from config; here only a smoke test that the
+        # monitor is constructible with a device.
         mon = NethogsMonitor("lo", inject=io.StringIO(""))
         mon.start()
         mon.stop()
 
     def test_dead_process_is_detected_and_reaped(self):
-        """Stirbt nethogs, muss is_alive() False werden und der Prozess
-        gereapt werden (kein Zombie), inklusive Grund in last_error."""
+        """If nethogs dies, is_alive() must become False and the process be
+        reaped (no zombie), including the reason in last_error."""
         mon = NethogsMonitor("lo", cmd="/bin/true", capture_udp=False)
         mon.start()
         deadline = time.monotonic() + 3
@@ -166,12 +166,12 @@ class NethogsMonitorTest(unittest.TestCase):
             time.sleep(0.02)
         self.assertFalse(mon.is_alive())
         self.assertIsNotNone(mon.last_error)
-        mon.stop()  # darf nicht werfen
+        mon.stop()  # must not throw
         self.assertFalse(mon.is_alive())
 
     def test_stream_end_keeps_rate_shape(self):
-        """Nach EOF darf snapshot() kein rohes kB-Schema (sent_kB/recv_kB)
-        liefern, sondern weiter download/upload."""
+        """After EOF, snapshot() must not return a raw kB schema (sent_kB/recv_kB)
+        but keep download/upload."""
         mon = NethogsMonitor("lo", inject=io.StringIO(""))
         mon._running = True
         mon._read_stream(io.StringIO(TRACE.decode()))

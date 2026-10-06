@@ -202,17 +202,17 @@ class LoadConfigRobustnessTest(unittest.TestCase):
         self.assertEqual(cfg["global"]["upload_minimum"], 10)
 
     def test_wrong_type_for_section_falls_back_to_defaults(self):
-        # Typverwechselte Tabelle (global = "x") darf nicht crashen.
+        # A type-confused table (global = "x") must not crash.
         cfg = self._load('global = "not a table"\n')
         self.assertEqual(cfg["global"]["download_priority"], "normal")
         self.assertIsNotNone(config.last_config_warning())
 
     def test_one_bad_global_value_keeps_the_rest_of_the_config(self):
-        # Ein einzelner Tippfehler in [global] darf Regeln nicht mitreissen.
+        # A single typo in [global] must not take down rules.
         body = (
             'unit = "kbps"\n\n'
             "[global]\n"
-            'download_limit = "unlimited"\n'  # parse_rate kennt das nicht
+            'download_limit = "unlimited"\n'  # parse_rate doesn't know this
             'download_priority = "normal"\n\n'
             "[[processes]]\n"
             'key = "exe:/usr/bin/steam"\n'
@@ -228,8 +228,8 @@ class LoadConfigRobustnessTest(unittest.TestCase):
         self.assertIsNotNone(config.last_config_warning())
 
     def test_broken_config_is_backed_up(self):
-        # Das Original muss gerettet werden, bevor die Defaults persistiert
-        # werden — sonst zerstoert ein Tippfehler die Datei.
+        # The original must be saved before the defaults are persisted —
+        # otherwise a typo destroys the file.
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "config.toml")
             with open(path, "w", encoding="utf-8") as handle:
@@ -239,8 +239,8 @@ class LoadConfigRobustnessTest(unittest.TestCase):
             self.assertEqual(len(backups), 1, os.listdir(tmp))
 
     def test_overflowing_numbers_are_repaired_not_fatal(self):
-        # TOML 1e309 ist inf; int(inf) raist OverflowError, was frueher an
-        # jeder except-Liste vorbei lief und den Daemon beim Start killte.
+        # TOML 1e309 is inf; int(inf) raises OverflowError, which earlier slipped
+        # past every except-list and killed the daemon at start.
         for body in (
             "[global]\ndownload_limit = 1e309\n",
             "[global]\nupload_minimum = 1e309\n",
@@ -268,8 +268,8 @@ class LoadConfigRobustnessTest(unittest.TestCase):
             config.priority_to_int(True)
 
     def test_window_with_equal_start_and_end_is_rejected(self):
-        # Ein halboffenes Intervall mit start == end waere nie aktiv — das ist
-        # praktisch immer ein Tippfehler und wird deshalb gemeldet.
+        # A half-open interval with start == end would never be active — that is
+        # practically always a typo and is therefore reported.
         with self.assertRaises(config.ConfigError):
             config.normalize_window({"days": ["mo"], "start": "20:00", "end": "20:00"})
         cfg = self._load(

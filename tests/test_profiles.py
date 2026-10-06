@@ -1,4 +1,4 @@
-"""Tests fuer Profile und Zeitplaene (Aufgabe B)."""
+"""Tests for profiles and schedules (task B)."""
 
 import os
 import tempfile
@@ -60,7 +60,7 @@ class ProfileCrudTest(unittest.TestCase):
         self.assertIn("University", config.profile_names(cfg))
         self.assertEqual(cfg["active_profile"], "University")
 
-        # Top-Level aendern und ueber das Profil zuruecksetzen.
+        # Change the top level and reset it via the profile.
         cfg["global"]["download_limit"] = 9999
         cfg["processes"] = []
         config.apply_profile(cfg, "University")
@@ -114,14 +114,14 @@ class ScheduleTest(unittest.TestCase):
 
     def test_daytime_match(self):
         cfg = self._cfg(["mo", "di", "mi", "do", "fr"], "08:00", "14:00")
-        # Mittwoch, 10:00
+        # Wednesday, 10:00
         self.assertEqual(
             config.active_scheduled_profile(cfg, datetime(2026, 1, 7, 10, 0)),
             "University")
-        # Mittwoch, 15:00 -> ausserhalb
+        # Wednesday, 15:00 -> outside
         self.assertIsNone(
             config.active_scheduled_profile(cfg, datetime(2026, 1, 7, 15, 0)))
-        # Samstag -> Wochentag passt nicht
+        # Saturday -> weekday does not match
         self.assertIsNone(
             config.active_scheduled_profile(cfg, datetime(2026, 1, 10, 10, 0)))
 
@@ -135,15 +135,15 @@ class ScheduleTest(unittest.TestCase):
 
     def test_overnight_rule(self):
         cfg = self._cfg(["mo"], "22:00", "06:00")
-        # Montag 23:00 -> Abendteil
+        # Monday 23:00 -> evening part
         self.assertEqual(
             config.active_scheduled_profile(cfg, datetime(2026, 1, 5, 23, 0)),
             "University")
-        # Dienstag 02:00 -> Morgenteil (Starttag Montag)
+        # Tuesday 02:00 -> morning part (start day Monday)
         self.assertEqual(
             config.active_scheduled_profile(cfg, datetime(2026, 1, 6, 2, 0)),
             "University")
-        # Dienstag 23:00 -> nicht mehr
+        # Tuesday 23:00 -> no longer
         self.assertIsNone(
             config.active_scheduled_profile(cfg, datetime(2026, 1, 6, 23, 0)))
 
@@ -216,7 +216,7 @@ class TomlProfileRoundtripTest(unittest.TestCase):
         self.assertIsNone(config.normalize({})["start_profile"])
 
     def test_v010_config_without_profiles_still_loads(self):
-        # Eine v0.1.0-config.toml kennt weder profiles noch schedule.
+        # A v0.1.0 config.toml knows neither profiles nor schedule.
         raw = """
 version = 1
 unit = "kbps"
@@ -250,7 +250,7 @@ recursive = false
         data = {
             "profiles": {
                 "Gut": {"global_download_limit": 100},
-                "": {"global_download_limit": 5},   # leerer Name -> skip
+                "": {"global_download_limit": 5},   # empty name -> skip
             },
             "schedule": [
                 {"profile": "Gut", "days": ["mo"], "start": "08:00", "end": "09:00"},
@@ -264,7 +264,7 @@ recursive = false
 
 
 class DaemonProfileRpcTest(unittest.TestCase):
-    """Profil-RPCs gegen einen echten (Sim-)Daemon."""
+    """Profile RPCs against a real (sim) daemon."""
 
     def setUp(self):
         from tests.test_daemon_cli import DaemonHarness, _client
@@ -309,7 +309,7 @@ class DaemonProfileRpcTest(unittest.TestCase):
     def test_start_profile_rpc(self):
         self.client.call("set_global", {"download_limit": "5mbps"})
         self.client.call("set_profile", {"name": "Morning", "activate": True})
-        # Vom Profil abweichen und Start-Profil setzen.
+        # Deviate from the profile and set the startup profile.
         self.client.call("set_global", {"download_limit": "9mbps"})
         self.client.call("set_start_profile", {"name": "Morning"})
         self.assertEqual(
@@ -329,7 +329,7 @@ class DaemonProfileRpcTest(unittest.TestCase):
 
 
 class StartProfileApplyTest(unittest.TestCase):
-    """Ein gesetztes start_profile wird beim Daemon-Start aktiviert."""
+    """A set start_profile is activated at daemon start."""
 
     def test_start_profile_applied_on_daemon_start(self):
         from throtl import daemon
@@ -342,8 +342,8 @@ class StartProfileApplyTest(unittest.TestCase):
             cfg = first.store.get()
             cfg["global"]["download_limit"] = 4321
             config.capture_profile(cfg, "Morning")
-            # Danach abweichen und "Standard" aktiv lassen: der Neustart muss
-            # das Start-Profil anwenden.
+            # Then deviate and leave "Standard" active: the restart must
+            # apply the startup profile.
             cfg["global"]["download_limit"] = 9999
             cfg["active_profile"] = config.STANDARD_PROFILE
             cfg["start_profile"] = "Morning"

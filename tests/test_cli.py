@@ -1,4 +1,4 @@
-"""CLI-Helfer und Guards (kein Daemon noetig)."""
+"""CLI helpers and guards (no daemon needed)."""
 
 import argparse
 import unittest
@@ -35,7 +35,7 @@ class HelpersTest(unittest.TestCase):
 
 
 class _SeqClient:
-    """Gibt bei jedem ``list_processes`` den naechsten Zustand zurueck."""
+    """Returns the next state on every ``list_processes``."""
 
     def __init__(self, states):
         self._states = list(states)
@@ -191,7 +191,7 @@ class SelfTestGuardTest(unittest.TestCase):
 
 
 class SelfTestCleanupTest(unittest.TestCase):
-    """Der Selftest darf keine Drossel-Regel hinterlassen."""
+    """The selftest must not leave a throttle rule behind."""
 
     def _args(self):
         return argparse.Namespace(limit="2mbps", url="http://x", time=1.0,

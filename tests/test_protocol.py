@@ -20,7 +20,7 @@ def _fake_daemon(path, handler):
 
 
 def _queue_ready_daemon(path, handler, ready):
-    """Bindet den Socket synchron, meldet 'ready', schaltet erst dann auf accept."""
+    """Binds the socket synchronously, signals 'ready', only then switches to accept."""
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(path)
     server.listen(5)
@@ -58,7 +58,7 @@ class MessageFramingTest(unittest.TestCase):
         right.close()
 
     def test_coalesced_messages_are_not_lost(self):
-        """Response + Event im selben recv() duerfen nicht verworfen werden."""
+        """Response + event in the same recv() must not be discarded."""
         left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
         first = {"id": 1, "result": {"ok": True}}
         second = {"event": "stats", "data": {"x": 1}}
@@ -97,7 +97,7 @@ class ClientTest(unittest.TestCase):
             )
         thread.start()
         if ready is not None:
-            self.assertTrue(ready.wait(5.0), "Server-Socket wurde nicht bereit")
+            self.assertTrue(ready.wait(5.0), "server socket did not become ready")
         return thread
 
     def test_call_and_events(self):
@@ -161,17 +161,17 @@ class ClientTest(unittest.TestCase):
             client.connect()
             with self.assertRaises(protocol.TimeoutError_):
                 client.call("slow", timeout=0.4)
-            # Der Eintrag muss beim Timeout verschwinden, sonst waechst die
-            # Map bei jedem Timeout weiter (Leak).
+            # The entry must disappear on timeout, otherwise the map grows on
+            # every timeout (leak).
             with client._cond:
                 self.assertEqual(len(client._responses), 0)
         finally:
             client.close()
 
     def test_deeply_nested_json_is_a_protocol_error(self):
-        # ~200 KB Klammern: json.loads raist RecursionError (RuntimeError),
-        # was frueher am "except (ValueError, UnicodeDecodeError)" vorbei den
-        # Verbindungs-Thread killte.
+        # ~200 KB brackets: json.loads raises RecursionError (RuntimeError),
+        # which earlier killed the connection thread past the
+        # "except (ValueError, UnicodeDecodeError)".
         left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             left.sendall(b"[" * 100_000 + b"]" * 100_000 + b"\n")

@@ -12,7 +12,7 @@ from throtl.engine import SimEngine
 
 
 class DaemonHarness:
-    """Startet einen Daemon im Sim-Modus auf einem tmp-Socket im Thread."""
+    """Starts a daemon in sim mode on a tmp socket in a thread."""
 
     def __init__(self, tmpdir):
         self.tmpdir = tmpdir
@@ -47,7 +47,7 @@ class DaemonHarness:
             if os.path.exists(self.socket_path):
                 return
             time.sleep(0.01)
-        raise TimeoutError("Daemon-Socket nicht erschienen")
+        raise TimeoutError("daemon socket did not appear")
 
     def stop(self):
         if self.daemon is not None:
@@ -62,7 +62,7 @@ def _client(socket_path):
 
 
 class FakeMonitor:
-    """Stub-Monitor: liefert einen konstanten Snapshot (fuer Tests)."""
+    """Stub monitor: returns a constant snapshot (for tests)."""
 
     def __init__(self, device, interval=1.0):
         self.device = device
@@ -182,14 +182,14 @@ class DaemonCliEndToEnd(unittest.TestCase):
         self.assertEqual(len(cfg["processes"]), 0)
 
     def test_updating_rule_does_not_double_escape(self):
-        """GUI schickt gespeicherte Regeln zurueck -> Pattern darf nicht erneut
-        escaped werden (sonst matcht die Regel nicht mehr)."""
+        """GUI sends stored rules back -> the pattern must not be escaped again
+        (otherwise the rule no longer matches)."""
         created = self.client.call(
             "set_process",
             {"name": "python3.12", "match_type": "name",
              "match_value": "python3.12", "priority": "normal"},
         )
-        self.assertIn("\\.", created["match_value"])  # einmal escaped
+        self.assertIn("\\.", created["match_value"])  # escaped once
         edited = dict(created)
         edited["download_limit"] = 1234
         updated = self.client.call("set_process", edited)
@@ -197,7 +197,7 @@ class DaemonCliEndToEnd(unittest.TestCase):
         self.assertEqual(updated["download_limit"], 1234)
         self.assertEqual(updated["match_value"], created["match_value"])
         cfg = self.client.call("get_config")
-        self.assertEqual(len(cfg["processes"]), 1)  # kein Duplikat
+        self.assertEqual(len(cfg["processes"]), 1)  # no duplicate
         self.assertEqual(cfg["processes"][0]["match_value"], created["match_value"])
 
     def test_set_process_with_window(self):
@@ -209,7 +209,7 @@ class DaemonCliEndToEnd(unittest.TestCase):
         self.assertEqual(result["window"]["days"], [5, 6])
         cfg = self.client.call("get_config")
         self.assertEqual(cfg["processes"][0]["window"]["start"], "10:00")
-        # Fenster per Update entfernen (Regel bleibt erhalten).
+        # Remove the window via update (the rule stays).
         updated = self.client.call("set_process", {
             "key": result["key"], "window": None})
         self.assertIsNone(updated["window"])
@@ -222,7 +222,7 @@ class DaemonCliEndToEnd(unittest.TestCase):
         self.assertFalse(cfg["global"]["enabled"])
 
     def test_interface_throughput_sampler(self):
-        """/proc/net/dev-Deltas liefern die echte Interface-Rate."""
+        """/proc/net/dev deltas give the real interface rate."""
         import time as _t
 
         from throtl.daemon import Daemon
@@ -233,7 +233,7 @@ class DaemonCliEndToEnd(unittest.TestCase):
                    monitor_factory=None)
         d.interface = "lo"
         first = d._iface_throughput()
-        self.assertEqual(first, (None, None))    # erster Aufruf: kein Delta
+        self.assertEqual(first, (None, None))    # first call: no delta
         _t.sleep(0.3)
         second = d._iface_throughput()
         self.assertEqual(len(second), 2)
@@ -253,7 +253,7 @@ class DaemonCliEndToEnd(unittest.TestCase):
     def test_set_unit_mbs_accepted(self):
         result = self.client.call("set_unit", {"unit": "mBs"})
         self.assertEqual(result["unit"], "mBs")
-        # Der Daemon darf die mBs-Unit nicht ablehnen/crashen
+        # The daemon must not reject/crash on the mBs unit
         cfg = self.client.call("get_config")
         self.assertEqual(cfg["unit"], "mBs")
 
@@ -267,8 +267,8 @@ class DaemonCliEndToEnd(unittest.TestCase):
         self.assertGreater(firefox["download"], 0)
 
     def test_stats_rpc_records_and_resets(self):
-        """Der Monitor-Tick fuettert den StatsStore; get_stats liefert Bytes."""
-        time.sleep(0.5)  # mindestens einen Tick (interval=0.3) abwarten
+        """The monitor tick feeds the StatsStore; get_stats returns bytes."""
+        time.sleep(0.5)  # wait at least one tick (interval=0.3)
         stats = self.client.call("get_stats", {"window": "minute"})
         self.assertEqual(stats["window"], "minute")
         apps = {item["app"]: item for item in stats["apps"]}
@@ -278,7 +278,7 @@ class DaemonCliEndToEnd(unittest.TestCase):
 
         reset = self.client.call("reset_stats")
         self.assertTrue(reset["ok"])
-        # Kein Crash; ein Tick kann bereits wieder Daten gebucht haben.
+        # No crash; a tick may already have booked data again.
         self.assertIsInstance(
             self.client.call("get_stats", {"window": "minute"})["apps"], list)
 
@@ -288,7 +288,7 @@ class DaemonCliEndToEnd(unittest.TestCase):
 
 
 class DaemonAsyncApplyTest(unittest.TestCase):
-    """Ein langsamer Engine-Apply darf die RPC-Antwort nicht blockieren."""
+    """A slow engine apply must not block the RPC response."""
 
     def test_set_process_returns_before_engine_finishes(self):
         from throtl.daemon import Daemon
@@ -328,7 +328,7 @@ class DaemonAsyncApplyTest(unittest.TestCase):
 
 
 class DaemonMonitorRecoveryTest(unittest.TestCase):
-    """Ein gestorbener Monitor wird erkannt, gereapt und neu gestartet."""
+    """A dead monitor is detected, reaped and restarted."""
 
     def test_dead_monitor_is_replaced(self):
         from throtl.daemon import Daemon
@@ -405,9 +405,9 @@ class BudgetsRpcTest(unittest.TestCase):
 class MatchRulesTest(unittest.TestCase):
     """Regeln wiederfinden: gespeicherte Muster sind regex-escaped.
 
-    ``make_rule`` escaped den match_value fuer TrafficToll (dort wird er als
-    Regex benutzt). Der Anzeige-Abgleich muss das rueckgaengig machen, sonst
-    passt keine einzige Regel und ``rule_name`` bleibt ueberall leer.
+    ``make_rule`` escapes the match_value for TrafficToll (where it is used as
+    a regex). The display matching must undo that, otherwise no rule matches and
+    ``rule_name`` stays empty everywhere.
     """
 
     def test_matches_a_rule_stored_with_escapes(self):
@@ -415,7 +415,7 @@ class MatchRulesTest(unittest.TestCase):
 
         rule = make_rule(name="yt-dlp", match_type="exe",
                          match_value="/usr/bin/yt-dlp", priority="hoch")
-        self.assertIn("\\", rule["match_value"], "Vorbedingung: escaped")
+        self.assertIn("\\", rule["match_value"], "precondition: escaped")
         self.assertEqual(
             daemon._match_rules([rule], "/usr/bin/yt-dlp").get("name"),
             "yt-dlp")
@@ -446,7 +446,7 @@ class MatchRulesTest(unittest.TestCase):
 
 
 class DaemonSocketLivenessTest(unittest.TestCase):
-    """Ein zweiter Daemon darf einen laufenden nicht enterben."""
+    """A second daemon must not disinherit a running one."""
 
     def _bare(self, path):
         from throtl.daemon import Daemon
@@ -465,7 +465,7 @@ class DaemonSocketLivenessTest(unittest.TestCase):
             with mock.patch.object(d, "_socket_is_live", return_value=True):
                 with self.assertRaises(RuntimeError):
                     d._prepare_socket_path()
-            self.assertTrue(os.path.exists(path))  # nicht entfernt
+            self.assertTrue(os.path.exists(path))  # not removed
 
     def test_prepare_removes_a_stale_socket(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -493,7 +493,7 @@ class DaemonSocketLivenessTest(unittest.TestCase):
 
 
 class DaemonProtocolErrorTest(unittest.TestCase):
-    """Ein kaputter Frame darf nur die Verbindung beenden, nicht den Thread."""
+    """A broken frame must end only the connection, not the thread."""
 
     def test_malformed_frame_does_not_escape_connection_handler(self):
         from unittest import mock
@@ -512,11 +512,11 @@ class DaemonProtocolErrorTest(unittest.TestCase):
 
         with mock.patch("throtl.daemon.iter_messages",
                         side_effect=ProtocolError("bad frame")):
-            d._handle_connection(_Conn())  # darf nicht werfen
+            d._handle_connection(_Conn())  # must not throw
 
 
 class DaemonMonitorResilienceTest(unittest.TestCase):
-    """Ein fehlerhafter Tick darf den Monitor-Thread nicht toeten."""
+    """A faulty tick must not kill the monitor thread."""
 
     def test_monitor_loop_survives_tick_exception(self):
         from throtl.daemon import Daemon
@@ -545,7 +545,7 @@ class DaemonMonitorResilienceTest(unittest.TestCase):
 
 
 class DaemonTickSerializationTest(unittest.TestCase):
-    """RPC-Thread und Monitor-Thread duerfen nicht gleichzeitig ticken."""
+    """RPC thread and monitor thread must not tick simultaneously."""
 
     def test_concurrent_ticks_do_not_overlap(self):
         from throtl.daemon import Daemon
@@ -584,7 +584,7 @@ class DaemonTickSerializationTest(unittest.TestCase):
 
 
 class DaemonEngineRecoveryTest(unittest.TestCase):
-    """Ein gestorbener tt-Prozess wird automatisch neu angewendet."""
+    """A dead tt process is automatically re-applied."""
 
     class _Engine:
         simulated = True
@@ -653,8 +653,8 @@ class RpcHardeningTest(unittest.TestCase):
         return instance._dispatch({"id": 1, "method": method, "params": params or {}})
 
     def test_non_object_json_is_rejected_not_fatal(self):
-        # 123/"hi"/[]/true sind gueltiges JSON, aber kein Objekt: das darf den
-        # Verbindungs-Thread nicht mit AttributeError toeten.
+        # 123/"hi"/[]/true are valid JSON, but not an object: that must not
+        # kill the connection thread with an AttributeError.
         with tempfile.TemporaryDirectory() as tmp:
             instance = self._daemon(tmp)
             for payload in (123, "hi", [], True, None):
@@ -691,11 +691,11 @@ class RpcHardeningTest(unittest.TestCase):
             _match_rules([plain], "java -jar /opt/JDownloader/JDownloader.jar").get("name"),
             "JD",
         )
-        # Eine Regex mit Escape darf NICHT zurueckgewandelt werden: sonst
-        # matchte \\.  als "." und die Regel passte auf einen anderen Prozess.
+        # A regex with an escape must NOT be converted back: otherwise
+        # \\. matches as "." and the rule matches a different process.
         escaped = {"name": "Jar", "match_type": "cmdline", "match_value": r"foo\.jar"}
         self.assertEqual(_match_rules([escaped], "foo.jar -x"), {})
-        # exe/name bleiben escaped-verglichen (unveraendert).
+        # exe/name stay escaped-compared (unchanged).
         exe_rule = {"name": "X", "match_type": "exe", "match_value": r"/usr/bin/x\.y"}
         self.assertEqual(_match_rules([exe_rule], "/usr/bin/x.y").get("name"), "X")
 
@@ -718,8 +718,8 @@ class RpcHardeningTest(unittest.TestCase):
             self.assertEqual(instance.store.get()["processes"][0]["priority"], "kritisch")
 
     def test_rules_changed_tick_does_not_record_stats(self):
-        # Ein Regelwechsel loest einen Extra-Tick aus; der darf die
-        # Byte-Summen nicht ein zweites Mal verbuchen.
+        # A rule change triggers an extra tick; it must not book the
+        # byte sums a second time.
         with tempfile.TemporaryDirectory() as tmp:
             instance = self._daemon(tmp)
             seen = []

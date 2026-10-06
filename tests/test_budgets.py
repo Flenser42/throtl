@@ -1,4 +1,4 @@
-"""Verbrauchs-Budgets (Punkt 3): rollierende day/week-Schwellen."""
+"""Consumption budgets (item 3): rolling day/week thresholds."""
 
 import unittest
 
@@ -14,7 +14,7 @@ class BudgetStatusTest(unittest.TestCase):
 
     def test_global_day_budget(self):
         store = StatsStore()
-        # 1000 kbit/s fuer eine Stunde = 450 MB in den Stundenbucket.
+        # 1000 kbit/s for one hour = 450 MB into the hour bucket.
         store.record("firefox", download_kbit=1000, now=1000.0, interval=3600.0)
         cfg = {"budgets": {"enabled": True, "day": 100_000_000, "week": None,
                            "rules": []}}
@@ -48,7 +48,7 @@ class BudgetStatusTest(unittest.TestCase):
 
 
 class BudgetWarningTest(unittest.TestCase):
-    """Vorwarnung, bevor das Volumen weg ist (Schwelle 80 %)."""
+    """Early warning before the volume runs out (threshold 80 %)."""
 
     @staticmethod
     def _entry(ratio, exceeded=False, app="steam"):
@@ -69,7 +69,7 @@ class BudgetWarningTest(unittest.TestCase):
         self.assertEqual(pending_warnings([self._entry(0.5)], set()), [])
 
     def test_exceeded_entries_are_not_warned_about(self):
-        """Ueberschritten meldet der bestehende Pfad — nicht doppelt."""
+        """Already-exceeded is reported by the existing path — not twice."""
         from throtl.budgets import pending_warnings
 
         self.assertEqual(
