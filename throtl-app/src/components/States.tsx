@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { Check, Copy, PlugZap, Refresh, TriangleAlert } from "./icons";
+import { Check, Copy, PlugZap, Refresh, Settings, TriangleAlert } from "./icons";
 
 /** Skeleton shown while the first snapshot is on its way (§6.8). */
 export function ConnectingState() {
@@ -86,7 +86,10 @@ export function OfflineState({ message, onRetry }: StateProps) {
   );
 }
 
-export function DeniedState({ onRetry }: StateProps) {
+export function DeniedState({
+  onRetry,
+  onSetup,
+}: StateProps & { onSetup?: () => void }) {
   return (
     <section className="card state">
       <span className="state-icon warn">
@@ -98,11 +101,16 @@ export function DeniedState({ onRetry }: StateProps) {
         (<code>/run/throtl/daemon.sock</code>) is not readable.
       </p>
       <p className="state-hint">
-        Run the next command, then log out and back in (or run{" "}
+        Grant access with your admin password, then log out and back in (or run{" "}
         <code>newgrp throtl</code>):
       </p>
       <pre className="state-code">sudo usermod -aG throtl "$USER"</pre>
       <div className="state-actions">
+        {onSetup && (
+          <button type="button" className="btn btn-primary" onClick={onSetup}>
+            <Settings size={15} /> Grant access
+          </button>
+        )}
         <button type="button" className="btn btn-primary" onClick={onRetry}>
           <Refresh size={15} /> Retry
         </button>

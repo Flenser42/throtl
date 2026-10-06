@@ -1,10 +1,15 @@
 import type { ReactNode } from "react";
 
+import { autoRate } from "../lib/format";
+import type { HistoryPoint } from "../lib/model";
 import { ChartLine, ChevronDown, CircleHelp, Pause, Play, Settings, Wallet } from "./icons";
+import { Sparkline } from "./Sparkline";
 
 interface Props {
   enabled: boolean;
   profile: string;
+  /** Live 1 Hz samples for the header sparkline (recent download activity). */
+  history: HistoryPoint[];
   onToggle: (enabled: boolean) => void;
   onSettings: () => void;
   onStats: () => void;
@@ -21,6 +26,7 @@ interface Props {
 export function Header({
   enabled,
   profile,
+  history,
   onToggle,
   onSettings,
   onStats,
@@ -31,6 +37,17 @@ export function Header({
   scrolled,
   profiles,
 }: Props) {
+  const recent = history.slice(-40);
+  const avg =
+    recent.length > 0 ? recent.reduce((sum, p) => sum + p.down, 0) / recent.length : 0;
+  const avgRate = autoRate(avg, 1);
+  const sparkLabel =
+    recent.length >= 2
+      ? `Recent download activity while ${enabled ? "limiting" : "paused"}: ` +
+        `average ${avgRate.value} ${avgRate.unit} over the last ` +
+        `${recent.length} seconds`
+      : "No recent download activity";
+
   return (
     <header className={`app-header${scrolled ? " scrolled" : ""}`}>
       <div className="pill-anchor">
@@ -66,6 +83,10 @@ export function Header({
       </div>
 
       <div className="hright" data-tour="actions">
+        <div className="spark-wrap">
+          <span className="sr-only">{sparkLabel}</span>
+          <Sparkline history={history} />
+        </div>
         <button
           type="button"
           className="icon-btn"

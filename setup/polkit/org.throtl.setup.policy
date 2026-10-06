@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+  "-//freedesktop//DTD polkit Policy Configuration 1.0//EN"
+  "http://www.freedesktop.org/software/polkit/policyconfig-1.dtd">
+
+<!--
+  polkit policy for Throtl's ONE-TIME privileged setup.
+
+  polkit (polkit(8)) loads action definitions from files under
+  /usr/share/polkit-1/actions/. The file is named after the action namespace
+  (org.throtl.setup -> org.throtl.setup.policy); action ids may only contain
+  [A-Za-z][A-Za-z0-9].-.
+
+  pkexec(1) selects this action by matching the
+  org.freedesktop.policykit.exec.path annotation against the FULL (canonical,
+  non-symlinked) path of the program it is asked to run. setup/install.sh
+  installs the helper to /usr/local/bin/throtl-setup, so the annotation below
+  must stay in sync with that path (or pkexec silently falls back to the
+  generic org.freedesktop.policykit.exec action, which is still auth_admin).
+
+  Security model (unchanged): this is ONLY for the one-time install / group
+  grant. The daemon stays root, the socket stays root:throtl 0660, and every
+  later toggle is a user-space call over that socket — never polkit. auth_admin
+  (not auth_self) is required because only an administrative user may install
+  the root daemon or add an account to the 'throtl' group; there is no
+  auth_admin_keep variant because there is no recurring privileged toggle to
+  authorise.
+-->
+
+<policyconfig>
+
+  <vendor>Throtl</vendor>
+  <vendor_url>https://github.com/Flenser42/throtl</vendor_url>
+  <icon_name>throtl-app</icon_name>
+
+  <action id="org.throtl.setup">
+    <description>Set up Throtl (install the daemon and grant socket access)</description>
+    <message>Authentication is required to set up Throtl and grant your account access to the bandwidth daemon.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/throtl-setup</annotate>
+  </action>
+
+</policyconfig>

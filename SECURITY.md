@@ -61,3 +61,24 @@ The trust boundary is therefore "anything running as root or as a member of
 group `throtl`" — the GUI/CLI run in the user session and reach the daemon
 through that socket only. `setup/install-app.sh` installs the dashboard
 per-user, so it inherits exactly those rights and nothing more.
+
+### Polkit setup (one-time, not per-toggle)
+
+`setup/install.sh` installs a polkit policy
+(`/usr/share/polkit-1/actions/org.throtl.setup.policy`, action
+`org.throtl.setup` with `auth_admin`) and a root-owned helper
+(`/usr/local/bin/throtl-setup`). The dashboard's "no access" state spawns
+`pkexec /usr/local/bin/throtl-setup`; pkexec authenticates the admin and runs
+the helper as root. The helper's only privileged action is adding the invoking
+user to the `throtl` group (or, from a source checkout, delegating to
+`setup/install.sh`).
+
+This does **not** widen the trust boundary: the daemon stays root-only, the
+socket stays `root:throtl 0660`, and the GUI still reaches the daemon only over
+the socket. polkit is used for the one-time install/group grant, never for the
+every-tick toggles. The helper is installed `root:root 0755` at a fixed,
+non-user-writable path, and pkexec runs it with a sanitized environment
+(`PKEXEC_UID` is the only way it learns the caller), so the webview can request
+the setup without gaining arbitrary shell access. The action intentionally has
+no `auth_admin_keep` variant because there is no recurring privileged toggle to
+authorise.

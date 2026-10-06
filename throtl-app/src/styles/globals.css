@@ -281,6 +281,23 @@ p {
     order: 3;
     margin-left: auto;
   }
+  /* Header sparkline: fixed footprint so data changes never shift the masthead. */
+  .spark-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex: 0 0 120px;
+    width: 120px;
+    height: 28px;
+    margin-right: 4px;
+    overflow: hidden;
+  }
+  .sparkline {
+    display: block;
+    width: 120px;
+    height: 28px;
+    color: var(--text-3);
+  }
   .pill-anchor {
     position: relative;
     order: 2;
@@ -1483,6 +1500,125 @@ p {
     background: var(--rule-strong);
   }
 
+  /* ---------- Command palette ---------------------------------------- */
+  .palette-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 12vh;
+    background: oklch(0 0 0 / 0.28);
+  }
+  .palette {
+    width: 460px;
+    max-width: calc(100vw - 24px);
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--rule-strong);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-3);
+    outline: none;
+    animation: pop-in 0.12s ease-out;
+  }
+  .palette-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: var(--sp-2);
+    padding: 0 6px;
+    height: 26px;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--r-sm);
+    color: var(--text-3);
+  }
+  .palette-search input {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--fs-300);
+    outline: none;
+  }
+  .palette-search:focus-within {
+    border-color: var(--text-3);
+  }
+  .palette-list {
+    overflow: auto;
+    border-top: 1px solid var(--rule);
+    padding: 2px 0;
+  }
+  .palette-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 4px var(--sp-3);
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-300);
+    text-align: left;
+    cursor: pointer;
+  }
+  .palette-item.on {
+    background: var(--signal-soft);
+    color: var(--text);
+  }
+  .palette-ic {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-3);
+    flex: 0 0 auto;
+  }
+  .palette-item.on .palette-ic {
+    color: var(--signal);
+  }
+  .palette-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .palette-noicon {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+  }
+  .palette-tag {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: var(--track-label);
+    color: var(--text-3);
+  }
+  .palette-group {
+    padding: 4px var(--sp-3) 2px;
+    font-size: var(--fs-100);
+    font-weight: 650;
+    letter-spacing: var(--track-label);
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .palette-empty {
+    padding: var(--sp-3);
+    font-size: var(--fs-200);
+    color: var(--text-3);
+  }
+  .palette-foot {
+    padding: 4px var(--sp-3);
+    border-top: 1px solid var(--rule);
+    background: var(--surface-2);
+    font-size: var(--fs-100);
+    color: var(--text-3);
+  }
+
   /* ---------- Statistics / budgets ---------------------------------- */
   .stats-chart {
     display: flex;
@@ -1612,6 +1748,27 @@ p {
   outline: none;
 }
 
+/* Skip link: first focusable element, revealed only for keyboard users. */
+.skip-link {
+  position: fixed;
+  top: 4px;
+  left: 4px;
+  z-index: 80;
+  padding: 5px 10px;
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  font-size: var(--fs-200);
+  font-weight: 500;
+  transform: translateY(-150%);
+  transition: transform 0.12s ease;
+}
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -1712,10 +1869,20 @@ p {
   align-items: center;
   justify-content: space-between;
 }
-.tour-nav {
-  display: flex;
-  gap: 1px;
-}
+  .tour-nav {
+    display: flex;
+    gap: 1px;
+  }
+
+  /* ---------- Setup wizard ------------------------------------------- */
+  .wizard-step {
+    font-size: var(--fs-100);
+    font-weight: 600;
+    letter-spacing: var(--track-label);
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin: 0 var(--sp-2);
+  }
 
 /* ---------- Responsive: the mosaic drops cells by priority ---------- */
 @media (max-width: 1080px) {
@@ -1755,6 +1922,9 @@ p {
 @media (max-width: 640px) {
   main.app-main {
     padding: 0;
+  }
+  .spark-wrap {
+    display: none;
   }
   .overview-top {
     grid-template-columns: minmax(0, 1fr);

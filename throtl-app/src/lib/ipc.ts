@@ -40,3 +40,11 @@ export async function listen<T>(
 export async function emitToDaemon(cmd: string, args?: Record<string, unknown>) {
   return invokeDaemon(cmd, args);
 }
+
+/** Trigger the one-time privileged setup via polkit (spawns pkexec on the
+ * Rust side). This is not a daemon call — it does not cross the socket. */
+export async function runSetup(): Promise<void> {
+  if (!isTauri()) throw new Error("not running inside Tauri");
+  const invoke = await getInvoke();
+  await invoke<void>("setup_run");
+}

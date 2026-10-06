@@ -65,7 +65,7 @@ const CARD_WIDTH = 320;
 const MARGIN = 12;
 const PAD = 6;
 
-export function Tour({ onClose }: { onClose: () => void }) {
+export function Tour({ onClose, onSetup }: { onClose: () => void; onSetup?: () => void }) {
   // Only tour the elements that actually exist; fall back to the full list if
   // nothing matches (e.g. the dashboard has not loaded).
   const steps = useMemo(() => {
@@ -206,6 +206,11 @@ export function Tour({ onClose }: { onClose: () => void }) {
             <button type="button" className="btn" onClick={prev} disabled={index === 0}>
               Back
             </button>
+            {isLast && onSetup && (
+              <button type="button" className="btn btn-primary" onClick={onSetup}>
+                Set up Throtl
+              </button>
+            )}
             <button type="button" className="btn btn-primary" onClick={next}>
               {isLast ? "Done" : "Next"}
             </button>

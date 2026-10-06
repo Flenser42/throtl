@@ -179,7 +179,16 @@ export function LiveGraph({ history, matchedApps, peakApp, unit }: Props) {
         onMouseLeave={() => setHover(null)}
         onClick={() => setPinned((prev) => (prev === hover ? null : hover))}
       >
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="none"
+          role="img"
+          aria-label={
+            `Live traffic chart. Download: minimum ${formatRate(metrics.min, unit, 1)}, ` +
+            `average ${formatRate(metrics.avg, unit, 1)}, ` +
+            `maximum ${formatRate(metrics.max, unit, 1)}. Peak app: ${peakApp}.`
+          }
+        >
           {/* Graticule: a ruled measuring field, verticals and horizontals. */}
           <g stroke="var(--rule)" strokeWidth="1">
             <line x1={LEFT} y1="24" x2={W} y2="24" />

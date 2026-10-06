@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import { formatRate, splitRate } from "../lib/format";
 import type { AppRow } from "../lib/model";
@@ -46,7 +46,7 @@ interface RowProps {
   autoMenu?: boolean;
 }
 
-function ProcessRow({
+function ProcessRowImpl({
   app,
   unit,
   index,
@@ -299,6 +299,23 @@ function ProcessRow({
   );
 }
 
+const ProcessRow = memo(ProcessRowImpl, (prev, next) => {
+  if (
+    prev.unit !== next.unit ||
+    prev.index !== next.index ||
+    prev.autoMenu !== next.autoMenu ||
+    prev.onToggleArm !== next.onToggleArm ||
+    prev.onEdit !== next.onEdit ||
+    prev.onRemove !== next.onRemove ||
+    prev.onAddRule !== next.onAddRule ||
+    prev.onReset !== next.onReset ||
+    prev.onToast !== next.onToast
+  ) {
+    return false;
+  }
+  return appShallowEqual(prev.app, next.app);
+});
+
 interface Props {
   apps: AppRow[];
   unit: Unit;
@@ -312,8 +329,40 @@ interface Props {
   /** Current filter text (drives the empty state). */
   query: string;
   onClearQuery: () => void;
+  /** Opens the setup wizard from the empty state (first-time users). */
+  onSetup?: () => void;
   groupsVisible: number;
   groupsTotal: number;
+}
+
+/**
+ * The 1 Hz poll rebuilds every app object from scratch, so reference equality
+ * alone would re-render every row on every tick. Compare the rendered fields
+ * instead: a row whose values did not change keeps its DOM untouched.
+ */
+function appShallowEqual(a: AppRow, b: AppRow): boolean {
+  return (
+    a.key === b.key &&
+    a.name === b.name &&
+    a.initial === b.initial &&
+    a.meta === b.meta &&
+    a.downKbit === b.downKbit &&
+    a.upKbit === b.upKbit &&
+    a.downloadLimit === b.downloadLimit &&
+    a.uploadLimit === b.uploadLimit &&
+    a.priority === b.priority &&
+    a.windowLabel === b.windowLabel &&
+    a.windowActive === b.windowActive &&
+    a.windowState === b.windowState &&
+    a.armed === b.armed &&
+    a.unattributed === b.unattributed &&
+    a.matchType === b.matchType &&
+    a.matchValue === b.matchValue &&
+    a.ruleKey === b.ruleKey &&
+    a.budget?.used === b.budget?.used &&
+    a.budget?.limit === b.budget?.limit &&
+    a.budget?.ratio === b.budget?.ratio
+  );
 }
 
 export function ProcessList({
@@ -328,9 +377,19 @@ export function ProcessList({
   onToast,
   query,
   onClearQuery,
+  onSetup,
   groupsVisible,
   groupsTotal,
 }: Props) {
+  // Stable row callbacks: rows are memoised, so the handlers they receive must
+  // not change identity when unrelated state (query, sort) changes.
+  const handleToggleArm = useCallback(onToggleArm, [onToggleArm]);
+  const handleEdit = useCallback(onEdit, [onEdit]);
+  const handleRemove = useCallback(onRemove, [onRemove]);
+  const handleAddRule = useCallback(onAddRule, [onAddRule]);
+  const handleReset = useCallback(onReset, [onReset]);
+  const handleToast = useCallback(onToast, [onToast]);
+
   const sorted = [...apps].sort((a, b) => {
     if (sortKey === "name") return a.name.localeCompare(b.name);
     if (sortKey === "upload") return b.upKbit - a.upKbit;
@@ -392,6 +451,11 @@ export function ProcessList({
               Clear filter
             </button>
           )}
+          {!query && onSetup && (
+            <button type="button" className="btn" onClick={onSetup}>
+              Set up Throtl
+            </button>
+          )}
         </div>
       ) : (
         sorted.map((app, i) => (
@@ -400,12 +464,12 @@ export function ProcessList({
             app={app}
             index={i}
             unit={unit}
-            onToggleArm={onToggleArm}
-            onEdit={onEdit}
-            onRemove={onRemove}
-            onAddRule={onAddRule}
-            onReset={onReset}
-            onToast={onToast}
+            onToggleArm={handleToggleArm}
+            onEdit={handleEdit}
+            onRemove={handleRemove}
+            onAddRule={handleAddRule}
+            onReset={handleReset}
+            onToast={handleToast}
             autoMenu={menuParam && app.key === firstRuleKey}
           />
         ))

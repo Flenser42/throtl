@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   removeRule as removeRuleApi,
@@ -126,6 +126,11 @@ export function useDaemon(options: Options = {}): DaemonView & {
     model: isMock && !forcedState ? mockModel() : null,
   });
   const [sortKey, setSort] = useState<SortKey>("download");
+  // Latest view, so the memoised write actions always read fresh state
+  // without re-creating themselves on every 1 Hz poll (rows are memoised
+  // against these identities).
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const historyRef = useRef<HistoryPoint[]>(isMock ? mockModel().history.slice(-MAX_HISTORY) : []);
   const realRef = useRef<{ state?: ProcessState; config?: Config; budgets?: Budgets }>({});
   const refreshRef = useRef<() => void>(() => {});
@@ -136,7 +141,7 @@ export function useDaemon(options: Options = {}): DaemonView & {
   const mutate = (patch: (model: DashboardModel) => DashboardModel) =>
     setView((prev) => (prev.model ? { ...prev, model: patch(prev.model) } : prev));
 
-  const refetch = () => refreshRef.current();
+  const refetch = useCallback(() => refreshRef.current(), []);
 
   // ---- mock mode ----
   useEffect(() => {
@@ -216,13 +221,18 @@ export function useDaemon(options: Options = {}): DaemonView & {
         if (disposed) return;
         onError?.(`Daemon: ${message}`);
       });
+      const offTrayToggle = await listen<boolean>("daemon:tray-toggle", () => {
+        if (disposed) return;
+        void fetchAll();
+      });
       if (disposed) {
         offUpdate();
         offState();
         offError();
+        offTrayToggle();
         return;
       }
-      unlisteners.push(offUpdate, offState, offError);
+      unlisteners.push(offUpdate, offState, offError, offTrayToggle);
       refreshRef.current = () => {
         void fetchAll();
       };
@@ -235,71 +245,83 @@ export function useDaemon(options: Options = {}): DaemonView & {
     };
   }, [onError]);
 
-  const toggle = (enabled: boolean) => {
-    if (isMock) {
-      mutate((model) => ({ ...model, enabled }));
-      return;
-    }
-    invokeDaemon("toggle", { enabled })
-      .then(refetch)
-      .catch((error) => onError?.(`Shaping: ${String(error)}`));
-  };
+  const toggle = useCallback(
+    (enabled: boolean) => {
+      if (isMock) {
+        mutate((model) => ({ ...model, enabled }));
+        return;
+      }
+      invokeDaemon("toggle", { enabled })
+        .then(refetch)
+        .catch((error) => onError?.(`Shaping: ${String(error)}`));
+    },
+    [refetch, onError],
+  );
 
-  const setApp = async (app: AppRow, values: RuleValues) => {
-    if (isMock) {
-      mutate((model) => ({
-        ...model,
-        apps: model.apps.map((a) =>
-          a.key === app.key
-            ? {
-                ...a,
-                downloadLimit: values.download,
-                uploadLimit: values.upload,
-                priority: values.priority,
-                window: values.window,
-                armed: values.download != null || values.upload != null,
-              }
-            : a,
-        ),
-      }));
-      return;
-    }
-    await setRuleApi(ruleParams(values, app.ruleKey));
-    refetch();
-  };
+  const setApp = useCallback(
+    async (app: AppRow, values: RuleValues) => {
+      if (isMock) {
+        mutate((model) => ({
+          ...model,
+          apps: model.apps.map((a) =>
+            a.key === app.key
+              ? {
+                  ...a,
+                  downloadLimit: values.download,
+                  uploadLimit: values.upload,
+                  priority: values.priority,
+                  window: values.window,
+                  armed: values.download != null || values.upload != null,
+                }
+              : a,
+          ),
+        }));
+        return;
+      }
+      await setRuleApi(ruleParams(values, app.ruleKey));
+      refetch();
+    },
+    [refetch],
+  );
 
-  const createRule = async (values: RuleValues) => {
-    if (isMock) {
-      mutate((model) => ({
-        ...model,
-        apps: [...model.apps.filter((a) => a.key !== values.name), mockRow(values)],
-        totalRules: model.totalRules + 1,
-      }));
-      return;
-    }
-    await setRuleApi(ruleParams(values));
-    refetch();
-  };
+  const createRule = useCallback(
+    async (values: RuleValues) => {
+      if (isMock) {
+        mutate((model) => ({
+          ...model,
+          apps: [...model.apps.filter((a) => a.key !== values.name), mockRow(values)],
+          totalRules: model.totalRules + 1,
+        }));
+        return;
+      }
+      await setRuleApi(ruleParams(values));
+      refetch();
+    },
+    [refetch],
+  );
 
-  const removeRule = async (app: AppRow) => {
-    if (isMock) {
-      mutate((model) => ({
-        ...model,
-        apps: model.apps.map((a) =>
-          a.key === app.key ? { ...a, unattributed: true, armed: false, ruleKey: undefined } : a,
-        ),
-      }));
-      return;
-    }
-    // Without a key there is nothing to delete; say so instead of claiming
-    // success and letting the next poll undo it.
-    if (!app.ruleKey) throw new Error("no stored rule for this row");
-    await removeRuleApi(app.ruleKey);
-    disarmedRef.current.delete(app.key);
-    refetch();
-  };
+  const removeRule = useCallback(
+    async (app: AppRow) => {
+      if (isMock) {
+        mutate((model) => ({
+          ...model,
+          apps: model.apps.map((a) =>
+            a.key === app.key ? { ...a, unattributed: true, armed: false, ruleKey: undefined } : a,
+          ),
+        }));
+        return;
+      }
+      // Without a key there is nothing to delete; say so instead of claiming
+      // success and letting the next poll undo it.
+      if (!app.ruleKey) throw new Error("no stored rule for this row");
+      await removeRuleApi(app.ruleKey);
+      disarmedRef.current.delete(app.key);
+      refetch();
+    },
+    [refetch],
+  );
 
-  const resetStats = async () => {
+  const resetStats = useCallback(async () => {
     historyRef.current = [];
     if (isMock) {
       mutate((model) => ({ ...model, history: [] }));
@@ -307,80 +329,89 @@ export function useDaemon(options: Options = {}): DaemonView & {
     }
     await resetStatsApi();
     refetch();
-  };
+  }, [refetch]);
 
-  const changeUnit = (unit: Unit) => {
-    if (isMock) {
-      mutate((model) => ({ ...model, unit }));
-      return;
-    }
-    setUnitApi(unit)
-      .then(refetch)
-      .catch((error) => onError?.(`Display unit: ${String(error)}`));
-  };
+  const changeUnit = useCallback(
+    (unit: Unit) => {
+      if (isMock) {
+        mutate((model) => ({ ...model, unit }));
+        return;
+      }
+      setUnitApi(unit)
+        .then(refetch)
+        .catch((error) => onError?.(`Display unit: ${String(error)}`));
+    },
+    [refetch, onError],
+  );
 
-  const saveGlobal = async (values: GlobalValues) => {
-    if (isMock) {
-      mutate((model) => ({
-        ...model,
+  const saveGlobal = useCallback(
+    async (values: GlobalValues) => {
+      if (isMock) {
+        mutate((model) => ({
+          ...model,
+          enabled: values.enabled,
+          globalDownLimit: values.download,
+          globalUpLimit: values.upload,
+          globalDownMinimum: values.downloadMinimum,
+          globalUpMinimum: values.uploadMinimum,
+          globalPriority: values.downloadPriority,
+          globalUpPriority: values.uploadPriority,
+        }));
+        return;
+      }
+      await setGlobalApi({
         enabled: values.enabled,
-        globalDownLimit: values.download,
-        globalUpLimit: values.upload,
-        globalDownMinimum: values.downloadMinimum,
-        globalUpMinimum: values.uploadMinimum,
-        globalPriority: values.downloadPriority,
-        globalUpPriority: values.uploadPriority,
-      }));
-      return;
-    }
-    await setGlobalApi({
-      enabled: values.enabled,
-      download_limit: values.download,
-      upload_limit: values.upload,
-      download_minimum: values.downloadMinimum,
-      upload_minimum: values.uploadMinimum,
-      download_priority: values.downloadPriority,
-      upload_priority: values.uploadPriority,
-    });
-    refetch();
-  };
+        download_limit: values.download,
+        upload_limit: values.upload,
+        download_minimum: values.downloadMinimum,
+        upload_minimum: values.uploadMinimum,
+        download_priority: values.downloadPriority,
+        upload_priority: values.uploadPriority,
+      });
+      refetch();
+    },
+    [refetch],
+  );
 
   /**
    * Arm/disarm a rule. Disarming clears its limits on the daemon (remembering
    * them for this session); arming sends them back.
    */
-  const toggleArm = (key: string, armed: boolean) => {
-    const app = view.model?.apps.find((a) => a.key === key);
-    if (!app || !app.ruleKey) return;
-    const current = { download: app.downloadLimit, upload: app.uploadLimit };
-    let next: { download: number | null; upload: number | null };
+  const toggleArm = useCallback(
+    (key: string, armed: boolean) => {
+      const app = viewRef.current.model?.apps.find((a) => a.key === key);
+      if (!app || !app.ruleKey) return;
+      const current = { download: app.downloadLimit, upload: app.uploadLimit };
+      let next: { download: number | null; upload: number | null };
 
-    if (armed) {
-      next = disarmedRef.current.get(key) ?? current;
-      disarmedRef.current.delete(key);
-    } else {
-      if (current.download != null || current.upload != null) {
-        disarmedRef.current.set(key, current);
+      if (armed) {
+        next = disarmedRef.current.get(key) ?? current;
+        disarmedRef.current.delete(key);
+      } else {
+        if (current.download != null || current.upload != null) {
+          disarmedRef.current.set(key, current);
+        }
+        next = { download: null, upload: null };
       }
-      next = { download: null, upload: null };
-    }
 
-    if (isMock) {
-      mutate((model) => ({
-        ...model,
-        apps: model.apps.map((a) =>
-          a.key === key
-            ? { ...a, downloadLimit: next.download, uploadLimit: next.upload, armed }
-            : a,
-        ),
-      }));
-      return;
-    }
-    const values = valuesFromApp(app, next.download, next.upload);
-    setRuleApi(ruleParams(values, app.ruleKey))
-      .then(refetch)
-      .catch((error) => onError?.(`Limit for ${app.name}: ${String(error)}`));
-  };
+      if (isMock) {
+        mutate((model) => ({
+          ...model,
+          apps: model.apps.map((a) =>
+            a.key === key
+              ? { ...a, downloadLimit: next.download, uploadLimit: next.upload, armed }
+              : a,
+          ),
+        }));
+        return;
+      }
+      const values = valuesFromApp(app, next.download, next.upload);
+      setRuleApi(ruleParams(values, app.ruleKey))
+        .then(refetch)
+        .catch((error) => onError?.(`Limit for ${app.name}: ${String(error)}`));
+    },
+    [refetch, onError],
+  );
 
   return {
     ...view,

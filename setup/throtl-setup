@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# throtl-setup — Throtl's one-time privileged setup helper, run via pkexec.
+#
+# Lets the dashboard grant the desktop user access to the daemon (and, when run
+# from a source checkout, install everything) through a graphical polkit prompt
+# instead of a terminal:
+#
+#   pkexec /usr/local/bin/throtl-setup     # grant socket access (installed form)
+#   ./setup/throtl-setup                   # full install (from a checkout)
+#   ./setup/throtl-setup --no-app          # daemon + CLI only, no dashboard
+#
+# Design: the ONLY privileged thing this script does on its own is add the
+# invoking user to the 'throtl' group so they can reach
+# /run/throtl/daemon.sock (root:throtl, mode 0660). Everything else is
+# delegated to setup/install.sh, which is only present when this script runs
+# from a source checkout (the installed copy at /usr/local/bin has no checkout
+# next to it, so it stops at the group grant).
+
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Elevate through pkexec if we are not root yet (e.g. run straight from a
+# checkout). pkexec sanitizes the environment and asks for the admin password
+# through the session's polkit authentication agent.
+if [ "$(id -u)" -ne 0 ]; then
+  exec pkexec "$SELF_DIR/throtl-setup" "$@"
+fi
+
+# pkexec sets PKEXEC_UID (the uid of the invoking user), not SUDO_USER.
+# install.sh relies on SUDO_USER to add that account to the 'throtl' group and
+# to install the dashboard GUI into its home, so translate it here. Under
+# `sudo` SUDO_USER is already set and PKEXEC_UID is empty.
+if [ -n "${PKEXEC_UID:-}" ]; then
+  PKEXEC_USER="$(getent passwd "$PKEXEC_UID" | cut -d: -f1)"
+  if [ -n "$PKEXEC_USER" ] && [ "$PKEXEC_USER" != "root" ]; then
+    export SUDO_USER="$PKEXEC_USER"
+  fi
+fi
+
+TARGET_USER="${SUDO_USER:-}"
+
+# Idempotent group grant. This is the recovery path the dashboard needs when
+# the daemon is already installed but the account is not yet in the group.
+if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
+  getent group throtl >/dev/null 2>&1 || groupadd --system throtl
+  if ! id -nG "$TARGET_USER" 2>/dev/null | tr ' ' '\n' | grep -qx throtl; then
+    usermod -aG throtl "$TARGET_USER"
+    echo "Added '$TARGET_USER' to group 'throtl'."
+  else
+    echo "'$TARGET_USER' is already in group 'throtl'."
+  fi
+  echo "Note: group changes apply to a NEW session — log out and back in"
+  echo "(or run 'newgrp throtl' in a terminal) before starting the dashboard."
+fi
+
+# Full install, only when the installer ships alongside this helper (i.e. we
+# are running from a source checkout, not from /usr/local/bin).
+if [ -x "$SELF_DIR/install.sh" ]; then
+  exec "$SELF_DIR/install.sh" "$@"
+fi
+
+echo "Throtl access granted. If the daemon itself is not installed yet, run:"
+echo "  sudo ./setup/install.sh   (from the source checkout)"

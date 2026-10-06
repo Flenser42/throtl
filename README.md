@@ -204,6 +204,11 @@ The script:
    if needed, then installs it under `~/.local`). Use `--no-app` to skip it, or
    run it separately later.
 
+   > The first GUI build compiles Rust and can take **5–15 minutes**. The
+   > installer shows a live spinner with the elapsed time, so it is working,
+   > not stuck — don't interrupt it. Later installs reuse the cached build and
+   > finish in seconds.
+
 That is the whole install — daemon + GUI in one command:
 
 ```bash
@@ -212,6 +217,15 @@ sudo ./setup/install.sh --no-app     # daemon + CLI only
 ./setup/install-app.sh               # dashboard only (no root)
 make install                         # same as the first line
 ```
+
+Once installed, the dashboard can grant your account access again without a
+terminal: if it shows *"No access to the daemon socket"*, click **Grant
+access** — this runs the setup helper through polkit (`pkexec`) and asks for
+your admin password, then adds you to the `throtl` group (the socket stays
+`root:throtl 0660`). Log out and back in afterwards. The equivalent from a
+source checkout is `pkexec ./setup/throtl-setup`. The very first install still
+starts at the terminal (or a distro package), because the polkit helper and
+policy must already be on the machine.
 
 Uninstall with `sudo ./setup/uninstall.sh` (add `--purge` to also remove code
 and configuration), which also removes the per-user dashboard; to drop only the
@@ -536,7 +550,7 @@ npm install          # once
 npm run dev          # browser preview on http://localhost:1420 (mock data)
 VITE_MOCK=1 npm run tauri dev   # real Tauri window, mock data
 npm run tauri dev               # real window, live daemon data
-npm run tauri build             # .deb / .rpm / .AppImage
+npm run tauri build             # .deb / .rpm / .AppImage (first build: 5–15 min)
 ```
 
 `?static=1&theme=light&pin=27` freezes the mock and pins the graph crosshair.

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { BudgetsSheet } from "./components/BudgetsSheet";
+import { CommandPalette } from "./components/CommandPalette";
 import { GlobalSheet } from "./components/GlobalSheet";
 import { Header } from "./components/Header";
 import { Overview } from "./components/Overview";
@@ -15,12 +16,13 @@ import { ConnectingState, DeniedState, OfflineState } from "./components/States"
 import { ToastHost, useToasts } from "./components/Toast";
 import { Toolbar } from "./components/Toolbar";
 import { Tour } from "./components/Tour";
+import { Wizard } from "./components/Wizard";
 import { useDaemon } from "./hooks/useDaemon";
 import { useBudgetAlerts } from "./hooks/useBudgetAlerts";
 import { useUpdateCheck } from "./hooks/useUpdateCheck";
-import { getConfig, importConfig } from "./lib/api";
-import { isMock, isTauri } from "./lib/ipc";
-import type { AppRow } from "./lib/model";
+import { getConfig, importConfig, activateProfile, saveProfile as saveProfileApi } from "./lib/api";
+import { isMock, isTauri, runSetup } from "./lib/ipc";
+import type { AppRow, GlobalValues } from "./lib/model";
 
 // Fallback for the browser; inside Tauri the real bundle version wins.
 const APP_VERSION_FALLBACK = "0.12.0";
@@ -88,6 +90,8 @@ export function App() {
   const [version, setVersion] = useState(APP_VERSION_FALLBACK);
   const [scrolled, setScrolled] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -138,7 +142,7 @@ export function App() {
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        searchRef.current?.focus();
+        setPaletteOpen((v) => !v);
       }
       if (event.key === "Escape") setProfileOpen(false);
     };
@@ -186,6 +190,27 @@ export function App() {
 
   const closeTour = useCallback(() => setTourOpen(false), []);
 
+  const openWizard = useCallback(() => {
+    setTourOpen(false);
+    setProfileOpen(false);
+    setWizardOpen(true);
+  }, []);
+
+  const saveProfile = useCallback(
+    async (name: string) => {
+      await saveProfileApi(name);
+      refresh();
+    },
+    [refresh],
+  );
+
+  const handleSaveGlobal = useCallback(
+    async (values: GlobalValues) => {
+      await saveGlobal(values);
+    },
+    [saveGlobal],
+  );
+
   const openCreate = useCallback((app?: AppRow) => {
     setCreateApp(app ?? null);
     setCreateOpen(true);
@@ -211,6 +236,45 @@ export function App() {
     }
   }, [push]);
 
+  // Stable handlers for the process rows (they are memoised against identity).
+  const handleRemove = useCallback(
+    async (app: AppRow) => {
+      try {
+        await removeRule(app);
+        push(`Rule removed for ${app.name}`);
+      } catch (err) {
+        push(`Could not remove the rule: ${String(err)}`, "error");
+      }
+    },
+    [removeRule, push],
+  );
+
+  const resetCounters = useCallback(async () => {
+    try {
+      await resetStats();
+      push("Counters reset");
+    } catch (err) {
+      push(`Could not reset the counters: ${String(err)}`, "error");
+    }
+  }, [resetStats, push]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => (resolveTheme(prev) === "light" ? "dark" : "light"));
+  }, []);
+
+  const switchProfile = useCallback(
+    async (name: string) => {
+      try {
+        await activateProfile(name);
+        push(`Profile “${name}” activated`);
+        refresh();
+      } catch (err) {
+        push(`Could not switch profile: ${String(err)}`, "error");
+      }
+    },
+    [push, refresh],
+  );
+
   const importConfigFile = useCallback(
     async (file: File) => {
       if (isMock) {
@@ -231,9 +295,13 @@ export function App() {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
       <Header
         enabled={model?.enabled ?? false}
         profile={model?.profile ?? "—"}
+        history={model?.history ?? []}
         onToggle={toggle}
         onSettings={() => setSheet("settings")}
         onStats={() => setSheet("stats")}
@@ -252,7 +320,7 @@ export function App() {
         }
       />
 
-      <main className="app-main">
+      <main className="app-main" id="main-content" tabIndex={-1}>
         {updates.latest && (
           <UpdateBanner
             version={updates.latest}
@@ -283,26 +351,13 @@ export function App() {
                 sortKey={sortKey}
                 onToggleArm={toggleArm}
                 onEdit={setEditApp}
-                onRemove={async (app) => {
-                  try {
-                    await removeRule(app);
-                    push(`Rule removed for ${app.name}`);
-                  } catch (err) {
-                    push(`Could not remove the rule: ${String(err)}`, "error");
-                  }
-                }}
+                onRemove={handleRemove}
                 onAddRule={openCreate}
-                onReset={async () => {
-                  try {
-                    await resetStats();
-                    push("Counters reset");
-                  } catch (err) {
-                    push(`Could not reset the counters: ${String(err)}`, "error");
-                  }
-                }}
+                onReset={resetCounters}
                 onToast={push}
                 query={query}
                 onClearQuery={() => setQuery("")}
+                onSetup={() => setWizardOpen(true)}
                 groupsVisible={apps.length}
                 groupsTotal={model.groupsTotal}
               />
@@ -310,11 +365,18 @@ export function App() {
 
             <div className="app-footer">
               Press <span className="kbd">L</span> for light/dark ·{" "}
-              <span className="kbd">Ctrl/⌘ K</span> to filter.
+              <span className="kbd">Ctrl/⌘ K</span> for commands.
             </div>
           </>
         ) : state === "denied" ? (
-          <DeniedState onRetry={() => location.reload()} />
+          <DeniedState
+            onRetry={() => location.reload()}
+            onSetup={() => {
+              runSetup()
+                .then(() => push("Administrator authentication requested — check the prompt"))
+                .catch((err) => push(`Setup failed: ${String(err)}`, "error"));
+            }}
+          />
         ) : state === "offline" ? (
           <OfflineState message={error} onRetry={() => location.reload()} />
         ) : (
@@ -412,7 +474,36 @@ export function App() {
       )}
 
       <ToastHost toasts={toasts} />
-      {tourOpen && <Tour onClose={closeTour} />}
+      {tourOpen && <Tour onClose={closeTour} onSetup={openWizard} />}
+      {wizardOpen && model && (
+        <Wizard
+          model={model}
+          onClose={() => setWizardOpen(false)}
+          onToast={push}
+          onSaveProfile={saveProfile}
+          onSaveGlobal={handleSaveGlobal}
+          onCreateRule={createRule}
+        />
+      )}
+      {paletteOpen && (
+        <CommandPalette
+          onClose={() => setPaletteOpen(false)}
+          enabled={model?.enabled ?? false}
+          onToggleShaping={() => toggle(!(model?.enabled ?? false))}
+          onFocusFilter={() => searchRef.current?.focus()}
+          onAddRule={() => openCreate()}
+          onOpenSheet={(kind) => {
+            if (kind === "globals") setSheet("globals");
+            else if (kind === "stats") setSheet("stats");
+            else if (kind === "budgets") setSheet("budgets");
+            else setSheet("settings");
+          }}
+          onTour={() => setTourOpen(true)}
+          onResetStats={() => void resetCounters()}
+          onToggleTheme={toggleTheme}
+          onSwitchProfile={(name) => void switchProfile(name)}
+        />
+      )}
     </div>
   );
 }

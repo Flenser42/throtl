@@ -16,7 +16,30 @@ export function Sheet({ title, subtitle, onClose, children, width = 460 }: Props
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      // Keep Tab inside the dialog while it is open (focus trap).
+      if (event.key !== "Tab") return;
+      const panel = ref.current;
+      if (!panel) return;
+      const focusables = panel.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const current = document.activeElement;
+      if (event.shiftKey) {
+        if (current === first || !panel.contains(current)) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (current === last || !panel.contains(current)) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKey);
     // Move focus into the dialog and give it back to the trigger on close.

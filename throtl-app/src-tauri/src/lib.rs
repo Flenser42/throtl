@@ -4,6 +4,7 @@
 
 mod commands;
 mod socket;
+mod tray;
 
 use std::path::PathBuf;
 
@@ -22,6 +23,7 @@ pub fn run() {
         .setup(move |app| {
             let bridge = Bridge::spawn(app.handle().clone(), socket_path.clone());
             app.manage(bridge);
+            tray::build(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -47,6 +49,7 @@ pub fn run() {
             commands::daemon_set_schedule,
             commands::daemon_set_start_profile,
             commands::daemon_import_config,
+            commands::setup_run,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Throtl");
