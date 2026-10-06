@@ -74,8 +74,10 @@ commands_with_params!(
 /// setup but never executes arbitrary commands.
 #[tauri::command]
 pub async fn setup_run() -> Result<(), String> {
-    let helper = std::env::var("THROTL_SETUP_HELPER")
-        .unwrap_or_else(|_| "/usr/local/bin/throtl-setup".to_string());
+    // Fixed path only: the polkit policy matches exactly this path, and an
+    // env-controlled override would let a crafted launch environment redirect
+    // the admin-authenticated pkexec at an arbitrary binary.
+    let helper = "/usr/local/bin/throtl-setup".to_string();
 
     if !std::path::Path::new(&helper).exists() {
         return Err(format!(

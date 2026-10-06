@@ -67,9 +67,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                 }
             }
             "shaping" => {
-                // The check item tracks the daemon via the socket poller, so
-                // flipping it reflects the current (authoritative) state.
-                let next = !shaping.is_checked().unwrap_or(false);
+                // muda auto-toggles the check item on click, so is_checked()
+                // already holds the desired new state.
+                let next = shaping.is_checked().unwrap_or(false);
                 let bridge = app.state::<Arc<Bridge>>().inner().clone();
                 let handle = app.clone();
                 tauri::async_runtime::spawn(async move {
