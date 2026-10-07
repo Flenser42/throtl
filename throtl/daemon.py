@@ -625,6 +625,15 @@ class Daemon:
             matches = _match_rules(rules, info.get("name"), info.get("pid", pid))
             download = round(info.get("download", 0.0), 3)
             upload = round(info.get("upload", 0.0), 3)
+            # nethogs sees ingress BEFORE the shaping (on ifb0), so a limit does
+            # not lower the measured download. Cap at the rule's limit so the
+            # GUI/stats show the effective rate the process actually receives.
+            dl = matches.get("download_limit")
+            ul = matches.get("upload_limit")
+            if dl is not None:
+                download = min(download, dl)
+            if ul is not None:
+                upload = min(upload, ul)
             if pid != UNATTRIBUTED_PID:
                 attributed_down += download
                 attributed_up += upload
@@ -665,8 +674,16 @@ class Daemon:
                 }
             elif matched and not entry.get("rule"):
                 entry["rule"] = matched
-            entry["download"] += info.get("download", 0.0)
-            entry["upload"] += info.get("upload", 0.0)
+            download = info.get("download", 0.0)
+            upload = info.get("upload", 0.0)
+            dl = matched.get("download_limit")
+            ul = matched.get("upload_limit")
+            if dl is not None:
+                download = min(download, dl)
+            if ul is not None:
+                upload = min(upload, ul)
+            entry["download"] += download
+            entry["upload"] += upload
             if len(entry["pids"]) < 16:
                 entry["pids"].append(pid)
         app_list = []

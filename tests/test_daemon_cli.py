@@ -154,6 +154,42 @@ class AppGroupingTest(unittest.TestCase):
         self.assertEqual(apps["JDownloader"]["rule_name"], "JDownloader")
         self.assertEqual(apps["JDownloader"]["rule_key"], "cmdline:JDownloader")
 
+    def test_download_capped_at_rule_limit(self):
+        """nethogs misst ingress VOR dem Shaping: der berichtete Download wird
+        auf das Limit der Regel gedeckelt (effektive Rate)."""
+        import tempfile
+
+        from throtl.config import make_rule
+        from throtl.daemon import Daemon
+        from throtl.engine import SimEngine
+
+        rule = make_rule("Capped", "exe", "/usr/bin/curl", download_limit=500)
+
+        class _Mon:
+            def snapshot(self):
+                return {
+                    # raw 1000 -> capped to 500
+                    "1": {"name": "/usr/bin/curl -s x", "uid": "1000",
+                          "download": 1000.0, "upload": 0.0},
+                    # raw 200 -> below the 500 limit, unchanged
+                    "2": {"name": "/usr/bin/curl -s y", "uid": "1000",
+                          "download": 200.0, "upload": 0.0},
+                }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Daemon(socket_path=tmp + "/d.sock", config_dir=tmp,
+                       engine=SimEngine("lo"), monitor_factory=None)
+            d.store.upsert_process(rule)
+            d.monitor = _Mon()
+            snap = d._collect_snapshot()
+
+        apps = {a["name"]: a for a in snap["apps"]}
+        self.assertEqual(apps["curl"]["download"], 700.0)
+        # capped pid reports the effective (shaped) rate
+        pids = {p["pid"]: p for p in snap["processes"]}
+        self.assertEqual(pids["1"]["download"], 500.0)
+        self.assertEqual(pids["2"]["download"], 200.0)
+
     def test_match_hint_for_native_and_interpreted_apps(self):
         import tempfile
 
