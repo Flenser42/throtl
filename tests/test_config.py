@@ -61,35 +61,6 @@ class RuleTest(unittest.TestCase):
         self.assertEqual(rule["match_value"], ".* JDownloader\\.jar")
 
 
-class MatchingTest(unittest.TestCase):
-    def setUp(self):
-        self.processes = [
-            config.make_rule("Firefox", "exe", "/usr/lib/firefox/firefox"),
-            config.make_rule("Steam", "name", "steam"),
-            config.make_rule("JD", "cmdline", ".* JDownloader"),
-        ]
-
-    def test_exe_match(self):
-        hits = config.matching_rules(self.processes, exe="/usr/lib/firefox/firefox")
-        self.assertEqual([r["name"] for r in hits], ["Firefox"])
-
-    def test_name_match(self):
-        hits = config.matching_rules(self.processes, name="steam")
-        self.assertEqual([r["name"] for r in hits], ["Steam"])
-
-    def test_cmdline_match(self):
-        hits = config.matching_rules(self.processes, cmdline="/usr/bin/java -jar JDownloader.jar")
-        self.assertEqual([r["name"] for r in hits], ["JD"])
-
-    def test_no_match(self):
-        self.assertEqual(config.matching_rules(self.processes, exe="/usr/bin/foo"), [])
-
-    def test_exe_path_with_metachars(self):
-        rule = config.make_rule("X", "exe", "/usr/lib/foo+bar/baz")
-        hits = config.matching_rules([rule], exe="/usr/lib/foo+bar/baz")
-        self.assertEqual(len(hits), 1)
-
-
 class TomlRoundtripTest(unittest.TestCase):
     def _roundtrip(self, cfg):
         text = config.dump_config(cfg)

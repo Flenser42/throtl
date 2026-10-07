@@ -1103,21 +1103,3 @@ def detect_default_interface() -> str | None:
     except OSError:
         pass
     return None
-
-
-def matching_rules(processes, exe: str | None = None, name: str | None = None,
-                   cmdline: str | None = None):
-    """Find rules matching a process (regex, like TrafficToll)."""
-    result = []
-    for rule in processes:
-        match_type = rule["match_type"]
-        pattern = rule["match_value"]
-        candidate = {"exe": exe, "name": name, "cmdline": cmdline}[match_type]
-        if candidate is None:
-            continue
-        try:
-            if re.search(pattern, candidate):
-                result.append(rule)
-        except re.error:
-            continue
-    return result
