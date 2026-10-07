@@ -27,7 +27,8 @@ class SocketAccessHintTest(unittest.TestCase):
 
     def test_hint_when_session_lacks_group(self):
         group = types.SimpleNamespace(gr_name="throtl")
-        with mock.patch.object(throtl.os, "stat", return_value=self._stat()), \
+        with mock.patch.object(throtl.os, "geteuid", return_value=1000), \
+             mock.patch.object(throtl.os, "stat", return_value=self._stat()), \
              mock.patch.object(throtl.os, "access", return_value=False), \
              mock.patch.object(throtl.grp, "getgrgid", return_value=group), \
              mock.patch.object(throtl.os, "getgroups", return_value=[1000]):

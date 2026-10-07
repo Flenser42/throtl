@@ -35,7 +35,7 @@ if ! "$OPT/venv/bin/python" -c "import pip" >/dev/null 2>&1; then
   sudo "$OPT/venv/bin/python" -m ensurepip --upgrade || true
 fi
 sudo "$OPT/venv/bin/pip" install --upgrade pip
-sudo "$OPT/venv/bin/pip" install traffictoll
+sudo "$OPT/venv/bin/pip" install traffictoll==1.5.0
 
 echo "=== [3/7] Copy project files ==="
 # Remove the old copy so no stale modules/__pycache__ linger.
