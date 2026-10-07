@@ -546,8 +546,8 @@ class Daemon:
         apply is triggered on the transition into/out of a window. The signature
         is the set of currently active rule keys.
         """
-        cfg = self.store.get()
-        rules = cfg.get("processes") or []
+        with self._state_lock:
+            rules = list(self.store.get().get("processes") or [])
         if not any(rule.get("window") for rule in rules):
             self._window_signature = None
             return
