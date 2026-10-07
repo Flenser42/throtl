@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-10-07
+
+### Fixed
+
+- **The dashboard showed a download rate above the limit, so limits looked
+  ineffective.** nethogs captures ingress traffic *before* the shaping (which
+  happens on the `ifb0` mirror device), so a download limit did not lower the
+  measured rate. The daemon now caps the reported download/upload rate at the
+  matched rule's limit, so the process table, the graph and the persistent
+  statistics show the effective (shaped) rate the application actually receives.
+
 ## [0.12.1] - 2026-10-07
 
 ### Fixed
@@ -703,7 +714,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.12.2...HEAD
+[0.12.2]: https://github.com/Flenser42/throtl/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/Flenser42/throtl/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/Flenser42/throtl/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Flenser42/throtl/compare/v0.10.3...v0.11.0
