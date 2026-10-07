@@ -336,7 +336,13 @@ class TrafficTollEngine:
         if proc is None:
             return
         code = proc.wait()
-        with self._lock:
+        # No self._lock here: _stop_locked() joins this thread while holding
+        # that lock, so taking it would deadlock (the join then times out and a
+        # stale watchdog overwrites the new process's exit code). Only record
+        # the code when this watchdog's process is still the live one — a
+        # restart may have replaced it meanwhile. The plain read/write is a
+        # benign race under the GIL.
+        if self._proc is proc:
             self._exit_code = code
 
     def _stop_locked(self) -> None:

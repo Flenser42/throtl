@@ -200,6 +200,23 @@ class EngineProcessTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             engine_.apply(_cfg())
 
+    def test_restart_clears_exit_code_of_old_process(self):
+        """A restart must not leak the old process's exit code into status().
+
+        Without the watchdog guard, the stale watchdog (joined out from under
+        the lock) overwrites ``_exit_code`` with the OLD process's SIGINT code
+        after the new tt has started — status() then reports a dead process.
+        """
+        engine_ = engine.TrafficTollEngine("enp34s0", command=self.fake)
+        try:
+            engine_.apply(_cfg())
+            engine_.apply(_cfg(global_={"download_limit": 5000}))
+            status = engine_.status()
+            self.assertTrue(status["running"])
+            self.assertIsNone(status["exit_code"])
+        finally:
+            engine_.stop()
+
 
 class PriorityMappingTest(unittest.TestCase):
     def test_priority_ints_match_tt(self):
