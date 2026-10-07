@@ -744,9 +744,12 @@ def apply_profile(cfg, name) -> dict:
     profile = get_profile(cfg, name)
     if profile is None:
         raise ConfigError(f"unknown profile {name!r}")
-    global_cfg = cfg.setdefault("global", {})
+    # A stored profile has no None values (TOML drops them), so a missing limit
+    # key means "unlimited", not "keep the previous profile's limit". Reset the
+    # global to the defaults before overlaying the profile's values.
+    cfg["global"] = copy.deepcopy(default_config()["global"])
     for key, value in profile["global"].items():
-        global_cfg[key] = copy.deepcopy(value)
+        cfg["global"][key] = copy.deepcopy(value)
     cfg["processes"] = copy.deepcopy(profile["processes"])
     cfg["active_profile"] = name
     return cfg

@@ -5,6 +5,22 @@ import unittest
 from throtl import config
 
 
+class ProfileApplyTest(unittest.TestCase):
+    def test_switching_to_unlimited_profile_clears_limit(self):
+        """A profile without a download limit must not leak the previous one."""
+        cfg = config.default_config()
+        cfg["global"]["download_limit"] = 2048
+        config.capture_profile(cfg, "Limited")
+        cfg["global"]["download_limit"] = None
+        config.capture_profile(cfg, "Free")
+
+        config.apply_profile(cfg, "Limited")
+        self.assertEqual(cfg["global"]["download_limit"], 2048)
+
+        config.apply_profile(cfg, "Free")
+        self.assertIsNone(cfg["global"]["download_limit"])
+
+
 class DefaultConfigTest(unittest.TestCase):
     def test_structure(self):
         cfg = config.default_config()
