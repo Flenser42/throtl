@@ -16,6 +16,8 @@ attic/
 .mypy_cache/
 .coverage
 htmlcov/
+graphify-out/
+.omo/
 
 # Design & product context (local only)
 PRODUCT.md
