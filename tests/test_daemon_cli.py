@@ -127,6 +127,62 @@ class AppGroupingTest(unittest.TestCase):
         # Attribuierte Summe stimmt mit den Apps ueberein
         self.assertEqual(snap["attributed"]["download"], 3000.0)
 
+    def test_cmdline_rule_attributed_to_app(self):
+        import tempfile
+
+        from throtl.config import make_rule
+        from throtl.daemon import Daemon
+        from throtl.engine import SimEngine
+
+        class _Mon:
+            def snapshot(self):
+                return {
+                    "1": {"name": "java -jar /opt/JDownloader/JDownloader.jar",
+                          "uid": "1000", "download": 100.0, "upload": 0.0},
+                }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Daemon(socket_path=tmp + "/d.sock", config_dir=tmp,
+                       engine=SimEngine("lo"), monitor_factory=None)
+            d.store.upsert_process(make_rule(
+                name="JDownloader", match_type="cmdline",
+                match_value="JDownloader", priority="normal"))
+            d.monitor = _Mon()
+            snap = d._collect_snapshot()
+
+        apps = {a["name"]: a for a in snap["apps"]}
+        self.assertEqual(apps["JDownloader"]["rule_name"], "JDownloader")
+        self.assertEqual(apps["JDownloader"]["rule_key"], "cmdline:JDownloader")
+
+    def test_match_hint_for_native_and_interpreted_apps(self):
+        import tempfile
+
+        from throtl.daemon import Daemon
+        from throtl.engine import SimEngine
+
+        class _Mon:
+            def snapshot(self):
+                return {
+                    "1": {"name": "/usr/bin/curl -s x", "uid": "1000",
+                          "download": 500.0, "upload": 5.0},
+                    "2": {"name": "python3 ./legendary install", "uid": "1000",
+                          "download": 1000.0, "upload": 10.0},
+                }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Daemon(socket_path=tmp + "/d.sock", config_dir=tmp,
+                       engine=SimEngine("lo"), monitor_factory=None)
+            d.monitor = _Mon()
+            snap = d._collect_snapshot()
+
+        apps = {a["name"]: a for a in snap["apps"]}
+        self.assertEqual(
+            apps["curl"]["match_hint"],
+            {"type": "exe", "value": "/usr/bin/curl"},
+        )
+        self.assertEqual(apps["legendary"]["match_hint"]["type"], "cmdline")
+        self.assertIn("legendary", apps["legendary"]["match_hint"]["value"])
+
 
 class DaemonCliEndToEnd(unittest.TestCase):
     def setUp(self):
@@ -443,6 +499,23 @@ class MatchRulesTest(unittest.TestCase):
         rule = make_rule(name="steam", match_type="exe",
                          match_value="/opt/Steam/steam", priority="normal")
         self.assertEqual(daemon._match_rules([rule], "/usr/bin/mpv"), {})
+
+    def test_exe_rule_sh_does_not_match_bash(self):
+        from throtl.config import make_rule
+
+        rule = make_rule(name="sh", match_type="exe", match_value="sh",
+                         priority="normal")
+        self.assertEqual(daemon._match_rules([rule], "/bin/bash"), {})
+        self.assertEqual(daemon._match_rules([rule], "/bin/sh").get("name"), "sh")
+
+    def test_name_rule_matches_basename_of_path(self):
+        from throtl.config import make_rule
+
+        rule = make_rule(name="firefox", match_type="name",
+                         match_value="firefox", priority="normal")
+        self.assertEqual(
+            daemon._match_rules([rule], "/usr/lib/firefox/firefox").get("name"),
+            "firefox")
 
 
 class DaemonSocketLivenessTest(unittest.TestCase):

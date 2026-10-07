@@ -77,9 +77,24 @@ class RenderTest(unittest.TestCase):
         self.assertIn("    upload: 512kbit", text)
         self.assertIn("    download-priority: 0", text)  # kritisch
         self.assertIn("    upload-priority: 0", text)
-        self.assertIn('      - exe: "/usr/lib/firefox/firefox"', text)
+        self.assertIn('      - exe: "(?:.*/)?firefox"', text)
         self.assertIn("    recursive: true", text)
         self.assertIn('      - name: "steam"', text)
+
+    def test_bare_exe_match_gets_path_prefix(self):
+        # A bare name from nethogs' argv[0] must still match process.exe()
+        # (a full path) under TrafficToll's re.match() — hence the path prefix.
+        rules = [make_rule("Curl", "exe", "curl", download_limit=1000)]
+        text = engine.render_tt_config(_cfg(processes=rules))
+        self.assertIn('      - exe: "(?:.*/)?curl"', text)
+
+    def test_exe_full_path_symlink_matches_basename(self):
+        # A symlink target (/usr/bin/java) resolves elsewhere at runtime, so the
+        # rule must be rendered on the basename, robust to both the full path
+        # and the resolved target.
+        rules = [make_rule("Java", "exe", "/usr/bin/java", download_limit=1000)]
+        text = engine.render_tt_config(_cfg(processes=rules))
+        self.assertIn('      - exe: "(?:.*/)?java"', text)
 
     def test_quoting(self):
         self.assertEqual(engine.yaml_quote('a"b\\c'), '"a\\"b\\\\c"')

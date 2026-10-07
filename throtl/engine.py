@@ -20,12 +20,13 @@ we have a single GUI value, both are set equal.
 
 import collections
 import os
+import re
 import signal
 import subprocess
 import threading
 import time
 
-from .config import priority_to_int, rule_active
+from .config import priority_to_int, rule_active, unescape_pattern
 
 # Defaults (from traffictoll/cli.py) in kbit/s
 GLOBAL_MINIMUM_DOWNLOAD = 100
@@ -137,8 +138,17 @@ def render_tt_config(config: dict, when=None) -> str:
             # match: a single predicate like in example.yaml
             mt = rule.get("match_type", "exe")
             mv = rule.get("match_value", "")
-            # TrafficToll matches a regex against the real value. For exe/name
-            # the pattern is already re.escape()-d -> literal match.
+            # TrafficToll matches the regex against process.exe() — a RESOLVED
+            # full path — with re.match(), which anchors at the start. Throtl's
+            # match value comes from nethogs' argv[0], which may be a bare name
+            # ("curl") or a symlink resolving elsewhere (/usr/bin/java ->
+            # /usr/lib/jvm/.../bin/java). Matching the basename with an optional
+            # path prefix is robust to all three. The stored pattern is already
+            # re.escape()-d, so unescape it first to read the real name.
+            if mt == "exe":
+                raw = unescape_pattern(mv).rstrip("/")
+                basename = raw.rsplit("/", 1)[-1] or raw
+                mv = f"(?:.*/)?{re.escape(basename)}"
             lines.append("    match:")
             lines.append(f"      - {mt}: {yaml_quote(mv)}")
 

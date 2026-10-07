@@ -69,10 +69,13 @@ export function buildModel(input: {
 
   const apps: AppRow[] = (state.apps ?? []).map((app) => {
     // The daemon tells us which rule it applied; fall back to local matching
-    // only when it did not name one.
-    const named = app.rule_name
-      ? rules.find((r) => r.name && r.name === app.rule_name)
-      : undefined;
+    // only when it did not name one. Prefer the stable rule key over the
+    // display name: two rules may share a name but never a key.
+    const named = app.rule_key
+      ? rules.find((r) => r.key === app.rule_key)
+      : app.rule_name
+        ? rules.find((r) => r.name && r.name === app.rule_name)
+        : undefined;
     const rule = app.unattributed ? undefined : (named ?? findRule(rules, app));
     const budget = appBudget.get(app.name.toLowerCase()) ?? null;
     const windowActive = rule?.window ? ruleActive(rule.window) : false;
@@ -92,8 +95,8 @@ export function buildModel(input: {
       budget: budget ? { used: budget.used, limit: budget.limit, ratio: budget.ratio } : null,
       armed: rule != null && (rule.download_limit != null || rule.upload_limit != null),
       unattributed: app.unattributed,
-      matchType: rule?.match_type ?? "exe",
-      matchValue: rule?.match_value ?? (app.exe || app.name),
+      matchType: rule?.match_type ?? app.match_hint?.type ?? "exe",
+      matchValue: rule?.match_value ?? app.match_hint?.value ?? (app.exe || app.name),
       ruleKey: rule?.key,
       window: rule?.window ?? null,
     };

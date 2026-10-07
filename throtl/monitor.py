@@ -70,6 +70,16 @@ def _basename(path: str) -> str:
     return (path or "").strip().strip('"').strip("'").rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
 
 
+def is_interpreted_cmdline(cmdline: str) -> bool:
+    """True when argv[0] is an interpreter (python/node/java/...) rather than
+    the app itself — such a process must be matched by cmdline, not by exe."""
+    tokens = (cmdline or "").split()
+    if not tokens:
+        return False
+    base = _basename(tokens[0]) or tokens[0]
+    return base in _INTERPRETERS or base.startswith(("python", "node"))
+
+
 def pretty_app_name(cmdline: str) -> str:
     """Derive a readable app name from the nethogs command line.
 

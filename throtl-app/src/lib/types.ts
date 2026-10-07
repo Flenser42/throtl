@@ -32,6 +32,8 @@ export interface AppEntry {
   pid_count: number;
   unattributed: boolean;
   rule_name?: string | null;
+  rule_key?: string | null;
+  match_hint?: { type: string; value: string } | null;
 }
 
 export interface ProcessState {

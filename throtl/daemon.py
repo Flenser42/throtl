@@ -26,6 +26,7 @@ import argparse
 import atexit
 import copy
 import os
+import re
 import signal
 import socket
 import sys
@@ -60,6 +61,7 @@ from .monitor import (
     UNATTRIBUTED_NAME,
     UNATTRIBUTED_PID,
     NethogsMonitor,
+    is_interpreted_cmdline,
     pretty_app_name,
 )
 from .protocol import (
@@ -642,11 +644,13 @@ class Daemon:
         apps = {}
         for pid, info in raw.items():
             if pid == UNATTRIBUTED_PID:
-                app, exe = UNATTRIBUTED_NAME, ""
+                app, exe, matched, interpreted = UNATTRIBUTED_NAME, "", {}, False
             else:
                 cmdline = info.get("name", "")
                 app = pretty_app_name(cmdline)
                 exe = (cmdline.split() or [""])[0]
+                matched = _match_rules(rules, cmdline)
+                interpreted = is_interpreted_cmdline(cmdline)
             entry = apps.get(app)
             if entry is None:
                 entry = apps[app] = {
@@ -656,7 +660,11 @@ class Daemon:
                     "upload": 0.0,
                     "pids": [],
                     "unattributed": pid == UNATTRIBUTED_PID,
+                    "rule": matched or {},
+                    "interpreted": interpreted,
                 }
+            elif matched and not entry.get("rule"):
+                entry["rule"] = matched
             entry["download"] += info.get("download", 0.0)
             entry["upload"] += info.get("upload", 0.0)
             if len(entry["pids"]) < 16:
@@ -666,11 +674,24 @@ class Daemon:
             entry["download"] = round(entry["download"], 3)
             entry["upload"] = round(entry["upload"], 3)
             entry["pid_count"] = len(entry["pids"])
+            matched_rule = entry.pop("rule", {}) or {}
             if entry["unattributed"]:
                 entry["rule_name"] = None
+                entry["rule_key"] = None
+                entry["match_hint"] = None
             else:
-                matches = _match_rules(rules, entry["exe"] or entry["name"], None)
-                entry["rule_name"] = matches.get("name")
+                entry["rule_name"] = matched_rule.get("name")
+                entry["rule_key"] = matched_rule.get("key")
+                if entry.pop("interpreted", False):
+                    # argv[0] is an interpreter: an exe rule would match every
+                    # script under it. Pin the script name via a cmdline regex
+                    # (the leading ".*" satisfies tt's start-anchored re.match).
+                    entry["match_hint"] = {
+                        "type": "cmdline",
+                        "value": f".*{re.escape(entry['name'])}",
+                    }
+                else:
+                    entry["match_hint"] = {"type": "exe", "value": entry["exe"]}
             app_list.append(entry)
 
         if record_stats:
@@ -1234,7 +1255,13 @@ class Daemon:
 def _match_rules(rules, name=None, pid=None) -> dict:
     """Find the first matching rule for a nethogs process name/PID.
 
-    nethogs gives as "name" either the full exe path or the process name.
+    ``name`` is the nethogs command line (captured with ``-l``): its first token
+    is the executable (argv[0]) and the rest are the arguments. Rules match:
+
+    * ``exe``     — the executable path or its basename (literal);
+    * ``name``    — the executable's basename (literal);
+    * ``cmdline`` — a literal substring of the whole command line.
+
     Stored ``match_value`` patterns are regex-escaped for TrafficToll — for the
     comparison here they must be converted back, otherwise no rule matches.
 
@@ -1245,21 +1272,33 @@ def _match_rules(rules, name=None, pid=None) -> dict:
     """
     if not name:
         return {}
+    tokens = name.split()
+    exe = tokens[0] if tokens else name
+    exe_base = os.path.basename(exe.rstrip("/")) or exe
     for rule in rules:
-        if rule.get("name") and rule["name"] == name:
-            return rule
+        match_type = rule.get("match_type")
         match_value = rule.get("match_value")
         if not match_value:
             continue
-        if rule.get("match_type") == "cmdline":
-            if match_value in name:
+        if match_type == "cmdline":
+            needle = match_value
+            if needle.startswith(".*"):
+                needle = needle[2:]
+            elif needle.startswith("^"):
+                needle = needle[1:]
+            if needle and needle in name:
                 return rule
             continue
         mv = unescape_pattern(match_value)
-        if mv and mv == name:
-            return rule
-        if mv and (name.startswith(mv) or name.endswith(mv.rstrip("/"))):
-            return rule
+        if not mv:
+            continue
+        if match_type == "exe":
+            mv_base = os.path.basename(mv.rstrip("/")) or mv
+            if mv == exe or mv_base == exe_base:
+                return rule
+        elif match_type == "name":
+            if mv == exe_base:
+                return rule
     return {}
 
 
