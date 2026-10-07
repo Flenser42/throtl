@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-07
+
+### Fixed
+
+- **Limits saved but never throttled for many apps.** TrafficToll matches
+  `process.exe()` (a resolved full path) with `re.match()`, which anchors at the
+  start of the string. Throtl derived `exe` match values from nethogs' argv[0] —
+  a bare name (`curl`) or a symlink that resolves elsewhere (`/usr/bin/java` →
+  `/usr/lib/jvm/.../bin/java`) — so the rule silently never matched. `exe` rules
+  now match by basename (an optional path prefix is allowed), and interpreted
+  apps (python/node/java scripts) get a `cmdline` match hint instead of
+  `exe:python3`, so a rule for a script no longer throttles every interpreter
+  process.
+- **Stale statistics after a restart.** The daemon loads `stats.json` at start;
+  buckets older than their window (after downtime) were returned by the first
+  `get_stats`/`get_budgets` read, before the first tick expired them. They are
+  expired on load now.
+
+### Removed
+
+- **An unused regex matcher.** `config.matching_rules()` was dead code (only
+  tests used it) and a second, regex-based matcher that would have run
+  user-supplied patterns inside the root daemon (ReDoS risk). The daemon uses
+  its own literal `_match_rules`.
+
 ## [0.12.0] - 2026-10-05
 
 ### Changed
@@ -678,7 +703,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/Flenser42/throtl/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/Flenser42/throtl/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Flenser42/throtl/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/Flenser42/throtl/compare/v0.10.2...v0.10.3
