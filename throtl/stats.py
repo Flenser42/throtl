@@ -119,6 +119,15 @@ class StatsStore:
         except (OSError, ValueError, TypeError, KeyError):
             # Broken/incompatible file: start empty instead of crashing.
             self._reset_rings()
+        # A restart after a long downtime leaves buckets older than their window
+        # in the rings. Expire them now: the first snapshot/budget read happens
+        # before the first tick's record(), which would otherwise return them.
+        self._expire_all()
+
+    def _expire_all(self, now: float | None = None) -> None:
+        timestamp = int(now if now is not None else time.time())
+        for ring in self._rings.values():
+            self._expire_old(ring, timestamp // ring["size"])
 
     def _from_json(self, data: dict) -> None:
         if not isinstance(data, dict):

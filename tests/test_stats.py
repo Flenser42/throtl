@@ -82,7 +82,7 @@ class PersistenceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "stats.json")
             store = StatsStore(path=path, interval=1.0)
-            store.record("Foo", download_kbit=8, upload_kbit=8, now=100)
+            store.record("Foo", download_kbit=8, upload_kbit=8, now=time.time())
             store.flush()
 
             loaded = StatsStore(path=path)
@@ -91,6 +91,19 @@ class PersistenceTest(unittest.TestCase):
             self.assertEqual(snap[0]["app"], "Foo")
             self.assertEqual(snap[0]["download"], 1000.0)
             self.assertEqual(loaded.totals("hour")["upload"], 1000.0)
+
+    def test_stale_buckets_expired_on_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "stats.json")
+            store = StatsStore(path=path, interval=1.0)
+            # A very old record: older than every ring's window.
+            store.record("Ancient", download_kbit=8, now=0)
+            store.flush()
+
+            loaded = StatsStore(path=path)
+            self.assertEqual(loaded.snapshot("minute"), [])
+            self.assertEqual(loaded.snapshot("hour"), [])
+            self.assertEqual(loaded.snapshot("day"), [])
 
     def test_config_dir_default_path(self):
         with tempfile.TemporaryDirectory() as tmp:
