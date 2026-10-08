@@ -43,6 +43,7 @@ The module deliberately has no third-party dependencies; time comes from
 import functools
 import json
 import os
+import shutil
 import threading
 import time
 
@@ -117,12 +118,26 @@ class StatsStore:
                 data = json.load(handle)
             self._from_json(data)
         except (OSError, ValueError, TypeError, KeyError):
-            # Broken/incompatible file: start empty instead of crashing.
+            # Broken/incompatible file: set it aside before starting empty, so
+            # the next persist does not silently overwrite the old history.
+            self._backup_broken_file()
             self._reset_rings()
         # A restart after a long downtime leaves buckets older than their window
         # in the rings. Expire them now: the first snapshot/budget read happens
         # before the first tick's record(), which would otherwise return them.
         self._expire_all()
+
+    def _backup_broken_file(self) -> str | None:
+        """Copy an unreadable stats.json aside (best effort)."""
+        if not self.path:
+            return None
+        try:
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            target = f"{self.path}.invalid-{stamp}"
+            shutil.copy2(self.path, target)
+            return target
+        except OSError:
+            return None
 
     def _expire_all(self, now: float | None = None) -> None:
         timestamp = int(now if now is not None else time.time())

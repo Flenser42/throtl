@@ -129,6 +129,20 @@ class PersistenceTest(unittest.TestCase):
             self.assertEqual(store.snapshot("minute"), [])
             self.assertEqual(store.totals("day"), {"download": 0.0, "upload": 0.0})
 
+    def test_corrupt_file_is_backed_up(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "stats.json")
+            broken = "{das ist kein json"
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(broken)
+            store = StatsStore(path=path)
+            self.assertEqual(store.snapshot("minute"), [])
+            backups = [name for name in os.listdir(tmp)
+                       if name.startswith("stats.json.invalid-")]
+            self.assertEqual(len(backups), 1, backups)
+            with open(os.path.join(tmp, backups[0]), encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), broken)
+
     def test_wrong_shape_starts_empty(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "stats.json")
