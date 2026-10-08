@@ -86,6 +86,15 @@ def warning_key(entry: dict) -> str:
     return f"{entry.get('scope')}:{entry.get('app')}:{entry.get('window')}"
 
 
+def budget_level(entry: dict) -> int:
+    """Alert level of a budget: 0 = fine, 1 = past 80 %, 2 = over the limit."""
+    if entry.get("exceeded") or (entry.get("ratio") or 0.0) >= 1.0:
+        return 2
+    if (entry.get("ratio") or 0.0) >= WARN_RATIO:
+        return 1
+    return 0
+
+
 def pending_warnings(entries, warned, threshold: float = WARN_RATIO) -> list:
     """Budgets that are getting tight and have not been reported yet.
 

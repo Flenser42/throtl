@@ -331,6 +331,9 @@ class Daemon:
         self._iface_rate = (None, None)
         # Signature of the currently active time-window rules (engine re-apply).
         self._window_signature = None
+        # Last alert level per budget key (f"{scope}:{app}:{window}"): lets
+        # get_budgets emit an alert only when a budget crosses a level.
+        self._budget_levels: dict = {}
         # Engine restarts run in their own thread (a tt apply takes ~2 s and
         # must block neither RPC responses nor the GUI).
         self._apply_event = threading.Event()
@@ -1140,13 +1143,31 @@ class Daemon:
         return {"window": window, "series": self.stats.series(window)}
 
     def _h_get_budgets(self, params):
-        from .budgets import budget_status
+        from .budgets import budget_level, budget_status
 
         with self._state_lock:
             cfg = copy.deepcopy(self.store.get())
+        entries = budget_status(cfg, self.stats)
+        alerts = []
+        with self._state_lock:
+            for entry in entries:
+                key = f"{entry.get('scope')}:{entry.get('app')}:{entry.get('window')}"
+                level = budget_level(entry)
+                if level > self._budget_levels.get(key, 0):
+                    alerts.append({
+                        "scope": entry.get("scope"),
+                        "app": entry.get("app"),
+                        "window": entry.get("window"),
+                        "level": level,
+                        "ratio": entry.get("ratio"),
+                        "used": entry.get("used"),
+                        "limit": entry.get("limit"),
+                    })
+                self._budget_levels[key] = level
         return {
             "enabled": (cfg.get("budgets") or {}).get("enabled", True),
-            "entries": budget_status(cfg, self.stats),
+            "entries": entries,
+            "alerts": alerts,
         }
 
     def _h_set_budget(self, params):

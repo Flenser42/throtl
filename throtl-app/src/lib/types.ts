@@ -80,11 +80,21 @@ export interface BudgetEntry {
   limit: number;
   ratio: number;
   exceeded: boolean;
+  level?: number;
 }
 
 export interface Budgets {
   enabled: boolean;
   entries: BudgetEntry[];
+  alerts?: Array<{
+    scope: string;
+    app: string | null;
+    window: string;
+    level: number;
+    ratio: number;
+    used: number;
+    limit: number;
+  }>;
 }
 
 export interface StatsApp {

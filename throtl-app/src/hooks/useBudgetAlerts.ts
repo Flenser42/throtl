@@ -1,37 +1,25 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 
 import { getBudgets } from "../lib/api";
 import { isMock } from "../lib/ipc";
 import { notify } from "../lib/notify";
-import type { BudgetEntry } from "../lib/types";
+import type { Budgets } from "../lib/types";
 
 const POLL_MS = 30_000;
-const WARN = 0.8;
 
-function keyOf(entry: BudgetEntry): string {
-  return `${entry.scope}:${entry.app ?? ""}:${entry.window}`;
-}
+type BudgetAlert = NonNullable<Budgets["alerts"]>[number];
 
-/** 0 = fine, 1 = past 80 %, 2 = over the limit. */
-function levelOf(entry: BudgetEntry): number {
-  if (entry.ratio >= 1 || entry.exceeded) return 2;
-  if (entry.ratio >= WARN) return 1;
-  return 0;
-}
-
-function labelOf(entry: BudgetEntry): string {
-  const who = entry.scope === "global" ? "Global" : (entry.app ?? "App");
-  return `${who} ${entry.window === "week" ? "weekly" : "daily"} budget`;
+function labelOf(alert: BudgetAlert): string {
+  const who = alert.scope === "global" ? "Global" : (alert.app ?? "App");
+  return `${who} ${alert.window === "week" ? "weekly" : "daily"} budget`;
 }
 
 /**
- * Watch the configured budgets and raise a desktop notification when one
- * crosses 80 % or its limit. Only transitions notify, so a budget that stays
- * over the limit does not spam.
+ * Watch the configured budgets and raise a desktop notification for each
+ * level rise the daemon reports. The daemon dedupes transitions, so a budget
+ * that stays over the limit does not spam.
  */
 export function useBudgetAlerts(active: boolean): void {
-  const stateRef = useRef<Map<string, number>>(new Map());
-
   useEffect(() => {
     if (isMock || !active) return;
     let stopped = false;
@@ -40,18 +28,12 @@ export function useBudgetAlerts(active: boolean): void {
       try {
         const data = await getBudgets();
         if (stopped) return;
-        for (const entry of data.entries ?? []) {
-          const key = keyOf(entry);
-          const now = levelOf(entry);
-          const before = stateRef.current.get(key) ?? 0;
-          if (now > before) {
-            if (now === 2) {
-              void notify("Budget exceeded", `${labelOf(entry)} is over its limit.`);
-            } else {
-              void notify("Budget almost used", `${labelOf(entry)} passed 80 %.`);
-            }
+        for (const alert of data.alerts ?? []) {
+          if (alert.level >= 2) {
+            void notify("Budget exceeded", `${labelOf(alert)} is over its limit.`);
+          } else if (alert.level >= 1) {
+            void notify("Budget almost used", `${labelOf(alert)} passed 80 %.`);
           }
-          stateRef.current.set(key, now);
         }
       } catch {
         /* daemon offline — try again on the next tick */

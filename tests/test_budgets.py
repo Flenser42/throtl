@@ -2,7 +2,7 @@
 
 import unittest
 
-from throtl.budgets import budget_status
+from throtl.budgets import budget_level, budget_status
 from throtl.stats import StatsStore
 
 
@@ -45,6 +45,29 @@ class BudgetStatusTest(unittest.TestCase):
                            "rules": []}}
         entries = budget_status(cfg, store, now=1.0)
         self.assertFalse(entries[0]["exceeded"])
+
+
+class BudgetLevelTest(unittest.TestCase):
+    """0 = fine, 1 = past 80 %, 2 = over the limit."""
+
+    @staticmethod
+    def _entry(ratio, exceeded=False):
+        return {"ratio": ratio, "exceeded": exceeded}
+
+    def test_below_threshold_is_fine(self):
+        self.assertEqual(budget_level(self._entry(0.5)), 0)
+
+    def test_at_threshold_warns(self):
+        self.assertEqual(budget_level(self._entry(0.8)), 1)
+
+    def test_at_limit_is_exceeded(self):
+        self.assertEqual(budget_level(self._entry(1.0)), 2)
+
+    def test_exceeded_flag_is_level_two(self):
+        self.assertEqual(budget_level(self._entry(0.5, exceeded=True)), 2)
+
+    def test_missing_ratio_is_fine(self):
+        self.assertEqual(budget_level({}), 0)
 
 
 class BudgetWarningTest(unittest.TestCase):

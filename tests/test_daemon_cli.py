@@ -525,6 +525,29 @@ class BudgetsRpcTest(unittest.TestCase):
         removed = self.client.call("remove_budget", {"app": "firefox"})
         self.assertTrue(removed["removed"])
 
+    def test_get_budgets_emits_alerts_and_dedups(self):
+        empty = self.client.call("get_budgets")
+        self.assertIsInstance(empty["alerts"], list)
+        self.assertEqual(empty["alerts"], [])
+
+        # Deterministic usage (450 MB) against a 1 MB global day budget.
+        self.harness.daemon.stats.record(
+            "seed", download_kbit=1000.0, now=time.time(), interval=3600.0)
+        self.client.call("set_budget", {"day": "1mb"})
+
+        first = self.client.call("get_budgets")
+        self.assertTrue(any(e["scope"] == "global" and e["window"] == "day"
+                            for e in first["entries"]))
+        self.assertEqual(len(first["alerts"]), 1)
+        alert = first["alerts"][0]
+        self.assertEqual(alert["scope"], "global")
+        self.assertEqual(alert["window"], "day")
+        self.assertEqual(alert["level"], 2)
+
+        # Same level on the next poll: no repeated alert.
+        second = self.client.call("get_budgets")
+        self.assertEqual(second["alerts"], [])
+
     def test_stats_history_series(self):
         result = self.client.call("get_stats_history", {"window": "minute"})
         self.assertEqual(result["window"], "minute")
