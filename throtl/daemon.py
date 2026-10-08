@@ -494,6 +494,7 @@ class Daemon:
         # tt crashed? Then re-apply automatically (otherwise shaping would stay
         # silently off until the user happens to change a rule).
         self._recover_engine()
+        self._check_interface_change()
         # Real monitoring tick: advance the statistics. RPC snapshots
         # (list_processes) must NOT count additionally, otherwise the GUI poll
         # would book the rates twice.
@@ -801,6 +802,38 @@ class Daemon:
         if not self._snapshot_config()["global"].get("enabled", True):
             return
         self._schedule_engine_apply()
+
+    def _check_interface_change(self) -> None:
+        """Follow a default-route interface change (WLAN<->LAN, VPN up/down).
+
+        Only when the config asks for auto-detection; a pinned interface is
+        deliberately left alone.
+        """
+        with self._state_lock:
+            requested = self.store.get().get("interface")
+        if requested not in (None, "", "auto", "automatic"):
+            return
+        detected = detect_default_interface()
+        if not detected or detected == self.interface:
+            return
+        self._rebind_interface(detected)
+
+    def _rebind_interface(self, new: str) -> None:
+        """Point the engine and monitor at a new interface."""
+        print(f"Interface changed: {self.interface} -> {new}", flush=True)
+        self._stop_monitor()
+        set_device = getattr(self.engine, "set_device", None)
+        if set_device is not None:
+            set_device(new)
+        else:
+            self.engine.device = new
+        self.interface = new
+        # Drop the stale /proc/net/dev sample so the global rate re-measures on
+        # the new interface instead of mixing old and new counters.
+        self._iface_sample = None
+        self._iface_rate = (None, None)
+        self._schedule_engine_apply()
+        self._start_monitor()
 
     def _start_monitor(self) -> None:
         if self._monitor_factory is None:

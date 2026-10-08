@@ -428,6 +428,13 @@ class TrafficTollEngine:
         with self._lock:
             self._stop_locked()
 
+    def set_device(self, device: str) -> None:
+        """Rebind to a new interface. Stops the current tt process first so no
+        shaping keeps running against a stale device."""
+        with self._lock:
+            self._stop_locked()
+            self.device = device
+
     def status(self) -> dict:
         # No nested locking: the process state is read inline instead of calling
         # is_running() (that was the deadlock with Lock()).

@@ -220,6 +220,43 @@ class AppGroupingTest(unittest.TestCase):
         self.assertIn("legendary", apps["legendary"]["match_hint"]["value"])
 
 
+class InterfaceChangeTest(unittest.TestCase):
+    """The daemon follows the default route only when interface is auto."""
+
+    def _daemon(self, tmp):
+        from throtl.daemon import Daemon
+
+        return Daemon(socket_path=tmp + "/d.sock", config_dir=tmp,
+                      engine=SimEngine("lo"), monitor_factory=None)
+
+    def test_auto_interface_rebinds_engine(self):
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._daemon(tmp)
+            d.store.get()["interface"] = "auto"
+            d.interface = "wlan0"
+            with mock.patch("throtl.daemon.detect_default_interface",
+                            return_value="eth1"):
+                d._check_interface_change()
+            self.assertEqual(d.interface, "eth1")
+            self.assertEqual(d.engine.device, "eth1")
+
+    def test_pinned_interface_is_left_alone(self):
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._daemon(tmp)
+            d.store.get()["interface"] = "tailscale0"
+            d.interface = "tailscale0"
+            with mock.patch("throtl.daemon.detect_default_interface",
+                            return_value="eth1") as detect:
+                d._check_interface_change()
+            self.assertEqual(d.interface, "tailscale0")
+            self.assertEqual(d.engine.device, "lo")
+            detect.assert_not_called()
+
+
 class DaemonCliEndToEnd(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

@@ -217,6 +217,18 @@ class EngineProcessTest(unittest.TestCase):
         finally:
             engine_.stop()
 
+    def test_set_device_stops_and_rebinds(self):
+        eng = engine.TrafficTollEngine("enp34s0", command=self.fake)
+        try:
+            eng.apply(_cfg())
+            self.assertTrue(eng.is_running())
+            eng.set_device("eth1")
+            status = eng.status()
+            self.assertEqual(status["device"], "eth1")
+            self.assertFalse(status["running"])
+        finally:
+            eng.stop()
+
 
 class PriorityMappingTest(unittest.TestCase):
     def test_priority_ints_match_tt(self):
