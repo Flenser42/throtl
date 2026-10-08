@@ -243,5 +243,76 @@ class SelfTestCleanupTest(unittest.TestCase):
         self.assertIn("exe:/usr/bin/curl", removed)
 
 
+class _RecordingClient:
+    """Records every ``call`` and replays canned responses per method."""
+
+    def __init__(self, responses=None):
+        self.responses = responses or {}
+        self.calls = []
+
+    def call(self, method, params=None, timeout=10):
+        self.calls.append((method, params))
+        return self.responses.get(method, {})
+
+
+class BoostCommandTest(unittest.TestCase):
+    def _config(self):
+        return {"processes": [{
+            "key": "exe:/usr/bin/curl",
+            "name": "curl",
+            "priority": "normal",
+            "match_type": "exe",
+            "match_value": "/usr/bin/curl",
+            "download_limit": None,
+            "upload_limit": None,
+        }]}
+
+    def test_boost_sets_and_reverts_priority(self):
+        import contextlib
+        import io
+
+        client = _RecordingClient({"get_config": self._config()})
+        args = argparse.Namespace(name="curl", seconds=0)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cli.cmd_boost(client, args)
+        self.assertEqual(rc, 0)
+        sets = [p for m, p in client.calls if m == "set_process"]
+        self.assertEqual(len(sets), 2)
+        self.assertEqual(sets[0]["key"], "exe:/usr/bin/curl")
+        self.assertEqual(sets[0]["priority"], "kritisch")
+        self.assertEqual(sets[1]["key"], "exe:/usr/bin/curl")
+        self.assertEqual(sets[1]["priority"], "normal")
+
+    def test_boost_unknown_name_errors(self):
+        import contextlib
+        import io
+
+        client = _RecordingClient({"get_config": self._config()})
+        args = argparse.Namespace(name="nope", seconds=0)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            rc = cli.cmd_boost(client, args)
+        self.assertEqual(rc, 1)
+        self.assertEqual([p for m, p in client.calls if m == "set_process"], [])
+        self.assertIn("nope", err.getvalue())
+
+
+class StatusCommandTest(unittest.TestCase):
+    def test_status_json(self):
+        import contextlib
+        import io
+        import json
+
+        status = {"daemon": "throtl", "pid": 42, "enabled": True,
+                  "interface": "eth0"}
+        client = _FakeClient({"status": status})
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cli.cmd_status(client, argparse.Namespace(json=True))
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(buf.getvalue()), status)
+
+
 if __name__ == "__main__":
     unittest.main()

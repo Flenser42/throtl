@@ -15,6 +15,16 @@ OPT="/opt/throtl"
 ETC="/etc/throtl"
 RUN="/run/throtl"
 
+# Options: --no-app skips the GUI, --with-waybar installs the Waybar status module.
+WITH_WAYBAR=0
+NO_APP=0
+for arg in "$@"; do
+  case "$arg" in
+    --with-waybar) WITH_WAYBAR=1 ;;
+    --no-app)      NO_APP=1 ;;
+  esac
+done
+
 echo "=== [1/7] Install system packages ==="
 # pacman packages (all in [extra]): nethogs provides the live measurement,
 # iproute2 provides 'tc', webkit2gtk-4.1 is the dashboard's runtime.
@@ -107,7 +117,7 @@ fi
 
 echo "=== [7/7] Install the new GUI (Tauri) ==="
 APP_USER="${SUDO_USER:-$USER}"
-if [[ "${1:-}" == "--no-app" ]]; then
+if [[ "$NO_APP" -eq 1 ]]; then
   echo "   skipped (--no-app)"
 elif [[ "$APP_USER" == "root" ]]; then
   echo "   Called as root - GUI skipped."
@@ -130,6 +140,36 @@ sudo mkdir -p /usr/share/polkit-1/actions
 sudo install -m 0644 "$SELF_DIR"/polkit/org.throtl.setup.policy \
   /usr/share/polkit-1/actions/org.throtl.setup.policy
 echo "   The GUI can trigger the setup via 'pkexec /usr/local/bin/throtl-setup'."
+
+if [[ "$WITH_WAYBAR" -eq 1 ]]; then
+  echo
+  echo "=== Waybar status module ==="
+  WB_USER="${SUDO_USER:-$USER}"
+  if [[ "$WB_USER" == "root" ]]; then
+    WB_HOME="${HOME:-/root}"
+  else
+    WB_HOME="$(getent passwd "$WB_USER" | cut -d: -f6)"
+  fi
+  if [[ -n "$WB_HOME" ]] && mkdir -p "$WB_HOME/.local/bin"; then
+    install -m 0755 "$SELF_DIR/waybar/throtl.sh" "$WB_HOME/.local/bin/throtl-waybar"
+    if [[ "$WB_USER" != "root" ]]; then
+      chown "$WB_USER" "$WB_HOME/.local/bin" "$WB_HOME/.local/bin/throtl-waybar" 2>/dev/null || true
+    fi
+    echo "   Installed: $WB_HOME/.local/bin/throtl-waybar"
+    echo "   Add this module to your Waybar config (modules-right etc.):"
+    echo
+    cat <<'EOF'
+    "custom/throtl": {
+        "exec": "~/.local/bin/throtl-waybar",
+        "interval": 5,
+        "return-type": "json"
+    },
+EOF
+    echo
+  else
+    echo "   Warning: could not create ~/.local/bin — skipping the Waybar module."
+  fi
+fi
 
 echo
 echo " DONE. Throtl is installed."

@@ -67,6 +67,11 @@ def _priority_int(name):
 
 
 def cmd_status(client, args):
+    if getattr(args, "json", False):
+        import json as _json
+
+        print(_json.dumps(client.call("status")))
+        return 0
     status = client.call("status")
     print(f"Throtl-Daemon {status.get('daemon')} (PID {status.get('pid')})")
     print(f"  Interface:   {status.get('interface')}")
@@ -110,6 +115,31 @@ def cmd_status(client, args):
             print(f"    ! {issue}")
     if status.get("simulated"):
         print("  (simulation mode: no real tc rules)")
+    return 0
+
+
+def cmd_boost(client, args):
+    """Temporarily boost an app to Critical priority, then revert it."""
+    name = (args.name or "").strip()
+    config = client.call("get_config")
+    rule = next(
+        (r for r in config.get("processes", [])
+         if (r.get("name") or "").lower() == name.lower()),
+        None,
+    )
+    if rule is None:
+        print(f"No rule matches {name!r}", file=sys.stderr)
+        return 1
+    key = rule["key"]
+    saved = rule.get("priority") or "normal"
+    client.call("set_process", {"key": key, "priority": "kritisch"})
+    print(f"Boosted {rule.get('name')!r} to Critical for {args.seconds}s "
+          f"(was {saved})", flush=True)
+    try:
+        time.sleep(args.seconds)
+    finally:
+        client.call("set_process", {"key": key, "priority": saved})
+        print(f"Reverted {rule.get('name')!r} to {saved}", flush=True)
     return 0
 
 
@@ -879,7 +909,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--socket", default=None, help="Unix socket path")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("status", help="show the daemon status")
+    status = sub.add_parser("status", help="show the daemon status")
+    status.add_argument("--json", action="store_true",
+                        help="print raw JSON")
+
+    boost = sub.add_parser("boost",
+                           help="temporarily boost an app's priority")
+    boost.add_argument("--name", required=True, help="rule name to boost")
+    boost.add_argument("--seconds", type=int, default=300,
+                       help="boost duration (default 300)")
 
     sub.add_parser("list-processes", help="show the live process list")
 
@@ -1016,6 +1054,7 @@ def main(argv=None) -> int:
     try:
         handlers = {
             "status": cmd_status,
+            "boost": cmd_boost,
             "list-processes": cmd_list,
             "set-global": cmd_set_global,
             "set-process": cmd_set_process,
