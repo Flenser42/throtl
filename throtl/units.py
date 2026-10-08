@@ -65,6 +65,8 @@ def _bounded_rate(amount: float) -> int:
         raise ValueError(f"invalid rate: {amount!r}")
     if amount > MAX_RATE_KBIT:
         raise ValueError(f"rate too large: {amount!r} kbit/s (max {MAX_RATE_KBIT})")
+    if 0 < amount < 1:
+        return 1
     return round(amount)
 
 
@@ -90,7 +92,7 @@ def parse_rate(value) -> int:
         return _bounded_rate(value)
     if not isinstance(value, str):
         raise ValueError(f"invalid rate: {value!r}")
-    text = value.strip().lower().replace(" ", "")
+    text = value.strip().lower().replace(" ", "").replace(",", ".")
     if not text:
         return None
     for suffix, factor in sorted(_PARSERS.items(), key=lambda kv: -len(kv[0])):

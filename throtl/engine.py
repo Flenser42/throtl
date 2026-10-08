@@ -44,6 +44,8 @@ def format_rate_kbps(kbit_per_s) -> str:
     if kbit_per_s is None:
         return None
     value = round(kbit_per_s)
+    if 0 < kbit_per_s < 1:
+        value = 1
     if value >= 1_000_000:
         # 1 Gbit/s = 1_000_000 kbit/s, so the divisor must match the unit.
         text = f"{value / 1_000_000:.3f}".rstrip("0").rstrip(".")

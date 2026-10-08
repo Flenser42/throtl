@@ -42,6 +42,13 @@ class RateUnitTest(unittest.TestCase):
     def test_none_stays_none(self):
         self.assertIsNone(engine.format_rate_kbps(None))
 
+    def test_tiny_positive_rate_renders_one(self):
+        # A sub-1 kbit/s limit must not render "0kbit" (silent total block).
+        self.assertEqual(engine.format_rate_kbps(0.5), "1kbit")
+        self.assertEqual(engine.format_rate_kbps(0.0001), "1kbit")
+        # An explicit 0 stays the documented block-everything semantic.
+        self.assertEqual(engine.format_rate_kbps(0), "0kbit")
+
 
 class RenderTest(unittest.TestCase):
     def test_disabled_renders_empty(self):

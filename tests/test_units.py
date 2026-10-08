@@ -20,6 +20,18 @@ class ParseRateTest(unittest.TestCase):
         self.assertEqual(units.parse_rate(1000), 1000)
         self.assertEqual(units.parse_rate(512.6), 513)
 
+    def test_tiny_positive_rates_round_up_to_one(self):
+        # 0.5/0.0001 must not round down to 0 (a silent total block).
+        self.assertEqual(units.parse_rate(0.5), 1)
+        self.assertEqual(units.parse_rate(0.0001), 1)
+        self.assertEqual(units.parse_rate("0.5"), 1)
+        # An explicit 0 stays 0 ("block everything").
+        self.assertEqual(units.parse_rate(0), 0)
+
+    def test_comma_decimal_separator(self):
+        self.assertEqual(units.parse_rate("1,5mbps"), 1500)
+        self.assertEqual(units.parse_rate("0,5mbps"), 500)
+
     def test_case_and_spaces(self):
         self.assertEqual(units.parse_rate(" 1.5 Mbps "), 1500)
 
