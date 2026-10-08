@@ -220,3 +220,11 @@ class PrettyAppNameTest(unittest.TestCase):
 
         self.assertEqual(pretty_app_name(""), "?")
         self.assertEqual(pretty_app_name("python3"), "python3")
+
+    def test_interpreter_flags_with_values(self):
+        from throtl.monitor import pretty_app_name
+
+        # -X takes a following value; that value is not the app.
+        self.assertEqual(pretty_app_name("python -X dev app.py"), "app")
+        # -c is inline code, there is no script file -> interpreter name.
+        self.assertEqual(pretty_app_name("python -c 'print(1)'"), "python")

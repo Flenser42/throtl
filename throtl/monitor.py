@@ -109,6 +109,11 @@ def pretty_app_name(cmdline: str) -> str:
         if token == "-jar" and index + 1 < len(rest):
             name = _basename(rest[index + 1])
             return name[:-4] if name.lower().endswith(".jar") else (name or base)
+        if token == "-X" and index + 1 < len(rest):
+            index += 2
+            continue
+        if token == "-c":
+            return base
         if token.startswith("-"):
             index += 1
             continue
