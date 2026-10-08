@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.3] - 2026-10-07
+
+### Fixed
+
+- **Every engine restart blocked for ~2 s and reported a stale exit code.**
+  The `tt` watchdog acquired the engine lock after the process exited, while the
+  stop path joined it under that same lock — the join ran into its timeout and
+  the old watchdog then overwrote the new process's exit code (so `status()`
+  claimed `exit_code=3` while `tt` was running). The watchdog no longer takes the
+  lock and only records the code when its process is still the live one.
+- **Switching to an unlimited profile kept the previous limit.** A stored
+  profile drops `None` values (TOML), so a profile without a limit had no key
+  and `apply_profile` left the previous profile's limit in place. The global is
+  now reset to its defaults before the profile's values are applied.
+- **`_apply_time_windows` read the config without the state lock**, racing
+  concurrent rule changes.
+- **`install.sh` pinned `traffictoll==1.5.0`** instead of installing unpinned.
+- **The socket-access hint test is now root-safe** (`geteuid` is mocked).
+
 ## [0.12.2] - 2026-10-07
 
 ### Fixed
@@ -714,7 +733,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.12.2...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.12.3...HEAD
+[0.12.3]: https://github.com/Flenser42/throtl/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/Flenser42/throtl/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/Flenser42/throtl/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/Flenser42/throtl/compare/v0.11.0...v0.12.0
