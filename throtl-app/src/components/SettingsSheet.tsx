@@ -60,7 +60,7 @@ export function SettingsSheet({
         <h3 className="sheet-group-title">Appearance</h3>
         <div className="sheet-row">
           <span className="sheet-key">Theme</span>
-          <div className="seg">
+          <div className="seg push-right">
             {THEMES.map((t) => (
               <button
                 key={t.id}
@@ -75,7 +75,7 @@ export function SettingsSheet({
         </div>
         <div className="sheet-row">
           <span className="sheet-key">Density</span>
-          <div className="seg">
+          <div className="seg push-right">
             {DENSITIES.map((d) => (
               <button
                 key={d.id}
@@ -90,7 +90,7 @@ export function SettingsSheet({
         </div>
         <div className="sheet-row">
           <span className="sheet-key">Display unit</span>
-          <div className="seg">
+          <div className="seg push-right">
             {UNITS.map((u) => (
               <button
                 key={u}

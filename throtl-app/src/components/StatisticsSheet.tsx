@@ -42,14 +42,7 @@ export function StatisticsSheet({ onClose }: { onClose: () => void }) {
   const appPeak = Math.max(1, ...(data?.apps ?? []).map((a) => a.download + a.upload));
 
   return (
-    <Sheet
-      title="Statistics"
-      subtitle={
-        data ? `Total ↓ ${formatBytes(data.totals.download)} · ↑ ${formatBytes(data.totals.upload)}` : undefined
-      }
-      onClose={onClose}
-      width={520}
-    >
+    <Sheet title="Statistics" subtitle="Per-application history" onClose={onClose} width={520}>
       <div className="seg" style={{ marginBottom: 16 }}>
         {RANGES.map((r) => (
           <button
@@ -63,6 +56,19 @@ export function StatisticsSheet({ onClose }: { onClose: () => void }) {
         ))}
       </div>
 
+      {data && (
+        <div className="sheet-row">
+          <span className="sheet-key">Total</span>
+          <span className="sheet-value mono">
+            ↓ {formatBytes(data.totals.download, 1)} · ↑ {formatBytes(data.totals.upload, 1)}
+          </span>
+        </div>
+      )}
+
+      <div className="stats-scale">
+        <span>0</span>
+        <span>max {formatBytes(peak, 1)}</span>
+      </div>
       <div className="stats-chart" aria-hidden="true">
         {series.map((p, i) => {
           const total = p.download + p.upload;

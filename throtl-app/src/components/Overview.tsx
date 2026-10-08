@@ -16,14 +16,13 @@ export function Overview({
   const down = splitRate(model.downKbit, model.unit, 1);
   const up = splitRate(model.upKbit, model.unit, 2);
   const limited = model.apps.filter((a) => !a.unattributed && a.armed).length;
+  const capDown = model.globalDownLimit != null ? splitRate(model.globalDownLimit, model.unit, 0) : null;
+  const capUp = model.globalUpLimit != null ? splitRate(model.globalUpLimit, model.unit, 0) : null;
   const caps = [
-    model.globalDownLimit != null
-      ? `↓ ${splitRate(model.globalDownLimit, model.unit, 0).value}`
-      : "↓ unlimited",
-    model.globalUpLimit != null
-      ? `↑ ${splitRate(model.globalUpLimit, model.unit, 0).value}`
-      : "↑ unlimited",
+    capDown ? `↓ ${capDown.value}` : "↓ unlimited",
+    capUp ? `↑ ${capUp.value}` : "↑ unlimited",
   ].join("   ");
+  const capsText = capDown || capUp ? `${caps} ${(capDown ?? capUp)!.unit}` : caps;
 
   return (
     <section className="card overview">
@@ -61,7 +60,7 @@ export function Overview({
           </div>
           <button type="button" className="stat stat-btn" onClick={onGlobals}>
             <span className="stat-label">Global caps</span>
-            <span className="stat-value mono">{caps}</span>
+            <span className="stat-value mono">{capsText}</span>
           </button>
           <div className="stat">
             <span className="stat-label">Profile</span>

@@ -78,6 +78,21 @@ export function RuleSheet({ mode, app, unit, onSave, onDelete, onClose }: Props)
         isCreate ? "Limit an app that has no rule yet" : "Limit, priority and window for this app"
       }
       onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn btn-primary" disabled={!valid} onClick={submit}>
+            {isCreate ? "Create rule" : "Save"}
+          </button>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          {!isCreate && onDelete && (
+            <button type="button" className="btn danger push-right" onClick={onDelete}>
+              Delete
+            </button>
+          )}
+        </>
+      }
     >
       <section className="sheet-group">
         <h3 className="sheet-group-title">Application</h3>
@@ -240,20 +255,6 @@ export function RuleSheet({ mode, app, unit, onSave, onDelete, onClose }: Props)
           </>
         )}
       </section>
-
-      <div className="sheet-actions">
-        <button type="button" className="btn btn-primary" disabled={!valid} onClick={submit}>
-          {isCreate ? "Create rule" : "Save"}
-        </button>
-        <button type="button" className="btn" onClick={onClose}>
-          Cancel
-        </button>
-        {!isCreate && onDelete && (
-          <button type="button" className="btn danger push-right" onClick={onDelete}>
-            Delete
-          </button>
-        )}
-      </div>
     </Sheet>
   );
 }

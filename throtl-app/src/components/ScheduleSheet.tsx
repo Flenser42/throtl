@@ -88,6 +88,19 @@ export function ScheduleSheet({ onClose, onToast, onChanged }: Props) {
       subtitle="Switch profile by day and time"
       onClose={onClose}
       width={520}
+      footer={
+        <>
+          <button type="button" className="btn" onClick={add}>
+            <Plus size={14} /> Add rule
+          </button>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>
+            Save
+          </button>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
+        </>
+      }
     >
       {entries.length === 0 && (
         <p className="sheet-note">
@@ -98,12 +111,16 @@ export function ScheduleSheet({ onClose, onToast, onChanged }: Props) {
       {entries.map((entry, index) => (
         <section className="sheet-group schedule-entry" key={entry.id}>
           <div className="schedule-head">
+            <span className="sheet-key">Profile</span>
             <div className="sheet-input-wrap">
               <select
                 className="sheet-input"
                 value={entry.profile}
                 onChange={(e) => update(index, { profile: e.target.value })}
               >
+                {!profiles.includes(entry.profile) && (
+                  <option value={entry.profile}>{entry.profile}</option>
+                )}
                 {profiles.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -154,17 +171,6 @@ export function ScheduleSheet({ onClose, onToast, onChanged }: Props) {
         </section>
       ))}
 
-      <div className="sheet-actions">
-        <button type="button" className="btn" onClick={add}>
-          <Plus size={14} /> Add rule
-        </button>
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>
-          Save
-        </button>
-        <button type="button" className="btn" onClick={onClose}>
-          Cancel
-        </button>
-      </div>
       <p className="sheet-note">
         A rule with no day selected is ignored. Overnight windows (start &gt; end) run
         into the next day.

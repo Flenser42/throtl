@@ -37,18 +37,39 @@ export function GlobalSheet({ model, onSave, onClose }: Props) {
       title="Global limits"
       subtitle="The ceiling applied to the whole connection"
       onClose={onClose}
+      footer={
+        <>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() =>
+              onSave({
+                enabled,
+                download: parseRateInUnit(down, unit),
+                upload: parseRateInUnit(up, unit),
+                downloadMinimum: parseRateInUnit(downMin, unit) ?? 0,
+                uploadMinimum: parseRateInUnit(upMin, unit) ?? 0,
+                downloadPriority: downPriority,
+                uploadPriority: upPriority,
+              })
+            }
+          >
+            Save
+          </button>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
+        </>
+      }
     >
-      <section className="sheet-group">
-        <h3 className="sheet-group-title">Shaping</h3>
-        <label className="sheet-check">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-          />
-          Limit traffic at all
-        </label>
-      </section>
+      <label className="sheet-check sheet-check-block">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+        />
+        Limit traffic at all
+      </label>
 
       <section className="sheet-group">
         <h3 className="sheet-group-title">Caps</h3>
@@ -145,29 +166,6 @@ export function GlobalSheet({ model, onSave, onClose }: Props) {
           </div>
         </div>
       </section>
-
-      <div className="sheet-actions">
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() =>
-            onSave({
-              enabled,
-              download: parseRateInUnit(down, unit),
-              upload: parseRateInUnit(up, unit),
-              downloadMinimum: parseRateInUnit(downMin, unit) ?? 0,
-              uploadMinimum: parseRateInUnit(upMin, unit) ?? 0,
-              downloadPriority: downPriority,
-              uploadPriority: upPriority,
-            })
-          }
-        >
-          Save
-        </button>
-        <button type="button" className="btn" onClick={onClose}>
-          Cancel
-        </button>
-      </div>
     </Sheet>
   );
 }

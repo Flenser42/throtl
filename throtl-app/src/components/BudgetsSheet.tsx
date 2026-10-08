@@ -67,7 +67,21 @@ export function BudgetsSheet({
   const perApp = (budgets?.entries ?? []).filter((e) => e.scope === "app");
 
   return (
-    <Sheet title="Budgets" subtitle="Rolling volume limits (last 24 h / 7 days)" onClose={onClose}>
+    <Sheet
+      title="Budgets"
+      subtitle="Rolling volume limits (last 24 h / 7 days)"
+      onClose={onClose}
+      footer={
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={busy}
+          onClick={() => void save()}
+        >
+          Save limits
+        </button>
+      }
+    >
       <section className="sheet-group">
         <h3 className="sheet-group-title">All applications</h3>
         <div className="sheet-row">
@@ -87,16 +101,6 @@ export function BudgetsSheet({
             placeholder="unlimited"
             onChange={(e) => setWeek(e.target.value)}
           />
-        </div>
-        <div className="sheet-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={busy}
-            onClick={() => void save()}
-          >
-            Save limits
-          </button>
         </div>
         {failed && budgets === null && (
           <p className="sheet-note">The daemon did not answer — reopen the sheet to retry.</p>

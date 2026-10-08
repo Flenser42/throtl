@@ -8,10 +8,12 @@ interface Props {
   onClose: () => void;
   children: ReactNode;
   width?: number;
+  /** Pinned action row rendered below the scrollable body with a 1px top rule. */
+  footer?: ReactNode;
 }
 
 /** Right-side overlay panel (settings / statistics / budgets). */
-export function Sheet({ title, subtitle, onClose, children, width = 460 }: Props) {
+export function Sheet({ title, subtitle, onClose, children, width = 460, footer }: Props) {
   const ref = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -73,6 +75,7 @@ export function Sheet({ title, subtitle, onClose, children, width = 460 }: Props
           </button>
         </header>
         <div className="sheet-body">{children}</div>
+        {footer && <footer className="sheet-foot">{footer}</footer>}
       </aside>
     </div>
   );
