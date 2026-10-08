@@ -13,7 +13,7 @@ makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools
 install=throtl.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 # Update with 'updpkgsums' on every version bump.
-sha256sums=('7a83b2b807ae5bba66bbf4f5706c39c13d7bd051d6623d3ba0d0295c2851e867')
+sha256sums=('f4c84725ad461171214b9b92e896af7f748fcf29ceb6d43295d95769f07e4a64')
 
 build() {
   cd "$pkgname-$pkgver"
