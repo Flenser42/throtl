@@ -218,13 +218,18 @@ async fn dispatch(app: &AppHandle, pending: &Pending, value: Value) {
             let _ = sender.send(outcome);
         }
         None => {
-            // Unsolicited snapshot from the 1 Hz poller -> push to the UI.
+            // Unsolicited snapshot from the 1 Hz poller -> push to the UI. A
+            // late response to a timed-out call() has no pending entry and must
+            // NOT be forwarded as a snapshot (it would deserialize as the wrong
+            // shape). Only `list_processes` results carry an `apps` key.
             if let Some(result) = value.get("result") {
-                let _ = app.emit("daemon:update", result.clone());
-                // Keep the tray's "Shaping on/off" check item in sync with the
-                // daemon's authoritative `enabled` flag.
-                if let Some(enabled) = result.get("enabled").and_then(Value::as_bool) {
-                    crate::tray::set_shaping(app, enabled);
+                if result.get("apps").is_some() {
+                    let _ = app.emit("daemon:update", result.clone());
+                    // Keep the tray's "Shaping on/off" check item in sync with the
+                    // daemon's authoritative `enabled` flag.
+                    if let Some(enabled) = result.get("enabled").and_then(Value::as_bool) {
+                        crate::tray::set_shaping(app, enabled);
+                    }
                 }
             }
         }

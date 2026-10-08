@@ -30,10 +30,11 @@ function versionKey(version: string | null | undefined): VersionKey | null {
   let isRelease: number;
   let identifiers: Array<[number, number | string]> = [];
   if (core.includes("-")) {
-    const [head, tail] = core.split("-", 2);
-    numeric = head;
+    const dash = core.indexOf("-");
+    numeric = core.slice(0, dash);
     isRelease = 0;
-    identifiers = tail
+    identifiers = core
+      .slice(dash + 1)
       .split(".")
       .filter((part) => part !== "")
       .map((part) =>
