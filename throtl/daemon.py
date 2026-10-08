@@ -331,6 +331,9 @@ class Daemon:
         self._iface_rate = (None, None)
         # Signature of the currently active time-window rules (engine re-apply).
         self._window_signature = None
+        # Exponential backoff for automatically re-applying a dead tt process.
+        self._engine_recovery_attempts = 0
+        self._engine_recovery_last = 0.0
         # Last alert level per budget key (f"{scope}:{app}:{window}"): lets
         # get_budgets emit an alert only when a budget crosses a level.
         self._budget_levels: dict = {}
@@ -791,19 +794,27 @@ class Daemon:
         self._apply_event.set()
 
     def _recover_engine(self) -> None:
-        """Automatically re-apply a dead tt process.
+        """Automatically re-apply a dead tt process, with exponential backoff.
 
         Only when shaping should be active at all (``enabled``); a deliberately
-        disabled state is not restarted endlessly.
+        disabled state is not restarted endlessly, and a crashing tt is retried
+        at 1s, 2s, 4s, ... capped at 60s instead of every tick.
         """
         try:
             running = bool(self.engine.status().get("running"))
         except Exception:
             return
         if running:
+            self._engine_recovery_attempts = 0
+            self._engine_recovery_last = 0.0
             return
         if not self._snapshot_config()["global"].get("enabled", True):
             return
+        delay = min(2.0 ** self._engine_recovery_attempts, 60.0)
+        if time.monotonic() - self._engine_recovery_last < delay:
+            return
+        self._engine_recovery_attempts += 1
+        self._engine_recovery_last = time.monotonic()
         self._schedule_engine_apply()
 
     def _check_interface_change(self) -> None:

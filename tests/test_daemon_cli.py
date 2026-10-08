@@ -807,6 +807,58 @@ class DaemonEngineRecoveryTest(unittest.TestCase):
             self.assertFalse(d._apply_event.is_set())
 
 
+class DaemonEngineBackoffTest(unittest.TestCase):
+    """A dead tt is retried with exponential backoff, not every tick."""
+
+    class _Engine:
+        simulated = True
+
+        def __init__(self):
+            self.device = "test0"
+            self.running = False
+
+        def apply(self, config):
+            pass
+
+        def is_running(self):
+            return self.running
+
+        def stop(self):
+            self.running = False
+
+        def status(self):
+            return {"running": self.running, "device": self.device}
+
+    def test_backoff_suppresses_retries_and_resets_when_running(self):
+        from unittest import mock
+
+        from throtl.daemon import Daemon
+
+        clock = {"now": 1000.0}
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Daemon(socket_path=os.path.join(tmp, "d.sock"), config_dir=tmp,
+                       engine=self._Engine(), interval=0.05, monitor_factory=None)
+            with mock.patch.object(d, "_schedule_engine_apply") as schedule, mock.patch(
+                "throtl.daemon.time.monotonic", side_effect=lambda: clock["now"]
+            ):
+                # Four immediate calls all see "not running": the 1s/2s/4s
+                # backoff must let only the first one schedule an apply.
+                for _ in range(4):
+                    d._recover_engine()
+                self.assertEqual(schedule.call_count, 1)
+
+                # A running tt resets the backoff state ...
+                d.engine.running = True
+                d._recover_engine()
+                self.assertEqual(d._engine_recovery_attempts, 0)
+                self.assertEqual(d._engine_recovery_last, 0.0)
+
+                # ... so the next failure retries immediately again.
+                d.engine.running = False
+                d._recover_engine()
+                self.assertEqual(schedule.call_count, 2)
+
+
 class RpcHardeningTest(unittest.TestCase):
     """Regressionen aus dem Robustheits-/Security-Review (0.12)."""
 
