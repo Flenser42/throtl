@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-07
+
+### Added
+
+- **The daemon follows the default-route interface.** When the configured
+  interface is `auto`, Throtl re-detects the routing interface each tick and
+  rebinds the engine and monitor when it changes (WLAN ↔ LAN, VPN up/down). A
+  pinned interface is left alone.
+- **Budget alerts moved into the daemon.** `get_budgets` now returns an `alerts`
+  list (budgets that crossed 80 % or their limit), so any client — CLI, tray or
+  the dashboard — can react without re-implementing the dedup; the dashboard
+  hook now consumes those alerts.
+- **`doctor` warns about slow engine re-applies.** `throtl-cli doctor` flags
+  `tt` restarts that take longer than a second.
+- **A `boost` command.** `throtl-cli boost --name <app> --seconds <N>`
+  temporarily raises an app to Critical priority and reverts it afterwards.
+- **`status --json`** prints the raw daemon status for scripting.
+- **An optional Waybar module.** `setup/install.sh --with-waybar` installs a
+  Waybar status module (shaping on/off + interface) for Omarchy/Arch users.
+
 ## [0.12.3] - 2026-10-07
 
 ### Fixed
@@ -733,7 +753,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.12.3...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/Flenser42/throtl/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/Flenser42/throtl/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/Flenser42/throtl/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/Flenser42/throtl/compare/v0.12.0...v0.12.1
