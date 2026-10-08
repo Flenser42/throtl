@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-08
+
+### Fixed
+
+- **A crashing `tt` was respawned every second with no backoff.** The daemon now
+  retries a dead engine with exponential backoff (1 s, 2 s, 4 s, … capped at
+  60 s) and resets the backoff once `tt` runs again.
+- **Tiny rates rounded down to a total block.** A limit below 1 kbit/s (e.g.
+  `0.5`) no longer renders as `0kbit`; it rounds up to `1kbit`. An explicit `0`
+  still means "block everything".
+- **A decimal comma was rejected.** `1,5mbps` now parses as `1.5mbps` (matches
+  `parse_size` and the dashboard).
+- **`pretty_app_name` mishandled `-X` and `-c`.** `python -X dev app.py` now
+  names the script, and `python -c …` falls back to the interpreter.
+- **A broken `stats.json` was silently reset.** It is now copied aside
+  (`stats.json.invalid-*`) before starting empty, like `config.toml`.
+- **Pre-release versions compared as equal.** `1.0.0-beta-1` and `1.0.0-beta-2`
+  are distinguished again (the version key no longer truncates after the first
+  dash).
+- **A late daemon response was forwarded as a snapshot.** After a 10 s timeout,
+  a late `get_config`/`set_*` response could overwrite the dashboard state and
+  throw a `TypeError`. The bridge now only forwards `list_processes` snapshots
+  as `daemon:update`.
+
 ## [0.13.0] - 2026-10-07
 
 ### Added
@@ -753,7 +777,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/Flenser42/throtl/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/Flenser42/throtl/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/Flenser42/throtl/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/Flenser42/throtl/compare/v0.12.1...v0.12.2

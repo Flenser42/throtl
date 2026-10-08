@@ -1,7 +1,7 @@
 {
   "name": "throtl-app",
   "private": true,
-  "version": "0.13.0",
+  "version": "0.13.1",
   "type": "module",
   "description": "Throtl desktop GUI (Tauri 2 + React + TypeScript + Tailwind v4)",
   "scripts": {
