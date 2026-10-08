@@ -33,6 +33,15 @@ class HelpersTest(unittest.TestCase):
         self.assertEqual(cli._find_app(state, "curl")["name"], "curl")
         self.assertIsNone(cli._find_app(state, "wget"))
 
+    def test_slow_apply_message(self):
+        self.assertIsNone(cli._slow_apply_message({}))
+        self.assertIsNone(cli._slow_apply_message(
+            {"last_apply_seconds": 0.5, "avg_apply_seconds": 0.4}))
+        self.assertIn("slow", cli._slow_apply_message(
+            {"last_apply_seconds": 2.01, "avg_apply_seconds": None}))
+        self.assertIn("slow", cli._slow_apply_message(
+            {"last_apply_seconds": None, "avg_apply_seconds": 1.5}))
+
 
 class _SeqClient:
     """Returns the next state on every ``list_processes``."""

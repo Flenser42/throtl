@@ -742,6 +742,20 @@ def _is_fatal_issue(issue: str) -> bool:
             or "command missing" in text)
 
 
+def _slow_apply_message(engine) -> str | None:
+    """Doctor warning when a tt re-apply takes longer than a second."""
+    engine = engine or {}
+    last = engine.get("last_apply_seconds")
+    avg = engine.get("avg_apply_seconds")
+    slow = (isinstance(last, (int, float)) and last > 1.0) or \
+           (isinstance(avg, (int, float)) and avg > 1.0)
+    if not slow:
+        return None
+    last_s = f"{last:.2f}s" if isinstance(last, (int, float)) else "?"
+    avg_s = f"{avg:.2f}s" if isinstance(avg, (int, float)) else "?"
+    return f"engine restarts are slow (last {last_s}, avg {avg_s})"
+
+
 def _socket_permissions_local(path: str) -> dict:
     """Read the socket permissions from the filesystem without a running daemon."""
     import grp
@@ -818,6 +832,10 @@ def cmd_doctor(args) -> int:
             warnings += 1
         if status.get("engine_error"):
             print(f"⚠️  Engine: {status['engine_error']}")
+            warnings += 1
+        slow = _slow_apply_message(status.get("engine"))
+        if slow:
+            print(f"⚠️  {slow}")
             warnings += 1
 
     for issue in issues:
