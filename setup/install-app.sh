@@ -39,47 +39,88 @@ find_appimage() {
   return 0
 }
 
+# Reuse the cache only when every source file is older than the AppImage.
+# A pull that adds features without a version bump would otherwise install a
+# stale UI — the version string alone is not a sufficient freshness signal.
+needs_rebuild() {
+  local appimage="$1"
+  [[ -n "$(find "$APP_DIR" \
+    \( -name node_modules -o -name target -o -name dist \) -prune -o \
+    -type f -newer "$appimage" -print -quit 2>/dev/null)" ]]
+}
+
 # Build the AppImage with a live spinner and elapsed time. The Rust
 # compilation can take several minutes and must never look frozen — a user
 # staring at a silent terminal otherwise assumes it hung and kills it.
 # `--bundles appimage` skips the deb/rpm bundlers (which need dpkg-deb and
 # rpmbuild, not present on Arch/Omarchy) and only produces what is installed.
 build_appimage() {
-  local log spin='-\|/' i=0 start elapsed pid
+  local log pid start elapsed phase pct total_crates compiled_crates width filled j
   log="$(mktemp)"
   start=$SECONDS
+
+  # Cargo.lock's package list is the denominator for the Rust-phase percentage.
+  total_crates="$(grep -c '^\[\[package\]\]' "$APP_DIR/src-tauri/Cargo.lock" 2>/dev/null || true)"
+  if (( total_crates < 1 )); then total_crates=1; fi
+
   (
     cd "$APP_DIR" || exit 1
     npm ci --no-audit --no-fund
     npm run tauri build -- --bundles appimage
   ) > "$log" 2>&1 &
   pid=$!
+
+  width=28
   while kill -0 "$pid" 2>/dev/null; do
-    elapsed=$((SECONDS - start))
-    printf "\r   %s  Building GUI (%dm %02ds) — please don't interrupt …  " \
-      "${spin:i++%4:1}" "$((elapsed / 60))" "$((elapsed % 60))"
+    elapsed=$(( SECONDS - start ))
+    if grep -q 'Bundling ' "$log" 2>/dev/null; then
+      phase="bundling AppImage"; pct=96
+    elif grep -q 'Compiling ' "$log" 2>/dev/null; then
+      compiled_crates="$(grep -cE '^(Compiling|Fresh) ' "$log" 2>/dev/null || true)"
+      compiled_crates="${compiled_crates:-0}"
+      pct=$(( 10 + compiled_crates * 85 / total_crates ))
+      if (( pct > 92 )); then pct=92; fi
+      phase="compiling Rust ($compiled_crates/$total_crates)"
+    elif grep -qE 'added [0-9]+|up to date|building for production' "$log" 2>/dev/null; then
+      phase="building frontend"; pct=8
+    else
+      phase="installing deps"; pct=2
+    fi
+    filled=$(( pct * width / 100 ))
+    printf '\r   ['
+    for (( j=0; j<width; j++ )); do
+      if (( j < filled )); then printf '='; else printf ' '; fi
+    done
+    printf '] %3d%%  %-26s  (%dm %02ds)   ' \
+      "$pct" "$phase" "$(( elapsed / 60 ))" "$(( elapsed % 60 ))"
     sleep 0.2
   done
+
   if wait "$pid"; then
-    printf "\r   GUI build done (%dm %02ds).\n" \
+    printf '\r   GUI build done (%dm %02ds).\n' \
       "$(((SECONDS - start) / 60))" "$(((SECONDS - start) % 60))"
     rm -f "$log"
     return 0
   fi
-  printf "\r   GUI build FAILED — last output:\n"
+  printf '\r   GUI build FAILED — last output:\n'
   tail -n 30 "$log" >&2
   rm -f "$log"
   return 1
 }
 
 APPIMAGE="$(find_appimage)"
+rebuild_reason=""
+if [[ -n "$APPIMAGE" ]] && needs_rebuild "$APPIMAGE"; then
+  rebuild_reason=" (source changed since it was built)"
+  APPIMAGE=""
+fi
 if [[ -z "$APPIMAGE" ]]; then
   if [[ "${1:-}" == "--no-build" ]]; then
-    echo "No AppImage for version $VERSION present and --no-build set."
+    echo "No up-to-date AppImage for version $VERSION present and --no-build set."
     echo "Present: $(ls -1 "$BUNDLE_DIR"/appimage/*.AppImage 2>/dev/null | tr '\n' ' ')"
     exit 1
   fi
-  echo "Building the GUI for version $VERSION (first time: 5–15 min) …"
+  echo "Building the GUI for version $VERSION${rebuild_reason} (first time: 5–15 min) …"
   command -v npm   >/dev/null || { echo "npm missing (install Node)."; exit 1; }
   command -v cargo >/dev/null || { echo "cargo missing (install rustup, see README)."; exit 1; }
   build_appimage
