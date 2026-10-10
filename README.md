@@ -123,6 +123,9 @@ The features split into monitoring, control, budgets and automation.
   (**Settings → Startup**); offered by the first-run wizard too.
 - **System-tray widget** — live download/upload and a click-to-toggle shaping
   switch, for the Omarchy bar or Waybar (see [Widgets](#widgets)).
+- **Command palette** — `Ctrl/⌘ P` opens a searchable, keyboard-driven list of
+  actions (focus the filter, add a rule, open a sheet, switch profile, toggle
+  theme or shaping, …).
 
 ---
 
@@ -216,9 +219,12 @@ The script:
    run it separately later.
 
    > The first GUI build compiles Rust and can take **5–15 minutes**. The
-   > installer shows a live spinner with the elapsed time, so it is working,
-   > not stuck — don't interrupt it. Later installs reuse the cached build and
-   > finish in seconds.
+   > installer shows a live progress bar — a percentage driven by the number of
+   > compiled crates, with phase labels (deps → frontend → Rust → bundling) — so
+   > it is working, not stuck; don't interrupt it. Later installs reuse the
+   > cached build and finish in seconds, but the cache is freshness-checked: if
+   > any source file is newer than the built AppImage (e.g. after `git pull`),
+   > the dashboard is rebuilt automatically.
 
 That is the whole install — daemon + GUI in one command:
 
@@ -295,6 +301,9 @@ bandwidth graph and a compact status line (active rules, global caps, profile)
   **time window** (with `· now` when active) and a **budget bar**.
 - **Theme** — follows the system; press `L` to toggle light/dark.
 - **Filter** — `Ctrl/⌘ K` focuses the search box.
+- **Command palette** — `Ctrl/⌘ P` opens a searchable list of actions (add a
+  rule, open a sheet, switch profile, toggle theme or shaping, …); arrows +
+  Enter run, `Esc` closes.
 
 Colours, spacing and type come from the design tokens in
 [`throtl-app/src/styles/globals.css`](throtl-app/src/styles/globals.css); the
