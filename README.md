@@ -1,7 +1,5 @@
 # Throtl
 
-![Throtl](docs/images/banner.png)
-
 **Per-application bandwidth limits and traffic prioritisation for Linux.**
 
 [![CI](https://github.com/Flenser42/throtl/actions/workflows/ci.yml/badge.svg)](https://github.com/Flenser42/throtl/actions/workflows/ci.yml)
@@ -9,45 +7,45 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational.svg)](#requirements)
 
-Throtl brings fine-grained bandwidth control to Linux/Omarchy: set per-application
-download/upload limits and traffic priorities from a modern desktop dashboard
-(Tauri 2 + React) or the scriptable CLI — without reinventing the shaping engine.
+**Watch who uses your connection — then decide who wins.** Throtl shows every
+app's live download/upload and lets you *limit, prioritise or schedule* it: per
+app, per direction, per weekday/time window. Rolling budgets alert you — and can
+throttle you to a floor — before you hit your data cap. A native dashboard
+(Tauri 2 + React) drives a root daemon that does the real `tc`/cgroup shaping
+([TrafficToll](https://github.com/cryzed/TrafficToll)) and
+[nethogs](https://github.com/raboof/nethogs) measurement.
 
-It is a thin, well-behaved layer on top of two proven tools:
+## Install
 
-- **[TrafficToll](https://github.com/cryzed/TrafficToll)** (`tt`) does the actual
-  `tc`/cgroup shaping and runs as a managed subprocess.
-- **[nethogs](https://github.com/raboof/nethogs)** in trace mode provides live
-  per-process bandwidth.
+```bash
+git clone https://github.com/Flenser42/throtl.git && cd throtl && sudo ./setup/install.sh
+```
 
-### The dashboard
+One command — **Arch · Debian/Ubuntu · Fedora · openSUSE** (auto-detects your
+package manager). → **[Full installation guide](docs/INSTALL.md)** ·
+[prebuilt packages](docs/INSTALL.md#prebuilt-packages) ·
+[AUR](https://aur.archlinux.org/packages/throtl)
 
-One **monitor** surface (live download/upload rates, the graph and a compact
-status line) above the application list — no window clutter:
+## What it does
 
-![Throtl dashboard, dark](docs/images/dashboard-dark.png)
+- **Monitor** — a live graph and per-app rates: see exactly who's using the connection.
+- **Control** — per-app download/upload limits and Critical→Low priorities, plus a global cap.
+- **Schedule** — rules that apply only in a weekday/time window; profiles switch automatically.
+- **Budget** — rolling day/week volume caps with alerts and optional enforcement (throttle to a floor).
+- **Automate** — startup profile, background autostart and a live bar/tray widget (Omarchy/Waybar).
 
-Light mode follows your system style (toggle with `L`, or pin it in Settings):
+## Screenshots
 
-![Throtl dashboard, light](docs/images/dashboard-light.png)
+<p align="center">
+  <img src="docs/images/dashboard-dark.png" alt="Throtl dashboard (dark)" width="640" />
+</p>
 
-Secondary screens open as right-side sheets: **Statistics** (range switch,
-chart, per-app breakdown), **Budgets** (global and per-app), **Settings**
-(theme, density, display unit, daemon info, JSON export/import), **Global
-limits** (caps, per-direction floor and priorities, opened from the Overview
-card) and the **rule editor** — create, edit or delete a rule with limits,
-priority and a weekday/time window. Profiles (including the startup profile)
-are switched from the header pill, which also opens the **Schedule** editor
-(day/time → profile). Each row's menu can copy the equivalent
-`throtl-cli set-process` command or reset the counters.
+Light mode follows your system style (toggle with `L`). Everything else opens as
+a right-side sheet — Statistics, Budgets, Settings, Global limits, the rule
+editor and the Schedule:
 
-![Statistics sheet](docs/images/dashboard-stats.png)
-
-![Rule editor](docs/images/dashboard-rule.png)
-
-The dashboard is the GUI: a **Tauri 2 + React + TypeScript + Tailwind v4** app
-in [`throtl-app/`](throtl-app/) whose Rust shell talks to the same root daemon
-over the Unix socket — the daemon, CLI and socket protocol are unchanged.
+<img src="docs/images/dashboard-stats.png" alt="Statistics sheet" width="400" />
+<img src="docs/images/dashboard-rule.png" alt="Rule editor" width="400" />
 
 ---
 
@@ -131,7 +129,7 @@ The features split into monitoring, control, budgets and automation.
 
 ## How it works
 
-![Throtl architecture](docs/images/architecture.png)
+<a href="docs/images/architecture.png"><img src="docs/images/architecture.png" alt="Throtl architecture" width="640" /></a>
 
 - The **privileged daemon** (`throtl-daemon`) runs as `root` via systemd
   (`throtl.service`) because `tc`, the IFB device and `nethogs` need
@@ -668,7 +666,7 @@ the project follows [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) and has a
 The dashboard tells you when the service is missing instead of showing an empty
 list:
 
-![Throtl with the service unreachable](docs/images/dashboard-offline.png)
+<img src="docs/images/dashboard-offline.png" alt="Throtl with the service unreachable" width="480" />
 
 - **No process list in the GUI** — the daemon could not start `nethogs`. Check
   `throtl-cli status` (`Monitor error`) and `systemctl status throtl`.
