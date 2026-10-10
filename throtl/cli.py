@@ -152,6 +152,11 @@ def _proc_display(name: str, limit: int = 32) -> str:
 
 
 def cmd_list(client, args):
+    if getattr(args, "json", False):
+        import json as _json
+
+        print(_json.dumps(client.call("list_processes")))
+        return 0
     from .config import format_window
 
     state = client.call("list_processes")
@@ -264,7 +269,10 @@ def cmd_remove(client, args):
 
 
 def cmd_toggle(client, args):
-    enabled = str(args.enabled).lower() == "true"
+    if args.enabled is None:
+        enabled = not bool(client.call("status").get("enabled", True))
+    else:
+        enabled = str(args.enabled).lower() == "true"
     result = client.call("toggle_enabled", {"enabled": enabled})
     print(f"Shaping {'ON' if result.get('enabled') else 'OFF'}")
     return 0
@@ -919,7 +927,8 @@ def build_parser() -> argparse.ArgumentParser:
     boost.add_argument("--seconds", type=int, default=300,
                        help="boost duration (default 300)")
 
-    sub.add_parser("list-processes", help="show the live process list")
+    lp = sub.add_parser("list-processes", help="show the live process list")
+    lp.add_argument("--json", action="store_true", help="print raw JSON")
 
     g = sub.add_parser("set-global", help="set global limits/priorities")
     g.add_argument("--download-limit", "-dl", default=None,
@@ -959,7 +968,9 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--key", required=True)
 
     t = sub.add_parser("toggle", help="toggle shaping globally on/off")
-    t.add_argument("--enabled", choices=["true", "false"], default="true")
+    t.add_argument("--enabled", nargs="?", default=None,
+                   choices=["true", "false", "1", "0"],
+                   help="explicit state (true/false/1/0); omit to flip")
 
     sub.add_parser("monitor", help="live bandwidth per second")
 

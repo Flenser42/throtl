@@ -314,5 +314,53 @@ class StatusCommandTest(unittest.TestCase):
         self.assertEqual(json.loads(buf.getvalue()), status)
 
 
+class ListProcessesJsonTest(unittest.TestCase):
+    def test_list_processes_json(self):
+        import contextlib
+        import io
+        import json
+
+        snapshot = {
+            "global": {"download": 1200, "upload": 300},
+            "enabled": True,
+            "interface": "eth0",
+            "apps": [],
+            "rules": [],
+        }
+        client = _FakeClient({"list_processes": snapshot})
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cli.cmd_list(client, argparse.Namespace(json=True))
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(buf.getvalue())["global"]["download"], 1200)
+
+
+class ToggleCommandTest(unittest.TestCase):
+    def test_toggle_flips_when_no_arg(self):
+        import contextlib
+        import io
+
+        client = _RecordingClient({"status": {"enabled": True}})
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cli.cmd_toggle(client, argparse.Namespace(enabled=None))
+        self.assertEqual(rc, 0)
+        toggles = [p for m, p in client.calls if m == "toggle_enabled"]
+        self.assertEqual(toggles, [{"enabled": False}])
+
+    def test_toggle_sets_explicit(self):
+        import contextlib
+        import io
+
+        client = _RecordingClient({})
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cli.cmd_toggle(client, argparse.Namespace(enabled="false"))
+        self.assertEqual(rc, 0)
+        toggles = [p for m, p in client.calls if m == "toggle_enabled"]
+        self.assertEqual(toggles, [{"enabled": False}])
+        self.assertNotIn("status", [m for m, _ in client.calls])
+
+
 if __name__ == "__main__":
     unittest.main()

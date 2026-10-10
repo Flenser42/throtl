@@ -161,8 +161,9 @@ if [[ "$WITH_WAYBAR" -eq 1 ]]; then
     cat <<'EOF'
     "custom/throtl": {
         "exec": "~/.local/bin/throtl-waybar",
-        "interval": 5,
-        "return-type": "json"
+        "interval": 2,
+        "return-type": "json",
+        "on-click": "throtl-cli toggle"
     },
 EOF
     echo
