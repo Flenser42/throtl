@@ -1,11 +1,15 @@
 # Throtl
 
+![Throtl](docs/images/banner.png)
+
 **Per-application bandwidth limits and traffic prioritisation for Linux.**
 
 [![CI](https://github.com/Flenser42/throtl/actions/workflows/ci.yml/badge.svg)](https://github.com/Flenser42/throtl/actions/workflows/ci.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational.svg)](#requirements)
+
+**[Install](#install) · [How to use](docs/USAGE.md) · [Testing](docs/TESTING.md) · [Releasing](docs/RELEASING.md)**
 
 **Watch who uses your connection — then decide who wins.** Throtl shows every
 app's live download/upload and lets you *limit, prioritise or schedule* it: per
@@ -37,15 +41,12 @@ package manager). → **[Full installation guide](docs/INSTALL.md)** ·
 ## Screenshots
 
 <p align="center">
-  <img src="docs/images/dashboard-dark.png" alt="Throtl dashboard (dark)" width="640" />
+  <a href="docs/images/dashboard-dark.png">
+    <img src="docs/images/dashboard-dark.png" alt="Throtl dashboard (dark)" width="680" />
+  </a>
 </p>
 
-Light mode follows your system style (toggle with `L`). Everything else opens as
-a right-side sheet — Statistics, Budgets, Settings, Global limits, the rule
-editor and the Schedule:
-
-<img src="docs/images/dashboard-stats.png" alt="Statistics sheet" width="400" />
-<img src="docs/images/dashboard-rule.png" alt="Rule editor" width="400" />
+<p align="center"><em>The dashboard — more screenshots in the <a href="docs/USAGE.md">usage guide</a>.</em></p>
 
 ---
 
