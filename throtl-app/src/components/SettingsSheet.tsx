@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { listInterfaces, setInterface, type Interfaces } from "../lib/api";
+import { getAutostart, setAutostart } from "../lib/ipc";
 import { Sheet } from "./Sheet";
 import { unitLabel } from "../lib/format";
 import { Download, Upload } from "./icons";
@@ -74,6 +75,35 @@ export function SettingsSheet({
   useEffect(() => {
     void loadInterfaces();
   }, []);
+
+  const [autostart, setAutostartValue] = useState<boolean | null>(null);
+  const [autostartError, setAutostartError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAutostart()
+      .then((value) => {
+        if (!cancelled) setAutostartValue(value);
+      })
+      .catch(() => {
+        if (!cancelled) setAutostartValue(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const changeAutostart = async (next: boolean) => {
+    const previous = autostart ?? false;
+    setAutostartValue(next);
+    setAutostartError(null);
+    try {
+      await setAutostart(next);
+    } catch (error) {
+      setAutostartValue(previous);
+      setAutostartError(String(error));
+    }
+  };
 
   const changeInterface = async (name: string) => {
     if (savingIface) return;
@@ -224,6 +254,23 @@ export function SettingsSheet({
         <p className="sheet-note">
           One anonymous GET on the public release API — no account, no identifiers.
         </p>
+      </section>
+
+      <section className="sheet-group">
+        <h3 className="sheet-group-title">Startup</h3>
+        <label className="sheet-check">
+          <input
+            type="checkbox"
+            checked={autostart ?? false}
+            disabled={autostart === null}
+            onChange={(e) => void changeAutostart(e.target.checked)}
+          />
+          Start in background on login
+        </label>
+        <p className="sheet-note">
+          Starts Throtl in the background (tray) when you log in.
+        </p>
+        {autostartError && <p className="sheet-note">{autostartError}</p>}
       </section>
 
       <section className="sheet-group">

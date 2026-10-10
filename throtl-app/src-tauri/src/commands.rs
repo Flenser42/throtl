@@ -108,3 +108,49 @@ pub async fn setup_run() -> Result<(), String> {
 
     Ok(())
 }
+
+/// Path of the per-user XDG autostart entry for the dashboard.
+///
+/// Uses `$XDG_CONFIG_HOME` when it is set and non-empty, falling back to
+/// `$HOME/.config` as the XDG Base Directory spec prescribes.
+fn autostart_path() -> std::path::PathBuf {
+    let config = std::env::var("XDG_CONFIG_HOME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".config")
+        });
+    config.join("autostart").join("throtl-app.desktop")
+}
+
+const AUTOSTART_DESKTOP: &str = "\
+[Desktop Entry]
+Type=Application
+Name=Throtl
+Comment=Per-application bandwidth limits and traffic prioritisation
+Exec=throtl-app --background
+Terminal=false
+X-GNOME-Autostart-enabled=true
+";
+
+/// Whether the dashboard is currently registered to start on login.
+#[tauri::command]
+pub fn get_autostart() -> bool {
+    autostart_path().exists()
+}
+
+/// Create (`enabled`) or remove the per-user autostart entry.
+#[tauri::command]
+pub fn set_autostart(enabled: bool) -> Result<(), String> {
+    let path = autostart_path();
+    if enabled {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&path, AUTOSTART_DESKTOP).map_err(|e| e.to_string())?;
+    } else {
+        let _ = std::fs::remove_file(&path);
+    }
+    Ok(())
+}

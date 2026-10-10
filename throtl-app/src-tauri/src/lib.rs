@@ -24,6 +24,11 @@ pub fn run() {
             let bridge = Bridge::spawn(app.handle().clone(), socket_path.clone());
             app.manage(bridge);
             tray::build(app.handle())?;
+            if std::env::args().any(|a| a == "--background") {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -52,6 +57,8 @@ pub fn run() {
             commands::daemon_set_interface,
             commands::daemon_import_config,
             commands::setup_run,
+            commands::get_autostart,
+            commands::set_autostart,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Throtl");

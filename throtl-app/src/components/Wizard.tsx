@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { parseRateInUnit, splitRate } from "../lib/format";
+import { setAutostart as persistAutostart } from "../lib/ipc";
 import type { DashboardModel, GlobalValues, RuleValues } from "../lib/model";
 import { Sheet } from "./Sheet";
 
@@ -26,7 +27,7 @@ interface Props {
   onCreateRule: (values: RuleValues) => Promise<void>;
 }
 
-const STEPS = ["Profile", "Global caps", "First rule"];
+const STEPS = ["Profile", "Global caps", "First rule", "Background"];
 
 /**
  * Short first-run setup: name the profile, cap the whole link, add one rule
@@ -67,6 +68,7 @@ export function Wizard({
   const [rDown, setRDown] = useState("");
   const [rUp, setRUp] = useState("");
   const [priority, setPriority] = useState("normal");
+  const [autostart, setAutostart] = useState(true);
 
   const isLast = step === STEPS.length - 1;
   const ruleValid = ruleName.trim().length > 0 && matchValue.trim().length > 0;
@@ -97,6 +99,11 @@ export function Wizard({
           window: null,
         });
       }
+      try {
+        await persistAutostart(autostart);
+      } catch {
+        // Non-fatal: the setup still succeeds without the login preference.
+      }
       onToast("Throtl is set up");
       onClose();
     } catch (err) {
@@ -108,7 +115,7 @@ export function Wizard({
   return (
     <Sheet
       title="Set up Throtl"
-      subtitle="Three quick steps to get limiting"
+      subtitle="Four quick steps to get limiting"
       onClose={onClose}
       width={440}
     >
@@ -266,6 +273,23 @@ export function Wizard({
             </div>
           </section>
         </>
+      )}
+
+      {step === 3 && (
+        <section className="sheet-group">
+          <h3 className="sheet-group-title">Background</h3>
+          <label className="sheet-check">
+            <input
+              type="checkbox"
+              checked={autostart}
+              onChange={(e) => setAutostart(e.target.checked)}
+            />
+            Start Throtl in the background on login
+          </label>
+          <p className="sheet-note">
+            Starts Throtl in the background (tray) when you log in.
+          </p>
+        </section>
       )}
 
       <div className="sheet-actions">
