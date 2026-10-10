@@ -44,8 +44,8 @@ export const ChartLine = (p: IconProps) => (
 
 export const Settings = (p: IconProps) => (
   <Svg {...p}>
-    <circle cx="12" cy="12" r="3" />
-    <path d="M12 2v3m0 14v3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M2 12h3m14 0h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
+    <path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3" />
+    <path d="M14 2v4M8 10v4M16 18v4" />
   </Svg>
 );
 
