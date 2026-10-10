@@ -77,6 +77,9 @@ The features split into monitoring, control, budgets and automation.
   midnight work, and the engine re-applies automatically when a window opens
   or closes.
 - **Global switch** — turn all shaping on/off without losing your rules.
+- **Interface switching** — follow the default route automatically (WLAN ↔ LAN,
+  VPN up/down) or pin shaping to a specific interface from **Settings →
+  Interface**.
 
 ### Budgets & statistics
 
@@ -88,6 +91,10 @@ The features split into monitoring, control, budgets and automation.
   react.
 - **Statistics** — persistent per-app history over 1 h / 2 days / 30 days,
   shown as a table and a graph.
+- **Budget enforcement** — optionally throttle an over-budget app (or the whole
+  connection, for a global budget) to a configurable floor rate, and revert when
+  the rolling window moves on. Alerts live in the daemon, so any client can react.
+  See [Budgets](#budgets) for the `enforce` / `floor` config.
 
 ### Automation
 
@@ -112,6 +119,10 @@ The features split into monitoring, control, budgets and automation.
   empty table.
 - **Update notice** — tells you when a newer release exists and opens its page
   in your browser. Throtl never installs anything by itself.
+- **Start in background** — launch on login and run minimised to the tray
+  (**Settings → Startup**); offered by the first-run wizard too.
+- **System-tray widget** — live download/upload and a click-to-toggle shaping
+  switch, for the Omarchy bar or Waybar (see [Widgets](#widgets)).
 
 ---
 
@@ -212,11 +223,19 @@ The script:
 That is the whole install — daemon + GUI in one command:
 
 ```bash
-sudo ./setup/install.sh              # everything
+sudo ./setup/install.sh              # everything (asks about the bar widget)
 sudo ./setup/install.sh --no-app     # daemon + CLI only
+sudo ./setup/install.sh --with-omarchy   # + the Omarchy bar widget
+sudo ./setup/install.sh --with-waybar    # + the Waybar status module
+sudo ./setup/install.sh --with-widget    # + whichever matches your shell
 ./setup/install-app.sh               # dashboard only (no root)
 make install                         # same as the first line
 ```
+
+The installer detects whether you run **Omarchy** (`omarchy-shell`) or a generic
+Arch setup, and asks only about the matching bar widget (or you can force one
+with the flags above). If the dashboard is already running, the installer closes
+it before reinstalling and relaunches it afterwards.
 
 Once installed, the dashboard can grant your account access again without a
 terminal: if it shows *"No access to the daemon socket"*, click **Grant
@@ -338,6 +357,13 @@ throtl-cli watch --duration 10 --app firefox --json
 # End-to-end check that limits actually throttle (needs root + TrafficToll)
 throtl-cli selftest --limit 2mbps
 
+# Temporarily boost an app to Critical priority, then revert it automatically
+throtl-cli boost --name Firefox --seconds 300
+
+# Machine-readable output (for scripting or the bar widget)
+throtl-cli status --json
+throtl-cli list-processes --json
+
 # Profiles
 throtl-cli profiles                    # list profiles (+ active)
 throtl-cli profile-save University            # save current settings as "University"
@@ -432,6 +458,28 @@ GUI, the small clock button in each row opens the window editor; `Clear`
 removes the window. The CLI accepts `--window-days` / `--window-start` /
 `--window-end` (and `--clear-window`).
 
+### Budgets
+
+Budgets are rolling volume limits (`day` = last 24 h, `week` = last 7 days),
+global or per app. The daemon tracks alert levels and exposes them through
+`get_budgets` (the `alerts` list), so any client can react to a budget crossing
+80 % or its limit. Optionally enforce them — throttle an over-budget app (or the
+whole connection for a global budget) to a floor rate, and revert when the
+window moves on:
+
+```toml
+[budgets]
+enabled = true
+enforce = true
+floor = 64        # kbit/s — over-budget apps are throttled to this
+
+[[budget_rules]]
+app = "firefox"
+day = "5gb"
+```
+
+Set limits with `throtl-cli budget-set`, list them with `throtl-cli budgets`.
+
 ### Statistics
 
 The daemon accumulates, per monitoring tick, the download/upload volume of
@@ -484,6 +532,23 @@ the control flow.
 
 See [`docs/TESTING.md`](docs/TESTING.md) for manual test recipes and known
 limitations.
+
+---
+
+## Widgets
+
+A live bar/tray widget shows the current download/upload and a click-to-toggle
+shaping switch. It ships in two flavours, and the installer detects which one
+your system uses:
+
+- **Omarchy** (`omarchy-shell`) — a bar widget (`flenser.throtl`) with a detail
+  popup (shaping switch, download/upload rates, global caps, top apps). Click
+  the pill to open it, right-click to refresh.
+- **Waybar** (generic Arch) — a custom module (`throtl-waybar`) showing live
+  rates; click toggles shaping.
+
+Install with `--with-omarchy`, `--with-waybar` or `--with-widget` (auto-detect);
+see [Installation](#installation).
 
 ---
 
