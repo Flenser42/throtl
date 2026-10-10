@@ -181,15 +181,18 @@ as a synthetic `(unattributed)` row instead of being dropped.
 
 ## Requirements
 
-- Linux (developed on **Arch / [Omarchy](https://omarchy.org)**, Wayland)
+- **Linux** — Arch / Manjaro / Omarchy, Debian / Ubuntu, Fedora or openSUSE
+  (anything with `systemd` and a package manager). Developed on
+  [Omarchy](https://omarchy.org) (Wayland).
 - Python **3.11+**
-- `nethogs` (Arch `[extra]`)
 - [`traffictoll`](https://github.com/cryzed/TrafficToll) — installed by the setup
   script into a venv under `/opt/throtl`
 - `tc` and the `ifb` kernel module (for ingress shaping)
-- For the **dashboard**: `webkit2gtk-4.1` at runtime. Building it additionally
-  needs **Node 20+** and **Rust** (see [Development](#development)); the CLI
-  needs neither.
+- `nethogs` and the **WebKitGTK 4.1** runtime for the dashboard — `install.sh`
+  installs these for you; the exact package names per distro are in
+  [INSTALL.md](docs/INSTALL.md#system-packages).
+- Building the dashboard from source additionally needs **Node 20+** and
+  **Rust** (see [INSTALL.md](docs/INSTALL.md)); the CLI needs neither.
 
 The backend itself has **no third-party Python dependencies** — it uses only
 the standard library.
@@ -198,11 +201,17 @@ the standard library.
 
 ## Installation
 
+One command works on **Arch / Omarchy, Debian / Ubuntu, Fedora and openSUSE**
+(the script detects your package manager):
+
 ```bash
 git clone https://github.com/Flenser42/throtl.git
 cd throtl
 sudo ./setup/install.sh
 ```
+
+> **Beginner-friendly guide** — per-distro system packages, prebuilt packages,
+> the dashboard build, and troubleshooting: **[INSTALL.md](docs/INSTALL.md)**.
 
 The script:
 
@@ -265,8 +274,9 @@ rm -rf ~/.local/opt/throtl ~/.local/bin/throtl-app \
 > **Prebuilt artifacts / distro packages:** The backend is pure Python, so
 > there is nothing to compile for the daemon or CLI. Every release carries an
 > sdist, a wheel, a **Debian `.deb`** for the backend (build it locally with
-> `make deb`) and, since the dashboard exists, a **Tauri `.deb`** for the GUI
-> (`make app-build`); there is an AUR `PKGBUILD` for Arch/Omarchy. See
+> `make deb`), and a **Tauri `.deb` / `.rpm`** for the dashboard
+> (`make app-build`); there is an AUR `PKGBUILD` for Arch/Omarchy. How to
+> install these by hand: [INSTALL.md](docs/INSTALL.md#prebuilt-packages). See
 > [`packaging/README.md`](packaging/README.md).
 >
 > CI lints and tests the Python backend (ruff + unittest), builds the frontend
