@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-10-10
+
+### Fixed
+
+- **The graph crosshair drifted left of the cursor.** It was mapped across the
+  full chart width instead of the plot area (the y-axis gutter), so the offset
+  grew toward the left edge; it now maps through the SVG coordinates.
+- **`Ctrl/⌘ K` opened the command palette instead of focusing the filter.** The
+  filter is focused directly again, and the command palette moved to `Ctrl/⌘ P`.
+
 ## [0.14.0] - 2026-10-10
 
 ### Added
@@ -820,7 +830,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/Flenser42/throtl/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/Flenser42/throtl/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/Flenser42/throtl/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/Flenser42/throtl/compare/v0.12.3...v0.13.0
