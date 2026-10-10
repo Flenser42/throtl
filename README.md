@@ -309,6 +309,7 @@ Rust side never exposes the socket to the webview.
 |---|---|
 | `L` | Toggle light/dark |
 | `Ctrl/⌘ K` | Focus the application filter |
+| `Ctrl/⌘ P` | Open the command palette |
 | `Esc` | Close the open sheet or menu |
 
 ### Updates

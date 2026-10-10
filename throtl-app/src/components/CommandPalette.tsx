@@ -40,7 +40,7 @@ interface Props {
   onSwitchProfile: (name: string) => void;
 }
 
-/** Centered command palette: Ctrl/⌘ K, type to filter, arrows + Enter to run. */
+/** Centered command palette: Ctrl/⌘ P, type to filter, arrows + Enter to run. */
 export function CommandPalette({
   onClose,
   enabled,

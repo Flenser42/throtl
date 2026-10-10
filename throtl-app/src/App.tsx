@@ -142,6 +142,11 @@ export function App() {
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
+        setPaletteOpen(false);
+        searchRef.current?.focus();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "p") {
+        event.preventDefault();
         setPaletteOpen((v) => !v);
       }
       if (event.key === "Escape") setProfileOpen(false);
@@ -365,7 +370,8 @@ export function App() {
 
             <div className="app-footer">
               Press <span className="kbd">L</span> for light/dark ·{" "}
-              <span className="kbd">Ctrl/⌘ K</span> for commands.
+              <span className="kbd">Ctrl/⌘ K</span> filter ·{" "}
+              <span className="kbd">Ctrl/⌘ P</span> commands.
             </div>
           </>
         ) : state === "denied" ? (
