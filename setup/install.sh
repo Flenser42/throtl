@@ -56,13 +56,26 @@ if [[ -t 0 && "$WITH_WAYBAR" -eq 0 && "$WITH_OMARCHY" -eq 0 ]]; then
 fi
 
 echo "=== [1/7] Install system packages ==="
-# pacman packages (all in [extra]): nethogs provides the live measurement,
-# iproute2 provides 'tc', webkit2gtk-4.1 is the dashboard's runtime.
+# Three system deps, named differently per distro:
+#   nethogs             live per-process measurement
+#   iproute2 / iproute  the 'tc' shaper
+#   webkit2gtk-4.1      runtime for the dashboard (skip with --no-app)
 if command -v pacman >/dev/null 2>&1; then
+  # Arch, Manjaro, Omarchy
   sudo pacman -S --needed --noconfirm nethogs webkit2gtk-4.1 iproute2
+elif command -v apt-get >/dev/null 2>&1; then
+  # Debian, Ubuntu (and derivatives)
+  sudo apt-get update
+  sudo apt-get install -y nethogs libwebkit2gtk-4.1-0 iproute2
+elif command -v dnf >/dev/null 2>&1; then
+  # Fedora (and derivatives)
+  sudo dnf install -y nethogs webkit2gtk4.1 iproute
+elif command -v zypper >/dev/null 2>&1; then
+  # openSUSE
+  sudo zypper --non-interactive install nethogs libwebkit2gtk-4_1-0 iproute2
 else
-  echo "   No pacman found (not Arch/Omarchy). Please install first:"
-  echo "     nethogs, iproute2 (tc), webkit2gtk-4.1 (dashboard runtime)"
+  echo "   Unrecognised package manager. Please install these first and re-run:"
+  echo "     nethogs · iproute2 (tc) · webkit2gtk-4.1 (dashboard runtime)"
 fi
 
 echo "=== [2/7] Install TrafficToll into a venv ==="
