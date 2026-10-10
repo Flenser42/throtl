@@ -132,7 +132,10 @@ export function LiveGraph({ history, matchedApps, peakApp, unit }: Props) {
   const onMove = (event: ReactMouseEvent) => {
     const rect = wrapRef.current?.getBoundingClientRect();
     if (!rect || data.length < 2 || rect.width === 0) return;
-    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    // The SVG stretches to the wrap (preserveAspectRatio="none") and the data
+    // spans LEFT..W, not 0..W, so map the cursor through SVG coordinates.
+    const svgX = ((event.clientX - rect.left) / rect.width) * W;
+    const ratio = Math.min(1, Math.max(0, (svgX - LEFT) / (W - LEFT)));
     setHover(Math.round(ratio * (data.length - 1)));
   };
 
