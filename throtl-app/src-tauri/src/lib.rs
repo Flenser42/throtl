@@ -33,6 +33,7 @@ pub fn run() {
             commands::daemon_list_processes,
             commands::daemon_get_budgets,
             commands::daemon_list_profiles,
+            commands::daemon_list_interfaces,
             commands::daemon_reset_stats,
             commands::daemon_set_global,
             commands::daemon_set_process,
@@ -48,6 +49,7 @@ pub fn run() {
             commands::daemon_delete_profile,
             commands::daemon_set_schedule,
             commands::daemon_set_start_profile,
+            commands::daemon_set_interface,
             commands::daemon_import_config,
             commands::setup_run,
         ])

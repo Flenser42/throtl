@@ -233,6 +233,20 @@ def _resolve_interface(value) -> str:
     return value
 
 
+def available_interfaces() -> list:
+    """Real, shapeable network interfaces (no loopback, mirrors or container
+    bridges)."""
+    names = []
+    try:
+        for name in os.listdir("/sys/class/net"):
+            if name == "lo" or name.startswith(("ifb", "docker", "veth", "br-")):
+                continue
+            names.append(name)
+    except OSError:
+        pass
+    return sorted(names)
+
+
 def _resolve_tt_command(value) -> str:
     """Determine the tt binary when none was given explicitly.
 
@@ -1003,6 +1017,8 @@ class Daemon:
             "activate_profile": self._h_activate_profile,
             "set_schedule": self._h_set_schedule,
             "set_start_profile": self._h_set_start_profile,
+            "list_interfaces": self._h_list_interfaces,
+            "set_interface": self._h_set_interface,
             "import_config": self._h_import_config,
         }
 
@@ -1316,6 +1332,34 @@ class Daemon:
             self.store.get()["start_profile"] = name
             self.store._persist()
         return {"start_profile": name}
+
+    def _h_list_interfaces(self, params):
+        with self._state_lock:
+            configured = self.store.get().get("interface") or "auto"
+        return {
+            "interfaces": available_interfaces(),
+            "current": self.interface,
+            "configured": configured,
+        }
+
+    def _h_set_interface(self, params):
+        value = str(params.get("interface", "")).strip()
+        if not value:
+            raise ValueError("interface missing")
+        if value in ("auto", "automatic"):
+            stored = None
+        else:
+            if not os.path.exists(f"/sys/class/net/{value}"):
+                raise ValueError(f"unknown interface {value!r}")
+            stored = value
+        with self._state_lock:
+            cfg = self.store.get()
+            cfg["interface"] = stored
+            self.store._persist()
+        resolved = _resolve_interface(stored)
+        if resolved != self.interface:
+            self._rebind_interface(resolved)
+        return {"interface": stored or "auto", "resolved": self.interface}
 
     def _h_import_config(self, params):
         """Validate a raw (TOML) config and adopt it completely."""

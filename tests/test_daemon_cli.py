@@ -1014,5 +1014,37 @@ class RpcHardeningTest(unittest.TestCase):
             self.assertIn("error", reply)
 
 
+class InterfaceConfigTest(unittest.TestCase):
+    """Interface listing and pinning over RPC."""
+
+    def _daemon(self, tmp):
+        return daemon.Daemon(
+            socket_path=os.path.join(tmp, "d.sock"), config_dir=tmp,
+            engine=SimEngine("lo"), monitor_factory=None,
+        )
+
+    def test_list_interfaces_shape_and_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            result = instance._h_list_interfaces({})
+        self.assertIsInstance(result, dict)
+        self.assertIsInstance(result["interfaces"], list)
+        self.assertIn("current", result)
+        self.assertEqual(result["configured"], "auto")
+
+    def test_set_interface_auto(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            result = instance._h_set_interface({"interface": "auto"})
+            self.assertIsNone(instance.store.get()["interface"])
+        self.assertEqual(result["interface"], "auto")
+
+    def test_set_interface_rejects_unknown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            with self.assertRaises(ValueError):
+                instance._h_set_interface({"interface": "definitely-not-a-real-nic0"})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -104,3 +104,19 @@ export async function getSchedule(): Promise<ScheduleEntry[]> {
 export async function setSchedule(entries: ScheduleEntry[]): Promise<void> {
   if (!isMock) await invokeDaemon("set_schedule", { rules: entries });
 }
+
+// ---- interface ----
+
+export interface Interfaces {
+  interfaces: string[];
+  current: string;
+  configured: string;
+}
+
+export async function listInterfaces(): Promise<Interfaces> {
+  return invokeDaemon<Interfaces>("list_interfaces");
+}
+
+export async function setInterface(name: string): Promise<void> {
+  if (!isMock) await invokeDaemon("set_interface", { interface: name });
+}

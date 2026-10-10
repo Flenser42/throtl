@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+
+import { listInterfaces, setInterface, type Interfaces } from "../lib/api";
 import { Sheet } from "./Sheet";
 import { unitLabel } from "../lib/format";
 import { Download, Upload } from "./icons";
@@ -54,6 +57,39 @@ export function SettingsSheet({
   onCheckNow,
   onClose,
 }: Props) {
+  const [iface, setIface] = useState<Interfaces | null>(null);
+  const [ifaceFailed, setIfaceFailed] = useState(false);
+  const [ifaceError, setIfaceError] = useState<string | null>(null);
+  const [savingIface, setSavingIface] = useState(false);
+
+  const loadInterfaces = async () => {
+    try {
+      setIface(await listInterfaces());
+      setIfaceFailed(false);
+    } catch {
+      setIfaceFailed(true);
+    }
+  };
+
+  useEffect(() => {
+    void loadInterfaces();
+  }, []);
+
+  const changeInterface = async (name: string) => {
+    if (savingIface) return;
+    setSavingIface(true);
+    setIfaceError(null);
+    try {
+      await setInterface(name);
+      await loadInterfaces();
+    } catch (error) {
+      setIfaceError(String(error));
+      await loadInterfaces();
+    } finally {
+      setSavingIface(false);
+    }
+  };
+
   return (
     <Sheet title="Settings" subtitle="Appearance, daemon and about" onClose={onClose}>
       <section className="sheet-group">
@@ -137,6 +173,37 @@ export function SettingsSheet({
           <span className="sheet-key">Status</span>
           <span className={`pill-state ${state}`}>{state}</span>
         </div>
+      </section>
+
+      <section className="sheet-group">
+        <h3 className="sheet-group-title">Interface</h3>
+        {ifaceFailed ? (
+          <p className="sheet-note">Interface unavailable</p>
+        ) : (
+          <>
+            <div className="sheet-row">
+              <span className="sheet-key">Interface</span>
+              <select
+                className="sheet-input"
+                value={iface?.configured ?? "auto"}
+                disabled={savingIface || iface === null}
+                onChange={(e) => void changeInterface(e.target.value)}
+              >
+                <option value="auto">Auto</option>
+                {(iface?.interfaces ?? []).map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="sheet-note">
+              Auto follows the default route (WLAN/LAN/VPN). Pick an interface to pin shaping
+              to it.
+            </p>
+          </>
+        )}
+        {ifaceError && <p className="sheet-note">{ifaceError}</p>}
       </section>
 
       <section className="sheet-group">

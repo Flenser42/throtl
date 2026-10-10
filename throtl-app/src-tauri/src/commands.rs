@@ -43,6 +43,7 @@ commands_without_params!(
     daemon_list_processes => "list_processes",
     daemon_get_budgets => "get_budgets",
     daemon_list_profiles => "list_profiles",
+    daemon_list_interfaces => "list_interfaces",
     daemon_reset_stats => "reset_stats",
 );
 
@@ -61,6 +62,7 @@ commands_with_params!(
     daemon_delete_profile => "delete_profile",
     daemon_set_schedule => "set_schedule",
     daemon_set_start_profile => "set_start_profile",
+    daemon_set_interface => "set_interface",
     daemon_import_config => "import_config",
 );
 
