@@ -587,6 +587,17 @@ class BudgetEnforcementTest(unittest.TestCase):
         self.assertIsNone(d.store.get()["processes"][0]["download_limit"])
         self.assertIsNone(d.store.get()["processes"][0]["upload_limit"])
 
+    def test_floor_does_not_raise_existing_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._daemon(tmp)
+            self._seed(d)
+            d.store.get()["processes"][0]["download_limit"] = 20
+            d.store.get()["processes"][0]["upload_limit"] = 30
+            rendered = d._enforced_config(d._snapshot_config())
+
+        self.assertEqual(rendered["processes"][0]["download_limit"], 20)
+        self.assertEqual(rendered["processes"][0]["upload_limit"], 30)
+
     def test_enforcement_off_returns_config_unchanged(self):
         with tempfile.TemporaryDirectory() as tmp:
             d = self._daemon(tmp)

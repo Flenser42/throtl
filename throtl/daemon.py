@@ -308,6 +308,9 @@ class Daemon:
         # and GUI polls) share it, and it must not be the re-entrancy-prone
         # _tick_lock because _collect_snapshot runs under it.
         self._iface_lock = threading.Lock()
+        # Serializes interface (re)binding: reached from the monitor tick
+        # (under _tick_lock) and directly from the RPC set_interface handler.
+        self._rebind_lock = threading.Lock()
         self.interval = interval
         # Persistent bandwidth statistics (item 5): ring buffer next to
         # config.toml, fed in the monitor tick.
@@ -604,19 +607,25 @@ class Daemon:
         if not over_global and not over_apps:
             return cfg
         cfg = copy.deepcopy(cfg)
+
+        def cap(current, floor):
+            return floor if current is None else min(current, floor)
+
         if over_global:
-            cfg["global"]["download_limit"] = floor
-            cfg["global"]["upload_limit"] = floor
+            cfg["global"]["download_limit"] = cap(
+                cfg["global"].get("download_limit"), floor)
+            cfg["global"]["upload_limit"] = cap(
+                cfg["global"].get("upload_limit"), floor)
         for rule in cfg.get("processes", []):
             if rule.get("name") in over_apps:
-                rule["download_limit"] = floor
-                rule["upload_limit"] = floor
+                rule["download_limit"] = cap(rule.get("download_limit"), floor)
+                rule["upload_limit"] = cap(rule.get("upload_limit"), floor)
         return cfg
 
     def _apply_budget_enforcement(self) -> None:
         """Re-apply the engine when the set of over-budget apps changes."""
         with self._state_lock:
-            cfg = self.store.get()
+            cfg = copy.deepcopy(self.store.get())
         if not (cfg.get("budgets") or {}).get("enforce"):
             self._budget_signature = None
             return
@@ -901,20 +910,21 @@ class Daemon:
 
     def _rebind_interface(self, new: str) -> None:
         """Point the engine and monitor at a new interface."""
-        print(f"Interface changed: {self.interface} -> {new}", flush=True)
-        self._stop_monitor()
-        set_device = getattr(self.engine, "set_device", None)
-        if set_device is not None:
-            set_device(new)
-        else:
-            self.engine.device = new
-        self.interface = new
-        # Drop the stale /proc/net/dev sample so the global rate re-measures on
-        # the new interface instead of mixing old and new counters.
-        self._iface_sample = None
-        self._iface_rate = (None, None)
-        self._schedule_engine_apply()
-        self._start_monitor()
+        with self._rebind_lock:
+            print(f"Interface changed: {self.interface} -> {new}", flush=True)
+            self._stop_monitor()
+            set_device = getattr(self.engine, "set_device", None)
+            if set_device is not None:
+                set_device(new)
+            else:
+                self.engine.device = new
+            self.interface = new
+            # Drop the stale /proc/net/dev sample so the global rate re-measures
+            # on the new interface instead of mixing old and new counters.
+            self._iface_sample = None
+            self._iface_rate = (None, None)
+            self._schedule_engine_apply()
+            self._start_monitor()
 
     def _start_monitor(self) -> None:
         if self._monitor_factory is None:
