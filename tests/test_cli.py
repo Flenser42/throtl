@@ -361,6 +361,18 @@ class ToggleCommandTest(unittest.TestCase):
         self.assertEqual(toggles, [{"enabled": False}])
         self.assertNotIn("status", [m for m, _ in client.calls])
 
+    def test_toggle_accepts_numeric_one(self):
+        import contextlib
+        import io
+
+        client = _RecordingClient({})
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cli.cmd_toggle(client, argparse.Namespace(enabled="1"))
+        self.assertEqual(rc, 0)
+        toggles = [p for m, p in client.calls if m == "toggle_enabled"]
+        self.assertEqual(toggles, [{"enabled": True}])
+
 
 if __name__ == "__main__":
     unittest.main()

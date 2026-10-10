@@ -19,6 +19,7 @@ Examples:
 """
 
 import argparse
+import signal
 import sys
 import time
 
@@ -135,12 +136,25 @@ def cmd_boost(client, args):
     client.call("set_process", {"key": key, "priority": "kritisch"})
     print(f"Boosted {rule.get('name')!r} to Critical for {args.seconds}s "
           f"(was {saved})", flush=True)
+
+    def on_term(signum, frame):
+        raise KeyboardInterrupt
+
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        try:
+            signal.signal(sig, on_term)
+        except (ValueError, OSError):
+            pass
+
+    exit_code = 0
     try:
         time.sleep(args.seconds)
+    except KeyboardInterrupt:
+        exit_code = 130
     finally:
         client.call("set_process", {"key": key, "priority": saved})
         print(f"Reverted {rule.get('name')!r} to {saved}", flush=True)
-    return 0
+    return exit_code
 
 
 def _proc_display(name: str, limit: int = 32) -> str:
@@ -272,7 +286,7 @@ def cmd_toggle(client, args):
     if args.enabled is None:
         enabled = not bool(client.call("status").get("enabled", True))
     else:
-        enabled = str(args.enabled).lower() == "true"
+        enabled = str(args.enabled).lower() in ("true", "1")
     result = client.call("toggle_enabled", {"enabled": enabled})
     print(f"Shaping {'ON' if result.get('enabled') else 'OFF'}")
     return 0
