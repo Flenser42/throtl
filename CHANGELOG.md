@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-10
+
+### Added
+
+- **Interface switching in the dashboard.** Settings → Interface follows the
+  default route automatically (WLAN ↔ LAN, VPN up/down) or pins shaping to a
+  specific interface, backed by new `list_interfaces` / `set_interface` RPCs.
+- **Budget enforcement.** An over-budget app (or the whole connection for a
+  global budget) can be throttled to a configurable floor rate and reverts
+  automatically when the rolling window moves on (`enforce` / `floor`).
+- **Background autostart.** Launch on login and run minimised to the tray
+  (Settings → Startup), also offered by the first-run wizard.
+- **Omarchy bar widget + richer Waybar module.** A live bar/tray widget for
+  Omarchy (shaping switch, rates, global caps, top apps); the Waybar module now
+  shows live rates and toggles shaping on click.
+- **Installer widget selection.** `install.sh` detects Omarchy vs Waybar and
+  installs the matching widget (`--with-widget`, or force one with
+  `--with-omarchy` / `--with-waybar`).
+- **Installer progress bar.** The dashboard build shows a live percentage (Rust
+  crate count) and phase labels instead of an indefinite spinner.
+- **Source-freshness cache.** The installer rebuilds the dashboard whenever any
+  source file is newer than the cached AppImage — a `git pull` without a version
+  bump no longer installs a stale UI.
+
+### Fixed
+
+- **A `set_interface` call could race the monitor tick** while rebinding,
+  orphaning a nethogs process or leaving the engine on a stale device; interface
+  rebinds are now serialised.
+- **The budget floor could raise a limit.** A floor above an existing limit now
+  caps the limit down instead of raising it.
+- **`throtl-cli toggle --enabled 1` turned shaping off.** `1`/`0` are now
+  accepted alongside `true`/`false`.
+- **`throtl-cli boost` leaked Critical priority** on SIGTERM/SIGHUP; it now
+  reverts on those signals too.
+- **Budget enforcement read the config without the state lock.** It now
+  deep-copies the config under the lock.
+
+### Changed
+
+- **Sheets** are opaque with pinned footers and aligned columns.
+- **Cleaner settings icon** (sliders instead of a gear).
+
 ## [0.13.1] - 2026-10-08
 
 ### Fixed
@@ -777,7 +820,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the full history scrollable. Scrolling back pauses auto-scroll until
   you return to the live edge.
 
-[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/Flenser42/throtl/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/Flenser42/throtl/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/Flenser42/throtl/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/Flenser42/throtl/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/Flenser42/throtl/compare/v0.12.2...v0.12.3

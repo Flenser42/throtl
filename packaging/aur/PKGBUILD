@@ -1,6 +1,6 @@
 # Maintainer: Flenser42 <https://github.com/Flenser42>
 pkgname=throtl
-pkgver=0.13.1
+pkgver=0.14.0
 pkgrel=1
 pkgdesc="Per-application bandwidth limits and traffic prioritisation (daemon + CLI)"
 arch=('any')

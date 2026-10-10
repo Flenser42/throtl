@@ -25,7 +25,7 @@ import { isMock, isTauri, runSetup } from "./lib/ipc";
 import type { AppRow, GlobalValues } from "./lib/model";
 
 // Fallback for the browser; inside Tauri the real bundle version wins.
-const APP_VERSION_FALLBACK = "0.13.1";
+const APP_VERSION_FALLBACK = "0.14.0";
 const SOCKET_PATH = "/run/throtl/daemon.sock";
 
 type SheetKind = "settings" | "stats" | "budgets" | "globals" | "schedule" | null;

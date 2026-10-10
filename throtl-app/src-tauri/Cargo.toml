@@ -1,6 +1,6 @@
 [package]
 name = "throtl-app"
-version = "0.13.1"
+version = "0.14.0"
 description = "Throtl desktop GUI (Tauri 2 shell + daemon socket bridge)"
 edition = "2021"
 rust-version = "1.77"
