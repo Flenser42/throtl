@@ -249,7 +249,8 @@ def default_config() -> dict:
         "profiles": {},
         "schedule": [],
         # Consumption budgets (bytes, rolling: day=last 24h, week=7 days).
-        "budgets": {"enabled": True, "day": None, "week": None, "rules": []},
+        "budgets": {"enabled": True, "enforce": False, "floor": None,
+                    "day": None, "week": None, "rules": []},
         "global": {
             "enabled": True,
             "download_limit": None,
@@ -383,6 +384,12 @@ def normalize(data: dict, *, lenient: bool = False, notes: list | None = None) -
     budgets = cfg["budgets"]
     if isinstance(raw_budgets, dict):
         budgets["enabled"] = bool(raw_budgets.get("enabled", True))
+        budgets["enforce"] = bool(raw_budgets.get("enforce", False))
+        try:
+            budgets["floor"] = _rate_or_none(raw_budgets.get("floor"))
+        except (ConfigError, ValueError, OverflowError) as error:
+            repaired.append(f"budgets.floor={error}")
+            budgets["floor"] = None
         for key in ("day", "week"):
             try:
                 budgets[key] = _size_or_none(raw_budgets.get(key))
@@ -1053,12 +1060,18 @@ def dump_config(config: dict) -> str:
     # --- Consumption budgets ------------------------------------------------
     budgets = config.get("budgets") or {}
     budgets_active = (budgets.get("day") or budgets.get("week")
-                      or budgets.get("rules") or budgets.get("enabled") is False)
+                      or budgets.get("rules") or budgets.get("enforce")
+                      or budgets.get("floor") is not None
+                      or budgets.get("enabled") is False)
     if budgets_active:
         lines.append("[budgets]")
         lines.append(
             f"enabled = {'true' if budgets.get('enabled', True) else 'false'}"
         )
+        if budgets.get("enforce"):
+            lines.append("enforce = true")
+        if budgets.get("floor") is not None:
+            lines.append(f"floor = {int(budgets['floor'])}")
         for key in ("day", "week"):
             value = budgets.get(key)
             if value is not None:

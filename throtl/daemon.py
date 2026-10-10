@@ -331,6 +331,8 @@ class Daemon:
         self._iface_rate = (None, None)
         # Signature of the currently active time-window rules (engine re-apply).
         self._window_signature = None
+        # Signature of the currently over-budget apps (engine re-apply).
+        self._budget_signature = None
         # Exponential backoff for automatically re-applying a dead tt process.
         self._engine_recovery_attempts = 0
         self._engine_recovery_last = 0.0
@@ -497,6 +499,8 @@ class Daemon:
         self._apply_schedule()
         # Time-window rules: re-apply the engine when a window flips.
         self._apply_time_windows()
+        # Budget enforcement: re-apply when the over-budget set changes.
+        self._apply_budget_enforcement()
         # tt crashed? Then re-apply automatically (otherwise shaping would stay
         # silently off until the user happens to change a rule).
         self._recover_engine()
@@ -563,6 +567,54 @@ class Daemon:
         ))
         if signature != self._window_signature:
             self._window_signature = signature
+            self._schedule_engine_apply()
+
+    def _enforced_config(self, cfg: dict) -> dict:
+        """Apply the budget floor to over-budget apps when enforcement is on.
+
+        Returns the (possibly overridden) config WITHOUT touching the stored
+        rules — the floor is applied to the copy that gets rendered for tt.
+        """
+        budgets = cfg.get("budgets") or {}
+        if not budgets.get("enforce"):
+            return cfg
+        floor = budgets.get("floor")
+        if floor is None:
+            return cfg
+        from .budgets import budget_status
+
+        status = budget_status(cfg, self.stats)
+        over_global = any(e["scope"] == "global" and e["exceeded"] for e in status)
+        over_apps = {e["app"] for e in status
+                     if e["scope"] == "app" and e["exceeded"] and e["app"]}
+        if not over_global and not over_apps:
+            return cfg
+        cfg = copy.deepcopy(cfg)
+        if over_global:
+            cfg["global"]["download_limit"] = floor
+            cfg["global"]["upload_limit"] = floor
+        for rule in cfg.get("processes", []):
+            if rule.get("name") in over_apps:
+                rule["download_limit"] = floor
+                rule["upload_limit"] = floor
+        return cfg
+
+    def _apply_budget_enforcement(self) -> None:
+        """Re-apply the engine when the set of over-budget apps changes."""
+        with self._state_lock:
+            cfg = self.store.get()
+        if not (cfg.get("budgets") or {}).get("enforce"):
+            self._budget_signature = None
+            return
+        from .budgets import budget_status
+
+        status = budget_status(cfg, self.stats)
+        over_global = any(e["scope"] == "global" and e["exceeded"] for e in status)
+        over_apps = frozenset(e["app"] for e in status
+                              if e["scope"] == "app" and e["exceeded"] and e["app"])
+        signature = (over_global, over_apps)
+        if signature != self._budget_signature:
+            self._budget_signature = signature
             self._schedule_engine_apply()
 
     def _iface_throughput(self):
@@ -755,6 +807,7 @@ class Daemon:
         """
         if config is None:
             config = self._snapshot_config()
+        config = self._enforced_config(config)
         try:
             self.engine.apply(config)
         except Exception as error:

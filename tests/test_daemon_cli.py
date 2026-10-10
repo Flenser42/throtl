@@ -554,6 +554,51 @@ class BudgetsRpcTest(unittest.TestCase):
         self.assertEqual(len(result["series"]), 60)
 
 
+class BudgetEnforcementTest(unittest.TestCase):
+    """An over-budget app is throttled to the floor at render time only."""
+
+    def _daemon(self, tmp):
+        from throtl.daemon import Daemon
+
+        return Daemon(socket_path=os.path.join(tmp, "d.sock"), config_dir=tmp,
+                      engine=SimEngine("lo"), monitor_factory=None)
+
+    def _seed(self, d):
+        from throtl.config import make_rule
+
+        d.store.upsert_process(make_rule("steam", "name", "steam"))
+        d.store.get()["budgets"] = {
+            "enabled": True, "enforce": True, "floor": 50,
+            "day": None, "week": None,
+            "rules": [{"app": "steam", "day": 1, "week": None}],
+        }
+        d.stats.record("steam", download_kbit=1000, now=time.time(),
+                       interval=3600)
+
+    def test_over_budget_app_gets_floor_without_touching_store(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._daemon(tmp)
+            self._seed(d)
+            rendered = d._enforced_config(d._snapshot_config())
+
+        self.assertEqual(rendered["processes"][0]["download_limit"], 50)
+        self.assertEqual(rendered["processes"][0]["upload_limit"], 50)
+        # The floor is render-time only: the stored rule stays untouched.
+        self.assertIsNone(d.store.get()["processes"][0]["download_limit"])
+        self.assertIsNone(d.store.get()["processes"][0]["upload_limit"])
+
+    def test_enforcement_off_returns_config_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._daemon(tmp)
+            self._seed(d)
+            d.store.get()["budgets"]["enforce"] = False
+            cfg = d._snapshot_config()
+            rendered = d._enforced_config(cfg)
+
+        self.assertIs(rendered, cfg)
+        self.assertIsNone(rendered["processes"][0]["download_limit"])
+
+
 class MatchRulesTest(unittest.TestCase):
     """Regeln wiederfinden: gespeicherte Muster sind regex-escaped.
 

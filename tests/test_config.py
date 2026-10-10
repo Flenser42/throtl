@@ -321,6 +321,19 @@ class BudgetsTest(unittest.TestCase):
         self.assertEqual(cfg["budgets"]["day"], 20_000_000_000)
         self.assertEqual(cfg["budgets"]["rules"][0]["week"], 1024 ** 3)
 
+    def test_enforce_and_floor_roundtrip(self):
+        cfg = config.default_config()
+        cfg["budgets"] = {"enforce": True, "floor": 100}
+        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as handle:
+            handle.write(config.dump_config(cfg))
+            path = handle.name
+        try:
+            loaded = config.load_config(path)
+        finally:
+            os.unlink(path)
+        self.assertIs(loaded["budgets"]["enforce"], True)
+        self.assertEqual(loaded["budgets"]["floor"], 100)
+
 
 class WindowTest(unittest.TestCase):
     def _rule(self, window):
