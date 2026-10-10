@@ -15,15 +15,45 @@ OPT="/opt/throtl"
 ETC="/etc/throtl"
 RUN="/run/throtl"
 
-# Options: --no-app skips the GUI, --with-waybar installs the Waybar status module.
+# Options:
+#   --no-app        skip the GUI
+#   --with-waybar   install the Waybar status module (generic Arch)
+#   --with-omarchy  install the Omarchy bar widget (Omarchy)
+#   --with-widget   install whichever widget matches the detected shell
 WITH_WAYBAR=0
+WITH_OMARCHY=0
+WITH_WIDGET=0
 NO_APP=0
 for arg in "$@"; do
   case "$arg" in
-    --with-waybar) WITH_WAYBAR=1 ;;
-    --no-app)      NO_APP=1 ;;
+    --with-waybar)   WITH_WAYBAR=1 ;;
+    --with-omarchy)  WITH_OMARCHY=1 ;;
+    --with-widget)   WITH_WIDGET=1 ;;
+    --no-app)        NO_APP=1 ;;
   esac
 done
+
+# Detect the shell/bar: Omarchy ships `omarchy-shell`; generic Arch uses Waybar.
+IS_OMARCHY=0
+if command -v omarchy-shell >/dev/null 2>&1 || [ -d /usr/share/omarchy ]; then
+  IS_OMARCHY=1
+fi
+
+# --with-widget: install the widget that matches the detected shell.
+if [[ "$WITH_WIDGET" -eq 1 ]]; then
+  if [[ "$IS_OMARCHY" -eq 1 ]]; then WITH_OMARCHY=1; else WITH_WAYBAR=1; fi
+fi
+
+# Interactive (tty) with no explicit widget choice: ask about the relevant one.
+if [[ -t 0 && "$WITH_WAYBAR" -eq 0 && "$WITH_OMARCHY" -eq 0 ]]; then
+  if [[ "$IS_OMARCHY" -eq 1 ]]; then
+    read -r -p "Install the Omarchy bar widget for Throtl? [Y/n] " _answer || true
+    case "${_answer:-y}" in [Yy]*) WITH_OMARCHY=1 ;; esac
+  else
+    read -r -p "Install the Waybar status module for Throtl? [Y/n] " _answer || true
+    case "${_answer:-y}" in [Yy]*) WITH_WAYBAR=1 ;; esac
+  fi
+fi
 
 echo "=== [1/7] Install system packages ==="
 # pacman packages (all in [extra]): nethogs provides the live measurement,
@@ -117,6 +147,15 @@ fi
 
 echo "=== [7/7] Install the new GUI (Tauri) ==="
 APP_USER="${SUDO_USER:-$USER}"
+# A running dashboard would keep its old binary/AppImage locked during a
+# reinstall. Close it first and reopen afterwards (best effort).
+APP_WAS_RUNNING=0
+if pgrep -f 'throtl-app' >/dev/null 2>&1; then
+  APP_WAS_RUNNING=1
+  echo "   The dashboard is running — closing it for the update ..."
+  pkill -f 'throtl-app' 2>/dev/null || true
+  sleep 1
+fi
 if [[ "$NO_APP" -eq 1 ]]; then
   echo "   skipped (--no-app)"
 elif [[ "$APP_USER" == "root" ]]; then
@@ -127,6 +166,14 @@ elif sudo -u "$APP_USER" -H bash "$SELF_DIR/install-app.sh"; then
 else
   echo "   Warning: GUI installation failed (are Node/Rust present?)."
   echo "   Try again later: ./setup/install-app.sh"
+fi
+if [[ "$APP_WAS_RUNNING" -eq 1 ]]; then
+  if [[ "$APP_USER" != "root" ]]; then
+    sudo -u "$APP_USER" -H nohup gtk-launch throtl-app.desktop >/dev/null 2>&1 &
+    echo "   The dashboard was closed for the update — relaunching it."
+  else
+    echo "   The dashboard was closed for the update. Reopen it from your launcher."
+  fi
 fi
 
 echo "=== [8/8] Install polkit action for GUI setup ==="
@@ -169,6 +216,40 @@ EOF
     echo
   else
     echo "   Warning: could not create ~/.local/bin — skipping the Waybar module."
+  fi
+fi
+
+if [[ "$WITH_OMARCHY" -eq 1 ]]; then
+  echo
+  echo "=== Omarchy bar widget ==="
+  OM_USER="${SUDO_USER:-$USER}"
+  if [[ "$OM_USER" == "root" ]]; then
+    OM_HOME="${HOME:-/root}"
+  else
+    OM_HOME="$(getent passwd "$OM_USER" | cut -d: -f6)"
+  fi
+  if [[ -n "$OM_HOME" ]]; then
+    OM_PLUGINS="$OM_HOME/.config/omarchy/plugins/flenser.throtl"
+    install -d -m 0755 "$OM_PLUGINS"
+    install -m 0644 "$SELF_DIR"/omarchy/flenser.throtl/manifest.json \
+                     "$SELF_DIR"/omarchy/flenser.throtl/BarWidget.qml \
+                     "$SELF_DIR"/omarchy/flenser.throtl/Panel.qml \
+                     "$OM_PLUGINS/"
+    chown -R "$OM_USER" "$OM_HOME/.config/omarchy/plugins/flenser.throtl" 2>/dev/null || true
+    # Activate it in the bar (idempotent; backs up shell.json first).
+    if python3 "$SELF_DIR"/omarchy/register-widget.py \
+         "$OM_HOME/.config/omarchy/shell.json" flenser.throtl 2>/dev/null; then
+      echo "   Installed: $OM_PLUGINS"
+      if command -v omarchy >/dev/null 2>&1; then
+        sudo -u "$OM_USER" -H omarchy restart shell 2>/dev/null || true
+      fi
+      echo "   (widget appears in the bar's right section)"
+    else
+      echo "   Warning: could not register the widget in shell.json — copy the"
+      echo "            plugin and add {\"id\":\"flenser.throtl\"} manually."
+    fi
+  else
+    echo "   Warning: could not determine the user home — skipping the Omarchy widget."
   fi
 fi
 

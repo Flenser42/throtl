@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "flenser.throtl",
+  "name": "Throtl",
+  "version": "1.0.0",
+  "author": "Flenser",
+  "license": "GPL-3.0-or-later",
+  "description": "Zeigt den Throtl-Shaping-Status und die Live-Bandbreite (Download/Upload) in der Bar. Linksklick schaltet das Shaping um, Rechtsklick aktualisiert.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Throtl",
+    "description": "Live Download/Upload + Shaping-Schalter.",
+    "category": "Info",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 2
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Aktualisieren (Sekunden)",
+        "min": 1,
+        "max": 60,
+        "defaultValue": 2
+      }
+    ]
+  }
+}
