@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Sort cycling in `throtl-cli top`.** `s` rotates the sort key (download →
+  upload → name) without restarting, and the footer shows the active key.
+- **Shared terminal rendering helpers** (palette, block bars, visible-width
+  padding, column layout) reused by `top`, `monitor` and `watch`, with unit
+  tests for each helper.
+
+### Changed
+
+- **`top` and `monitor` redraw in place instead of clearing the screen.** They
+  now move the cursor home and erase per line, so the display no longer
+  flickers or leaves stale rows; `top` runs on the alternate screen in raw mode
+  and always restores the terminal on exit, `SIGTERM` and `SIGHUP`.
+- **`monitor` output is pipe-friendly.** On a TTY it draws one stable block per
+  tick; redirected or piped it writes plain append-only `down=`/`up=` lines
+  with no ANSI escapes.
+- **`watch` prints an aligned summary** with peak ↓/↑, each app's share of the
+  peak total and a totals footer, colouring only on a TTY.
+
+### Fixed
+
+- **The installer no longer reports success when the daemon or the GUI is
+  broken.** It verifies `tc`, `nethogs` and `tt --help`, falls back to a plain
+  binary when AppImage bundling fails, and prints the daemon's journal lines on
+  a failed start.
+- **The installer pulled the wrong shaper package on Fedora** (`iproute`
+  instead of `iproute-tc`, which is what ships `tc`).
+- **The GUI could not be built on a fresh system** because the `-devel`
+  packages (WebKitGTK 4.1, GTK 3, librsvg, OpenSSL, appindicator, patchelf)
+  were never installed; they are now installed with the runtime packages.
+- **`sudo -i` installs skipped the `throtl` group** because `SUDO_USER` is
+  empty there; the target account now falls back to the checkout owner and the
+  first non-root session, and a failure is reported instead of ignored.
+- **TrafficToll could not be installed on ARM** (no `psutil < 6` wheels); the
+  installer uses the wheel-only `psutil 6.1.1` set there instead of a compiler.
+
 ## [0.14.1] - 2026-10-10
 
 ### Fixed
