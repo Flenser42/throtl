@@ -374,5 +374,96 @@ class ToggleCommandTest(unittest.TestCase):
         self.assertEqual(toggles, [{"enabled": True}])
 
 
+class RenderingHelpersTest(unittest.TestCase):
+    """The shared, stdlib-only terminal rendering helpers."""
+
+    def test_palette_empty_when_disabled(self):
+        palette = cli._palette(False)
+        self.assertEqual(palette["green"], "")
+        self.assertEqual(palette["reset"], "")
+        self.assertEqual(palette["bold"], "")
+
+    def test_palette_codes_when_enabled(self):
+        palette = cli._palette(True)
+        self.assertEqual(palette["green"], "\033[32m")
+        self.assertEqual(palette["orange"], "\033[33m")
+        self.assertEqual(palette["reset"], "\033[0m")
+
+    def test_bar_scales_to_fraction(self):
+        palette = cli._palette(False)
+        self.assertEqual(cli._bar(0.0, 10, palette), "░" * 10)
+        self.assertEqual(cli._bar(1.0, 10, palette), "▓" * 10)
+        self.assertEqual(cli._bar(0.5, 10, palette), "▓" * 5 + "░" * 5)
+
+    def test_visible_len_ignores_ansi(self):
+        self.assertEqual(cli._visible_len("\033[32mabc\033[0m"), 3)
+
+    def test_pad_visible_pads_and_truncates(self):
+        self.assertEqual(cli._pad_visible("ab", 5), "ab   ")
+        self.assertEqual(cli._pad_visible("abcdef", 3), "abc")
+        colored = "\033[32mabc\033[0m"
+        self.assertEqual(cli._pad_visible(colored, 5), colored + "  ")
+
+    def test_fmt_rate_safe_none_is_dash(self):
+        self.assertEqual(cli._fmt_rate_safe(None), "—")
+
+    def test_pid_label_single_and_grouped(self):
+        self.assertEqual(cli._pid_label({"pids": [123]}), "123")
+        self.assertEqual(cli._pid_label({"pid_count": 4, "pids": [1]}), "4 pids")
+        self.assertEqual(cli._pid_label({"pids": ["-"]}), "—")
+
+    def test_distribute(self):
+        self.assertEqual(cli._distribute("a", "b", 5), "a   b")
+
+    def test_write_frame_uses_per_line_erase_not_full_clear(self):
+        import io
+
+        buf = io.StringIO()
+        cli._write_frame(buf, ["x", "y"], 10)
+        out = buf.getvalue()
+        self.assertIn("\033[H", out)
+        self.assertIn("\033[K", out)
+        self.assertIn("\033[J", out)
+        self.assertNotIn("\033[2J", out)
+
+    def test_monitor_plain_lines_no_ansi_no_cr(self):
+        state = {"interface": "eth0", "enabled": True,
+                 "apps": [{"name": "firefox", "download": 1200.0,
+                           "upload": 300.0}]}
+        lines = cli._monitor_plain_lines(state)
+        self.assertEqual(len(lines), 1)
+        self.assertNotIn("\033", lines[0])
+        self.assertNotIn("\r", lines[0])
+        self.assertIn("firefox", lines[0])
+        self.assertIn("down=", lines[0])
+
+    def test_top_frame_has_truthful_footer_and_no_full_clear(self):
+        palette = cli._palette(False)
+        state = {"interface": "eth0", "enabled": True,
+                 "global": {"download": 100.0, "upload": 50.0},
+                 "rules": [], "apps": []}
+        frame = cli._top_frame(state, "download", 80, 24, palette)
+        self.assertIn("quit", frame[-1])
+        self.assertIn("sort:", frame[-1])
+        self.assertNotIn("\033[2J", "\n".join(frame))
+
+    def test_top_frame_aligns_columns(self):
+        palette = cli._palette(False)
+        state = {"interface": "eth0", "enabled": True,
+                 "global": {"download": 1000.0, "upload": 500.0},
+                 "rules": [{"priority": "kritisch"}],
+                 "apps": [
+                     {"name": "firefox", "download": 800.0, "upload": 100.0,
+                      "pids": [1234]},
+                     {"name": "curl", "download": 200.0, "upload": 400.0,
+                      "pids": [99]},
+                 ]}
+        frame = cli._top_frame(state, "download", 90, 24, palette)
+        joined = "\n".join(frame)
+        self.assertIn("firefox", joined)
+        self.assertIn("curl", joined)
+        self.assertIn("▓", joined)  # bars are present on a wide terminal
+
+
 if __name__ == "__main__":
     unittest.main()

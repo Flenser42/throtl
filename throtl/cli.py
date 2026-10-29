@@ -19,6 +19,7 @@ Examples:
 """
 
 import argparse
+import re
 import signal
 import sys
 import time
@@ -163,6 +164,361 @@ def _proc_display(name: str, limit: int = 32) -> str:
     base = (first[0] if first else name).strip().strip('"').strip("'")
     base = base.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
     return base if len(base) <= limit else base[: limit - 1] + "…"
+
+
+# ---------------------------------------------------------------------------
+# Shared terminal rendering helpers (stdlib only, reused by top/monitor/watch).
+# ---------------------------------------------------------------------------
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+_ANSI_CODES = {
+    "reset": "\x1b[0m",
+    "bold": "\x1b[1m",
+    "dim": "\x1b[2m",
+    "green": "\x1b[32m",
+    "orange": "\x1b[33m",
+    "red": "\x1b[31m",
+    "cyan": "\x1b[36m",
+}
+
+_BLOCK = "▓"
+_EMPTY_BLOCK = "░"
+_BAR_WIDTH = 10
+_NARROW_COLS = 60
+_MAX_NAME = 40
+_SORT_KEYS = ("download", "upload", "name")
+_PRIORITY_NAMES = ("kritisch", "hoch", "normal", "niedrig")
+
+
+def _palette(enabled: bool) -> dict:
+    """Resolve the ANSI palette; every code is "" when colour is off."""
+    return {name: (code if enabled else "") for name, code in _ANSI_CODES.items()}
+
+
+def _fmt_rate_safe(value):
+    """Format a rate, showing an em-dash while there is no sample yet."""
+    return "—" if value is None else _fmt_rate(value)
+
+
+def _visible_len(text: str) -> int:
+    """Visible width of ``text`` (ANSI escape sequences do not count)."""
+    return len(_ANSI_RE.sub("", text))
+
+
+def _pad_visible(text: str, width: int) -> str:
+    """Pad/truncate ``text`` to ``width`` visible columns, preserving ANSI."""
+    if width <= 0:
+        return ""
+    visible = _ANSI_RE.sub("", text)
+    if len(visible) == width:
+        return text
+    if len(visible) < width:
+        return text + " " * (width - len(visible))
+    out = []
+    seen = 0
+    i = 0
+    length = len(text)
+    while i < length and seen < width:
+        if text[i] == "\x1b":
+            match = _ANSI_RE.match(text, i)
+            if match:
+                out.append(match.group(0))
+                i = match.end()
+                continue
+        out.append(text[i])
+        seen += 1
+        i += 1
+    result = "".join(out)
+    if "\x1b[" in result:
+        result += _ANSI_CODES["reset"]
+    return result
+
+
+def _distribute(left: str, right: str, width: int) -> str:
+    """``left`` flush-left, ``right`` flush-right within ``width`` columns."""
+    gap = width - _visible_len(left) - _visible_len(right)
+    if gap < 1:
+        return left + " " + right
+    return left + " " * gap + right
+
+
+def _bar(fraction: float, width: int, palette: dict, color=None) -> str:
+    """A compact ▓/░ bar scaled to ``fraction`` (clamped 0..1)."""
+    if width <= 0:
+        return ""
+    fraction = max(0.0, min(1.0, fraction))
+    filled = int(fraction * width + 0.5)
+    bar = _BLOCK * filled + _EMPTY_BLOCK * (width - filled)
+    if color:
+        return palette.get(color, "") + bar + palette.get("reset", "")
+    return bar
+
+
+def _write_frame(out, lines, cols):
+    """Draw one stable frame: home cursor, pad+erase each line, clear below.
+
+    Uses ``\\033[H`` + a per-line ``\\033[K`` instead of a full ``\\033[2J``
+    clear, so nothing flickers and a shrunken list leaves no leftover rows.
+    The final column is never filled, dodging the terminal's pending-wrap
+    double-scroll footgun.
+    """
+    limit = max(0, cols - 1)
+    parts = ["\x1b[H"]
+    last = len(lines) - 1
+    for index, line in enumerate(lines):
+        parts.append(_pad_visible(line, limit))
+        parts.append("\x1b[K")
+        if index != last:
+            parts.append("\r\n")
+    parts.append("\x1b[J")
+    out.write("".join(parts))
+    out.flush()
+
+
+def _pid_label(app) -> str:
+    """A short PID column label: one pid, or ``N pids`` when grouped."""
+    count = int(app.get("pid_count") or 1)
+    if count > 1:
+        return f"{count} pids"
+    pids = app.get("pids") or []
+    return str(pids[0]) if pids and pids[0] != "-" else "—"
+
+
+def _sort_value(app, key):
+    if key == "name":
+        return str(app.get("name", "")).lower()
+    return float(app.get(key, 0.0) or 0.0)
+
+
+def _column_widths(apps, width, show_bars):
+    """Compute (pid_w, name_w, rate_w) that fit the app rows in ``width``."""
+    pid_w = len("PID")
+    rate_w = 10  # fits "↓ Download" and "0.0 kbit/s"
+    for app in apps:
+        pid_w = max(pid_w, len(_pid_label(app)))
+        rate_w = max(
+            rate_w,
+            len(_fmt_rate_safe(float(app.get("download") or 0.0))),
+            len(_fmt_rate_safe(float(app.get("upload") or 0.0))),
+        )
+    fixed = pid_w + 6 + 2 * rate_w
+    if show_bars:
+        fixed += 4 + 2 * _BAR_WIDTH
+    name_w = max(4, min(_MAX_NAME, width - fixed))
+    return pid_w, name_w, rate_w
+
+
+def _header_label(arrow, color, word, width, palette) -> str:
+    """Right-align ``arrow``+``word`` to ``width`` (the arrow carries colour)."""
+    prefix = palette[color] + arrow + palette["reset"]
+    body = palette["bold"] + " " + word + palette["reset"]
+    pad = width - _visible_len(prefix + body)
+    if pad <= 0:
+        return prefix + body
+    return " " * pad + prefix + body
+
+
+def _column_header(pid_w, name_w, rate_w, show_bars, palette) -> str:
+    line = (
+        f"{palette['bold']}{'PID':>{pid_w}}{palette['reset']}  "
+        f"{palette['bold']}{'App':<{name_w}}{palette['reset']}  "
+        f"{_header_label('↓', 'green', 'Download', rate_w, palette)}  "
+        f"{_header_label('↑', 'orange', 'Upload', rate_w, palette)}"
+    )
+    if show_bars:
+        line += "  " + palette["dim"] + "─" * _BAR_WIDTH + palette["reset"]
+        line += "  " + palette["dim"] + "─" * _BAR_WIDTH + palette["reset"]
+    return line
+
+
+def _app_row(app, pid_w, name_w, rate_w, show_bars, max_down, max_up, palette) -> str:
+    down = float(app.get("download") or 0.0)
+    up = float(app.get("upload") or 0.0)
+    name = _proc_display(str(app.get("name") or "?"), name_w)
+    down_s = _fmt_rate_safe(down)
+    up_s = _fmt_rate_safe(up)
+    down_c = palette["green"] if down > 0 else palette["dim"]
+    up_c = palette["orange"] if up > 0 else palette["dim"]
+    line = (
+        f"{_pid_label(app):>{pid_w}}  {name:<{name_w}}  "
+        f"{down_c}{down_s:>{rate_w}}{palette['reset']}  "
+        f"{up_c}{up_s:>{rate_w}}{palette['reset']}"
+    )
+    if show_bars:
+        line += "  " + _bar(down / max_down if max_down > 0 else 0.0,
+                            _BAR_WIDTH, palette, "green" if down > 0 else None)
+        line += "  " + _bar(up / max_up if max_up > 0 else 0.0,
+                            _BAR_WIDTH, palette, "orange" if up > 0 else None)
+    return line
+
+
+def _header_hint(sort_key, rules) -> str:
+    """A dim one-liner with the active sort and rule/priority summary."""
+    parts = [f"sort: {sort_key}"]
+    count = len(rules)
+    if count:
+        parts.append(f"{count} rule{'s' if count != 1 else ''}")
+        ints = []
+        for rule in rules:
+            try:
+                ints.append(_priority_int(rule.get("priority")))
+            except Exception:
+                continue
+        if ints:
+            top = min(ints)
+            if 0 <= top < len(_PRIORITY_NAMES):
+                parts.append(f"priority: {_PRIORITY_NAMES[top]}")
+    return "  ·  ".join(parts)
+
+
+def _enter_raw(fd):
+    """Switch the TTY to raw mode; return the previous termios (or None)."""
+    try:
+        import termios
+        import tty
+
+        old = termios.tcgetattr(fd)
+        tty.setraw(fd)
+        return old
+    except (ImportError, termios.error, OSError, ValueError):
+        return None
+
+
+def _restore_termios(fd, old) -> None:
+    if old is None:
+        return
+    try:
+        import termios
+
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    except (termios.error, OSError, ValueError):
+        pass
+
+
+def _read_key(fd, timeout):
+    """Read a single keystroke (raw bytes) with a timeout; None if none/EOF."""
+    import os
+    import select
+
+    try:
+        ready, _, _ = select.select([fd], [], [], timeout)
+    except (OSError, ValueError):
+        return None
+    if not ready:
+        return None
+    try:
+        return os.read(fd, 16)
+    except OSError:
+        return None
+
+
+def _top_frame(state, sort_key, cols, lines, palette) -> list:
+    """Build one full-screen frame for ``top`` (header, rows, sticky footer)."""
+    apps = list(state.get("apps") or state.get("processes") or [])
+    apps.sort(key=lambda a: _sort_value(a, sort_key), reverse=(sort_key != "name"))
+    global_ = state.get("global") or {}
+    rules = state.get("rules") or []
+    enabled = bool(state.get("enabled"))
+    interface = state.get("interface") or "?"
+    width = max(0, cols - 1)
+    now = time.strftime("%H:%M:%S")
+
+    on_colour = palette["green"] if enabled else palette["red"]
+    left = (
+        f"{palette['bold']}Throtl{palette['reset']}  {interface}  shaping:"
+        f"{on_colour}{'ON' if enabled else 'OFF'}{palette['reset']}"
+        f"  {palette['green']}↓{palette['reset']} "
+        f"{_fmt_rate_safe(global_.get('download'))}"
+        f"  {palette['orange']}↑{palette['reset']} "
+        f"{_fmt_rate_safe(global_.get('upload'))}"
+    )
+    frame = [_distribute(left, palette["dim"] + now + palette["reset"], width)]
+
+    hint = _header_hint(sort_key, rules)
+    if hint and _visible_len(hint) <= width:
+        frame.append(palette["dim"] + hint + palette["reset"])
+
+    show_bars = width >= _NARROW_COLS
+    pid_w, name_w, rate_w = _column_widths(apps, width, show_bars)
+    frame.append(_column_header(pid_w, name_w, rate_w, show_bars, palette))
+    frame.append(palette["dim"] + "─" * width + palette["reset"])
+
+    max_down = max((float(a.get("download") or 0.0) for a in apps), default=0.0)
+    max_up = max((float(a.get("upload") or 0.0) for a in apps), default=0.0)
+
+    body_rows = max(0, lines - len(frame) - 1)  # -1 reserves the footer
+    if not apps:
+        data = [palette["dim"] + "  (no active traffic)" + palette["reset"]]
+    else:
+        data = [_app_row(a, pid_w, name_w, rate_w, show_bars,
+                         max_down, max_up, palette) for a in apps[:body_rows]]
+    frame.extend(data)
+
+    frame.extend([""] * max(0, lines - len(frame) - 1))
+
+    footer_left = (
+        f"{palette['bold']}q{palette['reset']} {palette['dim']}quit{palette['reset']}   "
+        f"{palette['bold']}s{palette['reset']} "
+        f"{palette['dim']}sort:{sort_key}{palette['reset']}   "
+        f"{palette['bold']}ctrl-c{palette['reset']} {palette['dim']}quit{palette['reset']}"
+    )
+    n_apps = len(apps)
+    footer_right = f"{n_apps} app{'s' if n_apps != 1 else ''}"
+    frame.append(_distribute(footer_left, footer_right, width))
+    return frame
+
+
+def _monitor_frame(state, cols, lines, palette) -> list:
+    """Build one per-second frame for ``monitor`` (TTY block redraw)."""
+    apps = list(state.get("apps") or state.get("processes") or [])
+    enabled = bool(state.get("enabled"))
+    interface = state.get("interface") or "?"
+    global_ = state.get("global") or {}
+    width = max(0, cols - 1)
+    now = time.strftime("%H:%M:%S")
+
+    on_colour = palette["green"] if enabled else palette["red"]
+    left = (
+        f"{palette['bold']}Throtl monitor{palette['reset']}  {interface}  shaping:"
+        f"{on_colour}{'ON' if enabled else 'OFF'}{palette['reset']}"
+        f"  {palette['green']}↓{palette['reset']} "
+        f"{_fmt_rate_safe(global_.get('download'))}"
+        f"  {palette['orange']}↑{palette['reset']} "
+        f"{_fmt_rate_safe(global_.get('upload'))}"
+    )
+    frame = [_distribute(left, palette["dim"] + now + palette["reset"], width)]
+
+    pid_w, name_w, rate_w = _column_widths(apps, width, show_bars=False)
+    frame.append(_column_header(pid_w, name_w, rate_w, False, palette))
+    frame.append(palette["dim"] + "─" * width + palette["reset"])
+
+    if not apps:
+        frame.append(palette["dim"] + "  (no active traffic)" + palette["reset"])
+    else:
+        body_rows = max(1, lines - len(frame))
+        for app in apps[:body_rows]:
+            frame.append(_app_row(app, pid_w, name_w, rate_w, False,
+                                  0.0, 0.0, palette))
+    return frame
+
+
+def _monitor_plain_lines(state) -> list:
+    """One grep-friendly line per app — no ANSI, no carriage returns."""
+    timestamp = time.strftime("%H:%M:%S")
+    interface = state.get("interface") or "?"
+    shaping = "ON" if state.get("enabled") else "OFF"
+    apps = list(state.get("apps") or state.get("processes") or [])
+    lines = [
+        f"{timestamp} {interface} shaping={shaping} "
+        f"{_proc_display(str(app.get('name') or '?'), 32)} "
+        f"down={_fmt_rate_safe(app.get('download'))} "
+        f"up={_fmt_rate_safe(app.get('upload'))}"
+        for app in apps
+    ]
+    if not lines:
+        lines.append(f"{timestamp} {interface} shaping={shaping} (no active traffic)")
+    return lines
 
 
 def cmd_list(client, args):
@@ -440,24 +796,28 @@ def cmd_import(client, args):
 
 
 def cmd_monitor(client, args):
-    """Live per-second bandwidth output (from the daemon)."""
+    """Live per-second bandwidth output (from the daemon).
+
+    On a TTY this redraws one stable block per tick (no ``\\r``, no leftover
+    lines). Piped, it emits plain append-only lines with no ANSI so the output
+    stays grep-friendly.
+    """
+    import os
+
+    tty = sys.stdout.isatty()
+    palette = _palette(tty and not os.environ.get("NO_COLOR"))
+    out = sys.stdout
     try:
         while True:
             state = client.call("list_processes")
-            print(f"--- Interface {state.get('interface')} "
-                  f"({'ON' if state.get('enabled') else 'OFF'}) "
-                  f"[{(time.strftime('%H:%M:%S'))}] ---", end="\r")
-            rows = []
-            for proc in state.get("processes", []):
-                rows.append(
-                    f"{proc.get('name','?'):<30} "
-                    f"down={_fmt_rate(proc.get('download')):<14} "
-                    f"up={_fmt_rate(proc.get('upload'))}"
-                )
-            if rows:
-                print("\n".join(rows))
+            if tty:
+                cols, lines = _term_size()
+                _write_frame(out, _monitor_frame(state, cols, lines, palette),
+                             cols)
             else:
-                print("  (no active traffic)")
+                for line in _monitor_plain_lines(state):
+                    out.write(line + "\n")
+                out.flush()
             time.sleep(1.0)
     except KeyboardInterrupt:
         return 0
@@ -474,67 +834,80 @@ def _term_size(fallback_cols=100, fallback_lines=30):
 
 
 def cmd_top(client, args):
-    """Full-screen live ranking of the apps (htop-style). Ctrl-C quits."""
+    """Full-screen live ranking of the apps (htop-style).
+
+    Keys: ``q``/Ctrl-C quit, ``s`` cycles the sort key. Terminal state
+    (alternate screen, hidden cursor, raw mode, termios) is always restored.
+    """
     import os
 
     if not sys.stdout.isatty():
         sys.stderr.write("top needs a terminal (TTY).\n")
         return 2
-    colors = not os.environ.get("NO_COLOR")
-    green = "\033[32m" if colors else ""
-    orange = "\033[33m" if colors else ""
-    dim = "\033[2m" if colors else ""
-    bold = "\033[1m" if colors else ""
-    reset = "\033[0m" if colors else ""
-    sort_key = args.sort
     try:
         interval = max(0.3, float(args.interval))
     except (TypeError, ValueError):
         sys.stderr.write("--interval must be a number.\n")
         return 2
 
-    def sort_value(app):
-        if sort_key == "name":
-            return str(app.get("name", "")).lower()
-        return float(app.get(sort_key, 0.0) or 0.0)
+    sort_key = args.sort
+    palette = _palette(not os.environ.get("NO_COLOR"))
+    out = sys.stdout
+
+    fd = None
+    try:
+        fd = sys.stdin.fileno()
+    except (OSError, AttributeError, ValueError):
+        fd = None
+    old_termios = None
+    in_alt = False
+
+    def _request_stop(_signum, _frame):
+        raise KeyboardInterrupt
+
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        try:
+            signal.signal(sig, _request_stop)
+        except (ValueError, OSError):
+            pass
 
     try:
+        out.write("\x1b[?1049h")
+        out.write("\x1b[?25l")
+        in_alt = True
+        out.flush()
+        old_termios = _enter_raw(fd) if fd is not None else None
+
         while True:
             state = client.call("list_processes")
-            apps = list(state.get("apps") or state.get("processes") or [])
-            apps.sort(key=sort_value, reverse=(sort_key != "name"))
             cols, lines = _term_size()
-            g = state.get("global") or {}
-            out = ["\033[H\033[2J"]
-            out.append(
-                f"{bold}Throtl top{reset}  {state.get('interface')}  "
-                f"shaping={'ON' if state.get('enabled') else 'OFF'}  "
-                f"↓ {_fmt_rate(g.get('download'))}  ↑ {_fmt_rate(g.get('upload'))}  "
-                f"[{time.strftime('%H:%M:%S')}]  "
-                f"{dim}sort={sort_key} q/ctrl-c=quit{reset}")
-            out.append("")
-            out.append(f"{'PID':<9}{'App':<26}{'▼ Download':>16}{'▲ Upload':>16}")
-            out.append("-" * min(cols, 70))
-            for app in apps[: max(1, lines - 6)]:
-                count = int(app.get("pid_count") or 1)
-                if count > 1:
-                    pid = f"{count} pids"
-                else:
-                    pids = app.get("pids") or []
-                    pid = str(pids[0]) if pids and pids[0] != "-" else "—"
-                name = _proc_display(str(app.get("name", "?")), 24)
-                down = _fmt_rate(app.get("download"), "auto")
-                up = _fmt_rate(app.get("upload"), "auto")
-                out.append(f"{pid:<9}{name:<26}"
-                           f"{green}{down:>16}{reset}{orange}{up:>16}{reset}")
-            if not apps:
-                out.append("  (no active traffic)")
-            sys.stdout.write("\n".join(out) + "\n")
-            sys.stdout.flush()
-            time.sleep(interval)
+            _write_frame(out, _top_frame(state, sort_key, cols, lines, palette),
+                         cols)
+            if old_termios is not None:
+                key = _read_key(fd, interval)
+                if key:
+                    ch = key[:1]
+                    if ch in (b"q", b"\x03"):  # q / Ctrl-C
+                        break
+                    if ch == b"s":
+                        index = (_SORT_KEYS.index(sort_key)
+                                 if sort_key in _SORT_KEYS else 0)
+                        sort_key = _SORT_KEYS[(index + 1) % len(_SORT_KEYS)]
+            else:
+                time.sleep(interval)
     except KeyboardInterrupt:
-        print()
-        return 0
+        pass
+    finally:
+        if old_termios is not None:
+            _restore_termios(fd, old_termios)
+        if in_alt:
+            try:
+                out.write("\x1b[?25h")
+                out.write("\x1b[?1049l")
+                out.flush()
+            except (OSError, ValueError):
+                pass
+    return 0
 
 
 def cmd_watch(client, args):
@@ -630,14 +1003,49 @@ def cmd_watch(client, args):
     if not rows:
         print("  (no traffic seen)")
     else:
-        print(f"  {'App':<26}{'Samples':>8}{'Avg down':>14}{'Peak down':>14}"
-              f"{'Avg up':>14}{'Peak up':>14}")
-        for row in rows:
-            print(f"  {_proc_display(row['name'], 26):<26}{row['samples']:>8}"
-                  f"{_fmt_rate(row['download_avg']):>14}"
-                  f"{_fmt_rate(row['download_peak']):>14}"
-                  f"{_fmt_rate(row['upload_avg']):>14}"
-                  f"{_fmt_rate(row['upload_peak']):>14}")
+        import os as _os
+
+        palette = _palette(sys.stdout.isatty()
+                           and not _os.environ.get("NO_COLOR"))
+        total = sum(r["download_peak"] + r["upload_peak"] for r in rows)
+        show_share = total > 0
+
+        name_w = max(len(_proc_display(r["name"], 32)) for r in rows)
+        down_w = len("Peak ↓")
+        up_w = len("Peak ↑")
+        for r in rows:
+            down_w = max(down_w, len(_fmt_rate(r["download_peak"])))
+            up_w = max(up_w, len(_fmt_rate(r["upload_peak"])))
+        share_w = 6 if show_share else 0
+
+        header = (f"  {'App':<{name_w}}  {'Peak ↓':>{down_w}}  "
+                  f"{'Peak ↑':>{up_w}}")
+        if show_share:
+            header += f"  {'Share':>{share_w}}"
+        print(palette["bold"] + header + palette["reset"])
+
+        rule_w = name_w + 2 + down_w + 2 + up_w
+        if show_share:
+            rule_w += 2 + share_w
+        rule = "  " + "─" * rule_w
+        print(palette["dim"] + rule + palette["reset"])
+
+        for r in rows:
+            line = (f"  {_proc_display(r['name'], name_w):<{name_w}}  "
+                    f"{palette['green']}{_fmt_rate(r['download_peak']):>{down_w}}"
+                    f"{palette['reset']}  "
+                    f"{palette['orange']}{_fmt_rate(r['upload_peak']):>{up_w}}"
+                    f"{palette['reset']}")
+            if show_share:
+                share = (r["download_peak"] + r["upload_peak"]) / total
+                line += f"  {share * 100:>{share_w - 1}.0f}%"
+            print(line)
+
+        print(palette["dim"] + rule + palette["reset"])
+        peak_total = sum(r["download_peak"] + r["upload_peak"] for r in rows)
+        print(palette["dim"] + f"  ({len(rows)} app"
+              f"{'s' if len(rows) != 1 else ''}, peak total "
+              f"{_fmt_rate_safe(peak_total)})" + palette["reset"])
     if alert is not None:
         if breaches:
             print(f"⚠ ALERT: peak above {_fmt_rate(alert)} — "
