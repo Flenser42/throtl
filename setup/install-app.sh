@@ -25,7 +25,7 @@ fi
 step() { printf '\n%s%s%s\n' "$C_CYAN" "$1" "$C_RESET" || true; }
 ok()   { printf '   %s✓%s %s\n' "$C_GREEN" "$C_RESET" "$1" || true; }
 warn() { printf '   %s!%s %s\n' "$C_YELLOW" "$C_RESET" "$1" || true; }
-err()  { printf '\n%s✗%s %s\n' "$C_RED" "$C_RESET" "$1" || true; }
+err()  { printf '\n%s✗%s %s\n' "$C_RED" "$C_RESET" "$1" >&2 || true; }
 dim()  { printf '   %s%s%s\n' "$C_DIM" "$1" "$C_RESET" || true; }
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
