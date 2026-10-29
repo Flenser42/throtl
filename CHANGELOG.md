@@ -38,9 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The GUI could not be built on a fresh system** because the `-devel`
   packages (WebKitGTK 4.1, GTK 3, librsvg, OpenSSL, appindicator, patchelf)
   were never installed; they are now installed with the runtime packages.
-- **`sudo -i` installs skipped the `throtl` group** because `SUDO_USER` is
-  empty there; the target account now falls back to the checkout owner and the
-  first non-root session, and a failure is reported instead of ignored.
+- **`sudo -i` installs skipped the `throtl` group and the dashboard** because
+  `SUDO_USER` is empty there; the group, the GUI and the bar widget now resolve
+  the checkout owner (or the first non-root session), and a failure is reported
+  instead of ignored.
 - **TrafficToll could not be installed on ARM** (no `psutil < 6` wheels); the
   installer uses the wheel-only `psutil 6.1.1` set there instead of a compiler.
 
