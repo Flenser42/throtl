@@ -29,12 +29,21 @@ here they are in case you want to do it by hand:
 | Component | Arch / Omarchy | Debian / Ubuntu | Fedora | openSUSE |
 |---|---|---|---|---|
 | Live traffic (`nethogs`) | `nethogs` | `nethogs` | `nethogs` | `nethogs` |
-| Shaper (`tc`) | `iproute2` | `iproute2` | `iproute` | `iproute2` |
+| Shaper (`tc`) | `iproute2` | `iproute2` | `iproute-tc` | `iproute2` |
 | Dashboard runtime | `webkit2gtk-4.1` | `libwebkit2gtk-4.1-0` | `webkit2gtk4.1` | `libwebkit2gtk-4_1-0` |
 
-On **Fedora**, note the shaper package is called `iproute` (not `iproute2`).
+On **Fedora**, note the shaper package is called `iproute-tc` (not `iproute2`);
+`iproute` alone does **not** ship `/usr/bin/tc`.
 On **RHEL/CentOS/AlmaLinux/Rocky ≤ 9**, only WebKitGTK 4.0 is available
 (`webkit2gtk3`) — the dashboard needs 4.1, so use a newer base or a Flatpak.
+
+Because the dashboard is compiled on the first install, `install.sh` also pulls
+the matching `-devel` packages (WebKitGTK 4.1, GTK 3, librsvg, OpenSSL, the
+appindicator tray library and `patchelf`). On **ARM** (e.g. Asahi Linux)
+TrafficToll's pinned `psutil < 6` has no wheels for the architecture, so the
+installer uses `psutil 6.1.1` there instead — it ships `abi3` wheels for every
+architecture and still provides the `pconn` API TrafficToll imports, so neither
+a compiler nor `python3-devel` is needed.
 
 ---
 
