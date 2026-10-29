@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The GUI could not be built on a fresh system** because the `-devel`
   packages (WebKitGTK 4.1, GTK 3, librsvg, OpenSSL, appindicator, patchelf)
   were never installed; they are now installed with the runtime packages.
+- **TrafficToll ran on a `loguru` release with a known advisory**
+  (PYSEC-2022-14, sensitive data in log files). The installer now pins
+  `loguru 0.6.0`, which fixes it and keeps the `logger.stop()`/`logger.add()`
+  calls TrafficToll makes; dependencies are installed explicitly with
+  `--no-deps` because TrafficToll's own metadata still caps them.
 - **`sudo -i` installs skipped the `throtl` group and the dashboard** because
   `SUDO_USER` is empty there; the group, the GUI and the bar widget now resolve
   the checkout owner (or the first non-root session), and a failure is reported
