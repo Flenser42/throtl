@@ -124,7 +124,7 @@ artifacts (built by CI). Download the ones for your distro:
 For example, on Debian/Ubuntu:
 
 ```bash
-sudo dpkg -i throtl_0.14.1_all.deb throtl-app_0.14.1_amd64.deb
+sudo dpkg -i throtl_0.15.0_all.deb throtl-app_0.15.0_amd64.deb
 sudo apt-get -f install   # pull in any missing dependencies
 ```
 
