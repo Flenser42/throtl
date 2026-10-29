@@ -39,11 +39,14 @@ On **RHEL/CentOS/AlmaLinux/Rocky ≤ 9**, only WebKitGTK 4.0 is available
 
 Because the dashboard is compiled on the first install, `install.sh` also pulls
 the matching `-devel` packages (WebKitGTK 4.1, GTK 3, librsvg, OpenSSL, the
-appindicator tray library and `patchelf`). On **ARM** (e.g. Asahi Linux)
-TrafficToll's pinned `psutil < 6` has no wheels for the architecture, so the
-installer uses `psutil 6.1.1` there instead — it ships `abi3` wheels for every
-architecture and still provides the `pconn` API TrafficToll imports, so neither
-a compiler nor `python3-devel` is needed.
+appindicator tray library and `patchelf`). TrafficToll 1.5.0 is from 2020 and
+pins `psutil < 6`, `loguru < 0.5` and `ruamel.yaml < 0.17`, so the installer
+sidesteps that metadata: it installs `psutil 6.1.1`, `loguru 0.6.0` and
+`ruamel.yaml 0.16.13` explicitly and TrafficToll itself with `--no-deps`. That
+is needed on every architecture — `psutil 5.9.x` only has `abi3` wheels for
+x86_64/i686 (ARM would need a compiler plus `python3-devel`), and `loguru
+0.4.1` carries PYSEC-2022-14. The newer versions keep the APIs TrafficToll
+uses (`psutil`'s `pconn` type, `loguru`'s `logger.stop()`/`logger.add()`).
 
 ---
 

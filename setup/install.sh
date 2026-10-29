@@ -174,10 +174,11 @@ fi
 # explicitly and TrafficToll itself with --no-deps:
 #   * psutil 6.1.1 still exposes the `pconn` type TrafficToll imports and
 #     ships abi3 wheels for every architecture, so no compiler is needed;
-#   * loguru 0.5.3 keeps the `logger.stop()`/`logger.add()` calls TrafficToll
-#     makes and is the first release without the advisory.
+#   * loguru 0.6.0 keeps the `logger.stop()`/`logger.add()` calls TrafficToll
+#     makes and is clear of the advisory; 0.5.3 is the nominal fix release, but
+#     PyPI's affected range still flags it, so stay above it.
 TT_VERSION="1.5.0"
-TT_PINS=("psutil==6.1.1" "loguru==0.5.3" "ruamel.yaml==0.16.13")
+TT_PINS=("psutil==6.1.1" "loguru==0.6.0" "ruamel.yaml==0.16.13")
 if ! sudo "$OPT/venv/bin/pip" install -q "${TT_PINS[@]}"; then
   sudo "$OPT/venv/bin/pip" install "${TT_PINS[@]}" >&2
 fi
