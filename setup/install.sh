@@ -30,11 +30,11 @@ fi
 
 # step:  bold cyan section header (prefixed by a blank line).
 # ok:    green ✓ detail line.   warn: yellow ! detail line.
-# err:   red ✗ banner (fatal/hard error).  dim: muted secondary detail.
+# err:   red ✗ banner to stderr (fatal/hard error).  dim: muted secondary detail.
 step() { printf '\n%s%s%s\n' "$C_CYAN" "$1" "$C_RESET" || true; }
 ok()   { printf '   %s✓%s %s\n' "$C_GREEN" "$C_RESET" "$1" || true; }
 warn() { printf '   %s!%s %s\n' "$C_YELLOW" "$C_RESET" "$1" || true; }
-err()  { printf '\n%s✗%s %s\n' "$C_RED" "$C_RESET" "$1" || true; }
+err()  { printf '\n%s✗%s %s\n' "$C_RED" "$C_RESET" "$1" >&2 || true; }
 dim()  { printf '   %s%s%s\n' "$C_DIM" "$1" "$C_RESET" || true; }
 
 # has_cmd <bin>: true if the binary is on PATH or in a standard sbin/bin dir
@@ -195,7 +195,7 @@ fi
 # Verify the binary actually imports — a broken tt would only surface much
 # later as an obscure daemon error.
 if ! sudo "$OPT/venv/bin/tt" --help >/dev/null 2>&1; then
-  err "TrafficToll (tt) is not runnable in $OPT/venv:" >&2
+  err "TrafficToll (tt) is not runnable in $OPT/venv:"
   sudo "$OPT/venv/bin/tt" --help 2>&1 | tail -n 5 >&2 || true
   exit 1
 fi
@@ -289,7 +289,12 @@ if ! command -v paru >/dev/null 2>&1 && ! command -v yay >/dev/null 2>&1; then
 fi
 
 step "==> [7/8] Install the new GUI (Tauri)"
-APP_USER="${SUDO_USER:-$USER}"
+# Per-user GUI: prefer the account resolved in step 4, but honor an explicit
+# sudo invoker only when it names a real (non-root) user.
+APP_USER="$TARGET_USER"
+if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]] && id "$SUDO_USER" >/dev/null 2>&1; then
+  APP_USER="$SUDO_USER"
+fi
 # A running dashboard would keep its old binary/AppImage locked during a
 # reinstall. Close it first and reopen afterwards (best effort).
 APP_WAS_RUNNING=0
