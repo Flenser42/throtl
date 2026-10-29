@@ -167,30 +167,22 @@ if ! sudo "$OPT/venv/bin/pip" install -q --upgrade pip; then
   sudo "$OPT/venv/bin/pip" install --upgrade pip >&2
 fi
 # TrafficToll 1.5.0 is from 2020 and pins psutil < 6, loguru < 0.5 and
-# ruamel.yaml < 0.17. psutil 5.9.x only ships cp36-abi3 wheels for x86_64/i686,
-# so on ARM (Asahi, Raspberry Pi, ...) pip has to compile it — which needs
-# python3-devel and fails on Python 3.13+ anyway. psutil 6.1.1 still exposes the
-# `pconn` type TrafficToll imports and ships abi3 wheels for every
-# architecture, so it works without a compiler on all of them.
-# Outside x86 pick that wheel-only set straight away instead of failing first.
+# ruamel.yaml < 0.17. Those pins are unusable today: psutil 5.9.x only ships
+# cp36-abi3 wheels for x86_64/i686 — on ARM pip has to compile it, which needs
+# python3-devel and fails on Python 3.13+ — and loguru 0.4.1 carries
+# PYSEC-2022-14 (sensitive data in log files). Install the dependency set
+# explicitly and TrafficToll itself with --no-deps:
+#   * psutil 6.1.1 still exposes the `pconn` type TrafficToll imports and
+#     ships abi3 wheels for every architecture, so no compiler is needed;
+#   * loguru 0.5.3 keeps the `logger.stop()`/`logger.add()` calls TrafficToll
+#     makes and is the first release without the advisory.
 TT_VERSION="1.5.0"
-case "$(uname -m)" in
-  x86_64|i686) TT_PINNED_OK=1 ;;
-  *)           TT_PINNED_OK=0 ;;
-esac
-if [[ "$TT_PINNED_OK" -eq 1 ]] && \
-   sudo "$OPT/venv/bin/pip" install -q "traffictoll==$TT_VERSION"; then
-  :
-else
-  dim "→ installing TrafficToll with wheel-only dependencies (psutil 6.1.1) …"
-  if ! sudo "$OPT/venv/bin/pip" install -q "psutil==6.1.1" "loguru==0.4.1" \
-                                           "ruamel.yaml==0.16.13"; then
-    sudo "$OPT/venv/bin/pip" install "psutil==6.1.1" "loguru==0.4.1" \
-                                     "ruamel.yaml==0.16.13" >&2
-  fi
-  if ! sudo "$OPT/venv/bin/pip" install -q --no-deps "traffictoll==$TT_VERSION"; then
-    sudo "$OPT/venv/bin/pip" install --no-deps "traffictoll==$TT_VERSION" >&2
-  fi
+TT_PINS=("psutil==6.1.1" "loguru==0.5.3" "ruamel.yaml==0.16.13")
+if ! sudo "$OPT/venv/bin/pip" install -q "${TT_PINS[@]}"; then
+  sudo "$OPT/venv/bin/pip" install "${TT_PINS[@]}" >&2
+fi
+if ! sudo "$OPT/venv/bin/pip" install -q --no-deps "traffictoll==$TT_VERSION"; then
+  sudo "$OPT/venv/bin/pip" install --no-deps "traffictoll==$TT_VERSION" >&2
 fi
 # Verify the binary actually imports — a broken tt would only surface much
 # later as an obscure daemon error.
@@ -308,10 +300,9 @@ GUI_NOTE="~/.local/bin/throtl-app"
 if [[ "$NO_APP" -eq 1 ]]; then
   GUI_NOTE="skipped (--no-app)"
   dim "skipped (--no-app)"
-elif [[ "$APP_USER" == "root" ]]; then
-  GUI_NOTE="skipped (run as root — no GUI)"
-  dim "called as root — GUI skipped"
-  dim "run without sudo later: ./setup/install-app.sh"
+elif [[ -z "$APP_USER" || "$APP_USER" == "root" ]]; then
+  GUI_NOTE="skipped (no user session found)"
+  dim "no user session found — run ./setup/install-app.sh as your user"
 elif sudo -u "$APP_USER" -H bash "$SELF_DIR/install-app.sh"; then
   ok "GUI installed — 'throtl-app' or 'Throtl' in the app menu"
 else
@@ -320,7 +311,7 @@ else
   dim  "  try again later: ./setup/install-app.sh"
 fi
 if [[ "$APP_WAS_RUNNING" -eq 1 ]]; then
-  if [[ "$APP_USER" != "root" ]]; then
+  if [[ -n "$APP_USER" && "$APP_USER" != "root" ]]; then
     sudo -u "$APP_USER" -H nohup gtk-launch throtl-app.desktop >/dev/null 2>&1 &
     dim "the dashboard was closed for the update — relaunching it"
   else
@@ -342,21 +333,23 @@ ok "polkit action installed (pkexec /usr/local/bin/throtl-setup)"
 
 if [[ "$WITH_WAYBAR" -eq 1 ]]; then
   step "==> Waybar status module"
-  WB_USER="${SUDO_USER:-$USER}"
-  if [[ "$WB_USER" == "root" ]]; then
-    WB_HOME="${HOME:-/root}"
+  # Per-user module: same account as the GUI (TARGET_USER), with an explicit
+  # sudo invoker honored only when real — never write into /root under a root shell.
+  WB_USER="$TARGET_USER"
+  if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]] && id "$SUDO_USER" >/dev/null 2>&1; then
+    WB_USER="$SUDO_USER"
+  fi
+  if [[ -z "$WB_USER" || "$WB_USER" == "root" ]]; then
+    warn "no user session found — skipping the Waybar module (run as your user)"
   else
     WB_HOME="$(getent passwd "$WB_USER" | cut -d: -f6)"
-  fi
-  if [[ -n "$WB_HOME" ]] && mkdir -p "$WB_HOME/.local/bin"; then
-    install -m 0755 "$SELF_DIR/waybar/throtl.sh" "$WB_HOME/.local/bin/throtl-waybar"
-    if [[ "$WB_USER" != "root" ]]; then
+    if [[ -n "$WB_HOME" ]] && mkdir -p "$WB_HOME/.local/bin"; then
+      install -m 0755 "$SELF_DIR/waybar/throtl.sh" "$WB_HOME/.local/bin/throtl-waybar"
       chown "$WB_USER" "$WB_HOME/.local/bin" "$WB_HOME/.local/bin/throtl-waybar" 2>/dev/null || true
-    fi
-    ok "installed $WB_HOME/.local/bin/throtl-waybar"
-    dim "add this module to your Waybar config (modules-right etc.):"
-    echo
-    cat <<'EOF'
+      ok "installed $WB_HOME/.local/bin/throtl-waybar"
+      dim "add this module to your Waybar config (modules-right etc.):"
+      echo
+      cat <<'EOF'
     "custom/throtl": {
         "exec": "~/.local/bin/throtl-waybar",
         "interval": 2,
@@ -364,42 +357,48 @@ if [[ "$WITH_WAYBAR" -eq 1 ]]; then
         "on-click": "throtl-cli toggle"
     },
 EOF
-    echo
-  else
-    warn "could not create ~/.local/bin — skipping the Waybar module"
+      echo
+    else
+      warn "could not create ~/.local/bin — skipping the Waybar module"
+    fi
   fi
 fi
 
 if [[ "$WITH_OMARCHY" -eq 1 ]]; then
   step "==> Omarchy bar widget"
-  OM_USER="${SUDO_USER:-$USER}"
-  if [[ "$OM_USER" == "root" ]]; then
-    OM_HOME="${HOME:-/root}"
+  # Per-user widget: same account as the GUI (TARGET_USER), with an explicit
+  # sudo invoker honored only when real — never write into /root under a root shell.
+  OM_USER="$TARGET_USER"
+  if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]] && id "$SUDO_USER" >/dev/null 2>&1; then
+    OM_USER="$SUDO_USER"
+  fi
+  if [[ -z "$OM_USER" || "$OM_USER" == "root" ]]; then
+    warn "no user session found — skipping the Omarchy widget (run as your user)"
   else
     OM_HOME="$(getent passwd "$OM_USER" | cut -d: -f6)"
-  fi
-  if [[ -n "$OM_HOME" ]]; then
-    OM_PLUGINS="$OM_HOME/.config/omarchy/plugins/flenser.throtl"
-    install -d -m 0755 "$OM_PLUGINS"
-    install -m 0644 "$SELF_DIR"/omarchy/flenser.throtl/manifest.json \
-                     "$SELF_DIR"/omarchy/flenser.throtl/BarWidget.qml \
-                     "$SELF_DIR"/omarchy/flenser.throtl/Panel.qml \
-                     "$OM_PLUGINS/"
-    chown -R "$OM_USER" "$OM_HOME/.config/omarchy/plugins/flenser.throtl" 2>/dev/null || true
-    # Activate it in the bar (idempotent; backs up shell.json first).
-    if python3 "$SELF_DIR"/omarchy/register-widget.py \
-         "$OM_HOME/.config/omarchy/shell.json" flenser.throtl 2>/dev/null; then
-      ok "installed $OM_PLUGINS"
-      if command -v omarchy >/dev/null 2>&1; then
-        sudo -u "$OM_USER" -H omarchy restart shell 2>/dev/null || true
+    if [[ -n "$OM_HOME" ]]; then
+      OM_PLUGINS="$OM_HOME/.config/omarchy/plugins/flenser.throtl"
+      install -d -m 0755 "$OM_PLUGINS"
+      install -m 0644 "$SELF_DIR"/omarchy/flenser.throtl/manifest.json \
+                       "$SELF_DIR"/omarchy/flenser.throtl/BarWidget.qml \
+                       "$SELF_DIR"/omarchy/flenser.throtl/Panel.qml \
+                       "$OM_PLUGINS/"
+      chown -R "$OM_USER" "$OM_HOME/.config/omarchy/plugins/flenser.throtl" 2>/dev/null || true
+      # Activate it in the bar (idempotent; backs up shell.json first).
+      if python3 "$SELF_DIR"/omarchy/register-widget.py \
+           "$OM_HOME/.config/omarchy/shell.json" flenser.throtl 2>/dev/null; then
+        ok "installed $OM_PLUGINS"
+        if command -v omarchy >/dev/null 2>&1; then
+          sudo -u "$OM_USER" -H omarchy restart shell 2>/dev/null || true
+        fi
+        dim "widget appears in the bar's right section"
+      else
+        warn "could not register the widget in shell.json — copy the"
+        dim  "  plugin and add {\"id\":\"flenser.throtl\"} manually"
       fi
-      dim "widget appears in the bar's right section"
     else
-      warn "could not register the widget in shell.json — copy the"
-      dim  "  plugin and add {\"id\":\"flenser.throtl\"} manually"
+      warn "could not determine the user home — skipping the Omarchy widget"
     fi
-  else
-    warn "could not determine the user home — skipping the Omarchy widget"
   fi
 fi
 
