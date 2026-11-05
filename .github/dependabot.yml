@@ -8,6 +8,8 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+        # Majors stay out of the group so each one gets its own PR to review.
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: pip
     directory: /
@@ -24,6 +26,7 @@ updates:
     groups:
       dashboard:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # Rust shell (Tauri + plugins).
   - package-ecosystem: cargo
@@ -34,6 +37,7 @@ updates:
     groups:
       rust:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
     ignore:
       # RUSTSEC-2024-0429 ("unsound", informational): the VariantStrIter bug is
       # fixed in glib 0.20, which needs gtk-rs 0.20 — Tauri 2.x still pins
