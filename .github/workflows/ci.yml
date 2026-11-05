@@ -55,6 +55,9 @@ jobs:
       - name: Typecheck + build
         working-directory: throtl-app
         run: npm run build
+      - name: Unit tests (vitest)
+        working-directory: throtl-app
+        run: npm test
 
   rust-shell:
     name: Rust shell (Tauri bridge)
