@@ -1057,5 +1057,88 @@ class InterfaceConfigTest(unittest.TestCase):
                 instance._h_set_interface({"interface": "definitely-not-a-real-nic0"})
 
 
+class AuditFixTest(unittest.TestCase):
+    """Regression checks for the fixes from the repository audit."""
+
+    def _daemon(self, tmp):
+        return daemon.Daemon(
+            socket_path=os.path.join(tmp, "d.sock"), config_dir=tmp,
+            engine=SimEngine("test0"), monitor_factory=_fake_monitor_factory,
+            interval=1.0,
+        )
+
+    def test_slow_tick_books_real_elapsed_seconds(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            instance._last_stat_tick = 1000.0
+            with patch("throtl.daemon.time.monotonic", return_value=1002.0):
+                instance._record_stats([{"name": "firefox", "download": 1000.0,
+                                         "upload": 0.0}])
+            totals = instance.stats.recent_totals("hour", 24, now=1002.0)
+            self.assertAlmostEqual(totals["firefox"]["download"], 250000.0, places=1)
+
+    def test_preflight_is_cached_between_status_calls(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            with patch("throtl.daemon.preflight", return_value=["fine"]) as mocked:
+                self.assertEqual(instance._h_status({})["preflight"], ["fine"])
+                self.assertEqual(instance._h_status({})["preflight"], ["fine"])
+                self.assertEqual(mocked.call_count, 1)
+                instance.interface = "eth0"
+                instance._h_status({})
+                self.assertEqual(mocked.call_count, 2)
+
+    def test_concurrent_partial_updates_are_both_kept(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            instance._h_set_process({"name": "Firefox", "match_type": "exe",
+                                     "match_value": "/usr/bin/firefox"})
+            key = instance.store.get()["processes"][0]["key"]
+            real_upsert = instance.store.upsert_process
+            a_in_upsert = threading.Event()
+            release_a = threading.Event()
+
+            def upsert_with_pause(rule):
+                if threading.current_thread().name == "updater-a":
+                    a_in_upsert.set()
+                    release_a.wait(2.0)
+                return real_upsert(rule)
+
+            instance.store.upsert_process = upsert_with_pause
+            errors = []
+
+            def update_a():
+                try:
+                    instance._h_set_process({"key": key, "download_limit": "100kbps"})
+                except Exception as error:
+                    errors.append(error)
+
+            def update_b():
+                try:
+                    instance._h_set_process({"key": key, "upload_limit": "200kbps"})
+                except Exception as error:
+                    errors.append(error)
+
+            ta = threading.Thread(target=update_a, name="updater-a")
+            tb = threading.Thread(target=update_b, name="updater-b")
+            ta.start()
+            self.assertTrue(a_in_upsert.wait(2.0))
+            tb.start()
+            tb.join(3.0)
+            release_a.set()
+            ta.join(3.0)
+            self.assertFalse(tb.is_alive())
+            self.assertFalse(ta.is_alive())
+            self.assertEqual(errors, [])
+            rule = next(r for r in instance.store.get()["processes"]
+                        if r["key"] == key)
+            self.assertTrue(rule["download_limit"])
+            self.assertTrue(rule["upload_limit"])
+
+
 if __name__ == "__main__":
     unittest.main()

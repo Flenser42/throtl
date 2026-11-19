@@ -315,6 +315,11 @@ class Daemon:
         # Persistent bandwidth statistics (item 5): ring buffer next to
         # config.toml, fed in the monitor tick.
         self.stats = StatsStore(self.config_dir, interval=interval)
+        # Real time between recorded ticks, so a slow nethogs tick does not
+        # book a full second of bytes for a tick that lasted two.
+        self._last_stat_tick = None
+        # Cached preflight result: (key, monotonic time, issues).
+        self._preflight = None
 
         cfg = self.store.get()
         self.interface = _resolve_interface(cfg.get("interface"))
@@ -703,8 +708,13 @@ class Daemon:
             enabled = cfg["global"].get("enabled", True)
         processes = []
         attributed_down = attributed_up = 0.0
+        # One match per PID: both loops need the same rule, and _match_rules
+        # ignores pid, so the old second lookup was pure duplicate work.
+        matched_by_pid = {}
         for pid, info in raw.items():
-            matches = _match_rules(rules, info.get("name"), info.get("pid", pid))
+            matches = matched_by_pid[pid] = _match_rules(
+                rules, info.get("name"), info.get("pid", pid)
+            )
             download = round(info.get("download", 0.0), 3)
             upload = round(info.get("upload", 0.0), 3)
             # nethogs sees ingress BEFORE the shaping (on ifb0), so a limit does
@@ -740,7 +750,7 @@ class Daemon:
                 cmdline = info.get("name", "")
                 app = pretty_app_name(cmdline)
                 exe = (cmdline.split() or [""])[0]
-                matched = _match_rules(rules, cmdline)
+                matched = matched_by_pid.get(pid, {})
                 interpreted = is_interpreted_cmdline(cmdline)
             entry = apps.get(app)
             if entry is None:
@@ -812,11 +822,16 @@ class Daemon:
 
     def _record_stats(self, app_list: list) -> None:
         """Book the per-app rates (kbit/s) into the statistics store."""
+        now = time.monotonic()
+        elapsed = (self.interval if self._last_stat_tick is None
+                   else now - self._last_stat_tick)
+        self._last_stat_tick = now
         for entry in app_list:
             self.stats.record(
                 entry.get("name", "?"),
                 entry.get("download", 0.0),
                 entry.get("upload", 0.0),
+                interval=elapsed,
             )
 
     # --- Engine ---
@@ -1044,6 +1059,15 @@ class Daemon:
             # No live dict: json.dumps would race a concurrent write.
             cfg = copy.deepcopy(self.store.get())
         tt_cmd = getattr(self, "_tt_command", "tt")
+        # preflight calls which() three times and reads /proc/modules. The GUI
+        # polls status every second; cache for a minute, but refresh at once if
+        # the interface or tt command changes.
+        cache_key = (tt_cmd, self.interface)
+        now = time.monotonic()
+        cached = self._preflight
+        if cached is None or cached[0] != cache_key or now - cached[1] >= 60.0:
+            cached = (cache_key, now, preflight(tt_cmd, self.interface))
+            self._preflight = cached
         return {
             "daemon": __version__,
             "pid": os.getpid(),
@@ -1059,7 +1083,7 @@ class Daemon:
             "engine_applying": self._engine_applying,
             "engine": engine_status,
             "simulated": getattr(self.engine, "simulated", False),
-            "preflight": preflight(tt_cmd, self.interface),
+            "preflight": cached[2],
             # Broken/invalid config.toml: the daemon keeps running with the
             # defaults, but the reason is queryable instead of only in the journal.
             "config_warning": self.store.load_warning,
@@ -1111,74 +1135,66 @@ class Daemon:
             # handler, i.e. after the lock.
             result = copy.deepcopy(store.get()["global"])
         self._schedule_engine_apply()
-        self._emit_rules_changed()
         return result
 
     def _h_set_process(self, params):
         key = params.get("key")
         with self._state_lock:
-            # Lookup under the lock: two concurrent updates of the same rule must
-            # not both read the old state (lost update).
+            # Read, edit and write in one lock: two clients must not both start
+            # from the same old rule and silently lose one of the two changes.
             existing = None
             if key:
                 existing = next(
                     (r for r in self.store.get().get("processes", []) if r.get("key") == key),
                     None,
                 )
-        if existing is not None:
-            # Update an existing rule: do NOT re-derive match_type/match_value.
-            # The GUI sends the stored rule back; a fresh make_rule() would
-            # escape the already re.escape()-d pattern again and the rule would
-            # no longer match.
-            rule = dict(existing)
-            if params.get("name"):
-                rule["name"] = str(params["name"])
-            if "download_limit" in params:
-                rule["download_limit"] = parse_limit_param(params.get("download_limit"))
-            if "upload_limit" in params:
-                rule["upload_limit"] = parse_limit_param(params.get("upload_limit"))
-            if params.get("priority") is not None:
-                # ``0`` (critical) is false-but-true and was skipped before;
-                # str(1) turned integer priorities into errors.
-                rule["priority"] = priority_to_name(
-                    priority_to_int(params["priority"])
+            if existing is not None:
+                # Update an existing rule: do NOT re-derive match_type/match_value.
+                # The GUI sends the stored rule back; a fresh make_rule() would
+                # escape the already re.escape()-d pattern again and the rule would
+                # no longer match.
+                rule = dict(existing)
+                if params.get("name"):
+                    rule["name"] = str(params["name"])
+                if "download_limit" in params:
+                    rule["download_limit"] = parse_limit_param(params.get("download_limit"))
+                if "upload_limit" in params:
+                    rule["upload_limit"] = parse_limit_param(params.get("upload_limit"))
+                if params.get("priority") is not None:
+                    # ``0`` (critical) is false-but-true and was skipped before;
+                    # str(1) turned integer priorities into errors.
+                    rule["priority"] = priority_to_name(
+                        priority_to_int(params["priority"])
+                    )
+                if "recursive" in params:
+                    rule["recursive"] = bool(params.get("recursive"))
+                if "window" in params:
+                    rule["window"] = normalize_window(params.get("window"))
+            else:
+                name = str(params.get("name", ""))
+                match_type = str(params.get("match_type", "exe"))
+                match_value = str(params.get("match_value", ""))
+                if not match_value:
+                    raise ValueError("match_value missing")
+                raw_priority = params.get("priority")
+                priority = (
+                    priority_to_name(priority_to_int(raw_priority))
+                    if raw_priority is not None
+                    else "normal"
                 )
-            if "recursive" in params:
-                rule["recursive"] = bool(params.get("recursive"))
-            if "window" in params:
-                rule["window"] = normalize_window(params.get("window"))
-            with self._state_lock:
-                self.store.upsert_process(rule)
-            self._schedule_engine_apply()
-            self._emit_rules_changed()
-            return rule
-
-        name = str(params.get("name", ""))
-        match_type = str(params.get("match_type", "exe"))
-        match_value = str(params.get("match_value", ""))
-        if not match_value:
-            raise ValueError("match_value missing")
-        raw_priority = params.get("priority")
-        priority = (
-            priority_to_name(priority_to_int(raw_priority))
-            if raw_priority is not None
-            else "normal"
-        )
-        rule = make_rule(
-            name=name,
-            match_type=match_type,
-            match_value=match_value,
-            download_limit=parse_limit_param(params.get("download_limit")),
-            upload_limit=parse_limit_param(params.get("upload_limit")),
-            priority=priority,
-            recursive=bool(params.get("recursive", False)),
-            key=params.get("key"),
-            window=params.get("window"),
-        )
-        with self._state_lock:
+                rule = make_rule(
+                    name=name,
+                    match_type=match_type,
+                    match_value=match_value,
+                    download_limit=parse_limit_param(params.get("download_limit")),
+                    upload_limit=parse_limit_param(params.get("upload_limit")),
+                    priority=priority,
+                    recursive=bool(params.get("recursive", False)),
+                    key=params.get("key"),
+                    window=params.get("window"),
+                )
             self.store.upsert_process(rule)
         self._schedule_engine_apply()
-        self._emit_rules_changed()
         return rule
 
     def _h_remove_process(self, params):
@@ -1188,7 +1204,6 @@ class Daemon:
         with self._state_lock:
             removed = self.store.remove_process(key)
         self._schedule_engine_apply()
-        self._emit_rules_changed()
         return {"removed": removed}
 
     def _h_toggle_enabled(self, params):
@@ -1196,7 +1211,6 @@ class Daemon:
         with self._state_lock:
             self.store.update_global(enabled=enabled)
         self._schedule_engine_apply()
-        self._emit_rules_changed()
         return {"enabled": enabled}
 
     def _h_set_unit(self, params):
@@ -1233,7 +1247,7 @@ class Daemon:
         return {"window": window, "series": self.stats.series(window)}
 
     def _h_get_budgets(self, params):
-        from .budgets import budget_level, budget_status
+        from .budgets import budget_level, budget_status, warning_key
 
         with self._state_lock:
             cfg = copy.deepcopy(self.store.get())
@@ -1241,7 +1255,7 @@ class Daemon:
         alerts = []
         with self._state_lock:
             for entry in entries:
-                key = f"{entry.get('scope')}:{entry.get('app')}:{entry.get('window')}"
+                key = warning_key(entry)
                 level = budget_level(entry)
                 if level > self._budget_levels.get(key, 0):
                     alerts.append({
@@ -1307,7 +1321,6 @@ class Daemon:
             self.store._persist()
         if activate:
             self._schedule_engine_apply()
-        self._emit_rules_changed()
         return {"name": name, "active": self.store.get().get("active_profile")}
 
     def _h_delete_profile(self, params):
@@ -1324,7 +1337,6 @@ class Daemon:
             apply_profile(self.store.get(), name)
             self.store._persist()
         self._schedule_engine_apply()
-        self._emit_rules_changed()
         return {"active": name}
 
     def _h_set_schedule(self, params):
@@ -1392,18 +1404,7 @@ class Daemon:
             self.store.replace(config)
             result = copy.deepcopy(config)
         self._schedule_engine_apply()
-        self._emit_rules_changed()
         return result
-
-    def _emit_rules_changed(self) -> None:
-        # After a change, pull a fresh snapshot immediately so the next query
-        # returns current rates and the /proc sample delta is not stale. Safe: a
-        # broken rule must not throw an exception out of the RPC handler.
-        #
-        # ``record_stats=False``: this extra tick measures the same moment as
-        # the 1 Hz ticker; booking it as a full second bloated the byte sums on
-        # rule changes.
-        self._safe_tick_monitor(record_stats=False)
 
     # --- Shutdown ---
 

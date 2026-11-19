@@ -44,6 +44,22 @@ has_cmd() {
     || [ -x "/usr/bin/$1" ] || [ -x "/usr/sbin/$1" ] || [ -x "/sbin/$1" ] || [ -x "/bin/$1" ]
 }
 
+# This installer runs as root. Minimal installs may not ship `sudo`, so run
+# commands directly when we are already root. `sudo -u USER` (used for the
+# few per-user steps) maps to runuser from util-linux.
+if [[ "$(id -u)" -eq 0 ]]; then
+  sudo() {
+    if [[ "${1:-}" == "-u" ]]; then
+      local _user="$2"
+      shift 2
+      if [[ "${1:-}" == "-H" ]]; then shift; fi
+      runuser -u "$_user" -- "$@"
+    else
+      "$@"
+    fi
+  }
+fi
+
 # Options:
 #   --no-app        skip the GUI
 #   --with-waybar   install the Waybar status module (generic Arch)

@@ -18,65 +18,6 @@ WINDOWS = {
     "week": ("day", 7),
 }
 
-# SI steps (1000s), matching units.parse_size
-_VOLUME_UNITS = ("B", "KB", "MB", "GB", "TB", "PB")
-
-
-def format_volume(value) -> str:
-    """Format a volume for input fields: ``"20 GB"``, ``"1.5 MB"``.
-
-    ``None`` means "no budget" and yields an empty string. The result can be
-    parsed back exactly with ``units.parse_size``.
-    """
-    if value is None:
-        return ""
-    try:
-        amount = float(value)
-    except (TypeError, ValueError):
-        return ""
-    for unit in _VOLUME_UNITS:
-        if amount < 1000 or unit == _VOLUME_UNITS[-1]:
-            text = f"{amount:.1f}".rstrip("0").rstrip(".")
-            return f"{text} {unit}"
-        amount /= 1000.0
-    return f"{amount:.1f} {_VOLUME_UNITS[-1]}"
-
-
-def budget_rows(payload: dict) -> dict:
-    """Bring the ``get_budgets`` response into display form.
-
-    Pure and free of widgets, so the mapping of the windows (day/week) and the
-    global/app split stays testable independently of the UI.
-    """
-    payload = payload or {}
-    rows = {
-        "enabled": bool(payload.get("enabled", True)),
-        "global": {"day": None, "week": None},
-        "apps": [],
-    }
-    apps: dict[str, dict] = {}
-    for entry in payload.get("entries") or []:
-        window = entry.get("window")
-        if window not in rows["global"]:
-            continue
-        cell = {
-            "used": entry.get("used") or 0.0,
-            "limit": entry.get("limit") or 0,
-            "ratio": entry.get("ratio") or 0.0,
-            "exceeded": bool(entry.get("exceeded")),
-        }
-        if entry.get("scope") == "global":
-            rows["global"][window] = cell
-            continue
-        app = str(entry.get("app") or "").strip()
-        if not app:
-            continue
-        bucket = apps.setdefault(app, {"app": app, "day": None, "week": None})
-        bucket[window] = cell
-    rows["apps"] = [apps[name] for name in sorted(apps)]
-    return rows
-
-
 # Windows below this usage report nothing.
 WARN_RATIO = 0.8
 
@@ -93,24 +34,6 @@ def budget_level(entry: dict) -> int:
     if (entry.get("ratio") or 0.0) >= WARN_RATIO:
         return 1
     return 0
-
-
-def pending_warnings(entries, warned, threshold: float = WARN_RATIO) -> list:
-    """Budgets that are getting tight and have not been reported yet.
-
-    An already-exceeded budget is reported by the existing path; here we only
-    care about the moment before, when there is still time to react.
-    """
-    out = []
-    for entry in entries or []:
-        if entry.get("exceeded"):
-            continue
-        if (entry.get("ratio") or 0.0) < threshold:
-            continue
-        if warning_key(entry) in warned:
-            continue
-        out.append(entry)
-    return out
 
 
 def _entry(scope: str, app: str | None, window: str, used: float, limit: float) -> dict:

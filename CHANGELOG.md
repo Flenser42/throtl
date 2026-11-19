@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Concurrent edits to the same rule could silently lose a change.** The
+  read-edit-write is now one atomic operation, so GUI and CLI edits no longer
+  overwrite each other.
+- **`throtl-cli boost` could leave a rule stuck at Critical** if the daemon
+  restarted mid-boost. The revert now retries on a fresh connection and tells
+  the user what to do if that fails too.
+- **Slow monitor ticks undercounted bytes**, so budgets read too low. Totals now
+  use the real time between ticks.
+- **The installer failed on root shells without `sudo`** (common on minimal
+  Arch installs). It now runs commands directly.
+
+### Changed
+
+- Status polling no longer re-runs the slow preflight checks on every call, and
+  saving a rule no longer blocks on an extra monitor tick. Fresh rates arrive on
+  the next 1 Hz tick.
+
 ## [0.15.0] - 2026-10-29
 
 ### Added

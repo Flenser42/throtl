@@ -153,8 +153,23 @@ def cmd_boost(client, args):
     except KeyboardInterrupt:
         exit_code = 130
     finally:
-        client.call("set_process", {"key": key, "priority": saved})
-        print(f"Reverted {rule.get('name')!r} to {saved}", flush=True)
+        try:
+            client.call("set_process", {"key": key, "priority": saved})
+            print(f"Reverted {rule.get('name')!r} to {saved}", flush=True)
+        except Exception:
+            # A daemon restart breaks the socket. Retry once with a fresh
+            # connection; the priority change was already persisted.
+            try:
+                retry = Client(client._path, connect_timeout=1.5)
+                retry.connect()
+                retry.call("set_process", {"key": key, "priority": saved})
+                retry.close()
+                print(f"Reverted {rule.get('name')!r} to {saved} (after reconnect)",
+                      flush=True)
+            except Exception:
+                print(f"Could not revert {rule.get('name')!r} automatically. "
+                      f"Set it back to {saved} in the dashboard.",
+                      file=sys.stderr, flush=True)
     return exit_code
 
 
