@@ -1056,6 +1056,23 @@ class InterfaceConfigTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 instance._h_set_interface({"interface": "definitely-not-a-real-nic0"})
 
+    def test_set_interface_rejects_traversal_and_invalid_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            instance = self._daemon(tmp)
+            for value in [
+                "../../../etc/hostname",
+                "../../../../etc/shadow",
+                "/etc/shadow",
+                "lo; id",
+                "$(id)",
+                "-eth0",
+                ".",
+                "..",
+            ]:
+                with self.subTest(value=value):
+                    with self.assertRaises(ValueError):
+                        instance._h_set_interface({"interface": value})
+
 
 class AuditFixTest(unittest.TestCase):
     """Regression checks for the fixes from the repository audit."""

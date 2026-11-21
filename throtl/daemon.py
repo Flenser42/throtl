@@ -1371,7 +1371,9 @@ class Daemon:
         if value in ("auto", "automatic"):
             stored = None
         else:
-            if not os.path.exists(f"/sys/class/net/{value}"):
+            if "/" in value or value in (".", "..") or value.startswith("-"):
+                raise ValueError("invalid interface name")
+            if value not in available_interfaces():
                 raise ValueError(f"unknown interface {value!r}")
             stored = value
         with self._state_lock:

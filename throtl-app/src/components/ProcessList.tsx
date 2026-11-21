@@ -21,13 +21,18 @@ const PRIORITY_SHORT: Record<string, string> = {
   niedrig: "LOW",
 };
 
+/** POSIX single-quote escaping for shell-safe command strings. */
+function shellQuote(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
 /** A runnable `throtl-cli set-process …` equivalent for the rule. */
 function cliFor(app: AppRow, unit: Unit): string {
-  const parts = ["throtl-cli set-process", `--appname "${app.matchValue ?? app.name}"`];
+  const parts = ["throtl-cli set-process", `--appname ${shellQuote(app.matchValue ?? app.name)}`];
   if (app.downloadLimit != null)
-    parts.push(`--download-limit "${formatRate(app.downloadLimit, unit, 2)}"`);
+    parts.push(`--download-limit ${shellQuote(formatRate(app.downloadLimit, unit, 2))}`);
   if (app.uploadLimit != null)
-    parts.push(`--upload-limit "${formatRate(app.uploadLimit, unit, 2)}"`);
+    parts.push(`--upload-limit ${shellQuote(formatRate(app.uploadLimit, unit, 2))}`);
   if (app.priority && app.priority !== "normal") parts.push(`--priority ${app.priority}`);
   return parts.join(" ");
 }
