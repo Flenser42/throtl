@@ -1105,7 +1105,7 @@ class AuditFixTest(unittest.TestCase):
                 self.assertEqual(instance._h_status({})["preflight"], ["fine"])
                 self.assertEqual(instance._h_status({})["preflight"], ["fine"])
                 self.assertEqual(mocked.call_count, 1)
-                instance.interface = "eth0"
+                instance.interface = "eth-test1" if instance.interface != "eth-test1" else "eth-test2"
                 instance._h_status({})
                 self.assertEqual(mocked.call_count, 2)
 
